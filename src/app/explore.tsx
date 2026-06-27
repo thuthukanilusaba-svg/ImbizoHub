@@ -1,180 +1,133 @@
 import { Image } from 'expo-image';
-import { SymbolView } from 'expo-symbols';
-import { Platform, Pressable, ScrollView, StyleSheet } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useRouter } from 'expo-router';
+import { ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 
-import { ExternalLink } from '@/components/external-link';
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import { Collapsible } from '@/components/ui/collapsible';
-import { WebBadge } from '@/components/web-badge';
-import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
-import { useTheme } from '@/hooks/use-theme';
+const GOLD = '#B8860B';
+const BLACK = '#1A1A18';
+const DARK = '#2a2a2a';
+const GREY = '#AAAAAA';
 
-export default function TabTwoScreen() {
-  const safeAreaInsets = useSafeAreaInsets();
-  const insets = {
-    ...safeAreaInsets,
-    bottom: safeAreaInsets.bottom + BottomTabInset + Spacing.three,
-  };
-  const theme = useTheme();
+const categories = [
+  { icon: '📱', label: 'Phones' },
+  { icon: '🚗', label: 'Vehicles' },
+  { icon: '🪑', label: 'Furniture' },
+  { icon: '👕', label: 'Clothing' },
+  { icon: '🏠', label: 'Appliances' },
+  { icon: '🧱', label: 'Building' },
+  { icon: '🧸', label: 'Baby' },
+  { icon: '📦', label: 'Other' },
+];
 
-  const contentPlatformStyle = Platform.select({
-    android: {
-      paddingTop: insets.top,
-      paddingLeft: insets.left,
-      paddingRight: insets.right,
-      paddingBottom: insets.bottom,
-    },
-    web: {
-      paddingTop: Spacing.six,
-      paddingBottom: Spacing.four,
-    },
-  });
+const listings = [
+  { image: 'https://images.unsplash.com/photo-1496181133206-80ce9b88a853?w=400', title: 'HP Laptop i5', price: '$180', location: 'Bulawayo', badge: 'Verified', badgeType: 'verified' },
+  { image: 'https://images.unsplash.com/photo-1494976388531-d1058494cdd8?w=400', title: 'Toyota Vitz 2010', price: '$4,200', location: 'Harare', badge: 'Dealer', badgeType: 'dealer' },
+  { image: 'https://images.unsplash.com/photo-1555041469-a586c61ea9bc?w=400', title: 'L-shaped sofa', price: '$95', location: 'Harare', badge: 'Verified', badgeType: 'verified' },
+  { image: 'https://images.unsplash.com/photo-1461151304267-38535e780c79?w=400', title: 'Samsung 43" TV', price: '$210', location: 'Mutare', badge: 'Dealer', badgeType: 'dealer' },
+  { image: 'https://images.unsplash.com/photo-1511707171634-5f897ff02aa9?w=400', title: 'iPhone 12', price: '$280', location: 'Harare', badge: 'Verified', badgeType: 'verified' },
+  { image: 'https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=400', title: 'Nike Air Max', price: '$45', location: 'Bulawayo', badge: 'Verified', badgeType: 'verified' },
+];
+
+export default function ExploreScreen() {
+  const router = useRouter();
 
   return (
-    <ScrollView
-      style={[styles.scrollView, { backgroundColor: theme.background }]}
-      contentInset={insets}
-      contentContainerStyle={[styles.contentContainer, contentPlatformStyle]}>
-      <ThemedView style={styles.container}>
-        <ThemedView style={styles.titleContainer}>
-          <ThemedText type="subtitle">Explore</ThemedText>
-          <ThemedText style={styles.centerText} themeColor="textSecondary">
-            This starter app includes example{'\n'}code to help you get started.
-          </ThemedText>
+    <View style={styles.container}>
+      <View style={styles.header}>
+        <Text style={styles.headerTitle}>Browse</Text>
+      </View>
 
-          <ExternalLink href="https://docs.expo.dev" asChild>
-            <Pressable style={({ pressed }) => pressed && styles.pressed}>
-              <ThemedView type="backgroundElement" style={styles.linkButton}>
-                <ThemedText type="link">Expo documentation</ThemedText>
-                <SymbolView
-                  tintColor={theme.text}
-                  name={{ ios: 'arrow.up.right.square', android: 'link', web: 'link' }}
-                  size={12}
-                />
-              </ThemedView>
-            </Pressable>
-          </ExternalLink>
-        </ThemedView>
+      <ScrollView showsVerticalScrollIndicator={false}>
+        <View style={styles.searchBar}>
+          <Text style={styles.searchIcon}>🔍</Text>
+          <TextInput style={styles.searchInput} placeholder="Search listings..." placeholderTextColor={GREY} />
+        </View>
 
-        <ThemedView style={styles.sectionsWrapper}>
-          <Collapsible title="File-based routing">
-            <ThemedText type="small">
-              This app has two screens: <ThemedText type="code">src/app/index.tsx</ThemedText> and{' '}
-              <ThemedText type="code">src/app/explore.tsx</ThemedText>
-            </ThemedText>
-            <ThemedText type="small">
-              The layout file in <ThemedText type="code">src/app/_layout.tsx</ThemedText> sets up
-              the tab navigator.
-            </ThemedText>
-            <ExternalLink href="https://docs.expo.dev/router/introduction">
-              <ThemedText type="linkPrimary">Learn more</ThemedText>
-            </ExternalLink>
-          </Collapsible>
+        <Text style={styles.sectionTitle}>Categories</Text>
+        <View style={styles.catGrid}>
+          {categories.map((cat, i) => (
+            <TouchableOpacity key={i} style={styles.catItem}>
+              <Text style={styles.catIcon}>{cat.icon}</Text>
+              <Text style={styles.catLabel}>{cat.label}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
 
-          <Collapsible title="Android, iOS, and web support">
-            <ThemedView type="backgroundElement" style={styles.collapsibleContent}>
-              <ThemedText type="small">
-                You can open this project on Android, iOS, and the web. To open the web version,
-                press <ThemedText type="smallBold">w</ThemedText> in the terminal running this
-                project.
-              </ThemedText>
-              <Image
-                source={require('@/assets/images/tutorial-web.png')}
-                style={styles.imageTutorial}
-              />
-            </ThemedView>
-          </Collapsible>
+        <Text style={styles.sectionTitle}>All Listings</Text>
+        <View style={styles.listingGrid}>
+          {listings.map((item, i) => (
+            <TouchableOpacity key={i} style={styles.listingCard} onPress={() => router.push('/listing')}>
+              <Image source={{ uri: item.image }} style={styles.listingImg} contentFit="cover" />
+              <View style={styles.listingBody}>
+                <Text style={styles.listingTitle}>{item.title}</Text>
+                <Text style={styles.listingPrice}>{item.price}</Text>
+                <View style={styles.listingMeta}>
+                  <Text style={styles.listingLoc}>{item.location}</Text>
+                  <View style={item.badgeType === 'verified' ? styles.badgeVerified : styles.badgeDealer}>
+                    <Text style={item.badgeType === 'verified' ? styles.badgeVerifiedText : styles.badgeDealerText}>{item.badge}</Text>
+                  </View>
+                </View>
+              </View>
+            </TouchableOpacity>
+          ))}
+        </View>
+        <View style={{ height: 80 }} />
+      </ScrollView>
 
-          <Collapsible title="Images">
-            <ThemedText type="small">
-              For static images, you can use the <ThemedText type="code">@2x</ThemedText> and{' '}
-              <ThemedText type="code">@3x</ThemedText> suffixes to provide files for different
-              screen densities.
-            </ThemedText>
-            <Image source={require('@/assets/images/react-logo.png')} style={styles.imageReact} />
-            <ExternalLink href="https://reactnative.dev/docs/images">
-              <ThemedText type="linkPrimary">Learn more</ThemedText>
-            </ExternalLink>
-          </Collapsible>
-
-          <Collapsible title="Light and dark mode components">
-            <ThemedText type="small">
-              This template has light and dark mode support. The{' '}
-              <ThemedText type="code">useColorScheme()</ThemedText> hook lets you inspect what the
-              user&apos;s current color scheme is, and so you can adjust UI colors accordingly.
-            </ThemedText>
-            <ExternalLink href="https://docs.expo.dev/develop/user-interface/color-themes/">
-              <ThemedText type="linkPrimary">Learn more</ThemedText>
-            </ExternalLink>
-          </Collapsible>
-
-          <Collapsible title="Animations">
-            <ThemedText type="small">
-              This template includes an example of an animated component. The{' '}
-              <ThemedText type="code">src/components/ui/collapsible.tsx</ThemedText> component uses
-              the powerful <ThemedText type="code">react-native-reanimated</ThemedText> library to
-              animate opening this hint.
-            </ThemedText>
-          </Collapsible>
-        </ThemedView>
-        {Platform.OS === 'web' && <WebBadge />}
-      </ThemedView>
-    </ScrollView>
+      <View style={styles.bottomNav}>
+        <TouchableOpacity style={styles.navItem} onPress={() => router.push('/')}>
+          <Text style={styles.navIcon}>🏠</Text>
+          <Text style={styles.navLabel}>Home</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.navItem}>
+          <Text style={styles.navIconActive}>🔍</Text>
+          <Text style={styles.navLabelActive}>Browse</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.navPost} onPress={() => router.push('/post')}>
+          <Text style={styles.navPostText}>+</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.navItem} onPress={() => router.push('/chat')}>
+          <Text style={styles.navIcon}>💬</Text>
+          <Text style={styles.navLabel}>Messages</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.navItem} onPress={() => router.push('/profile')}>
+          <Text style={styles.navIcon}>👤</Text>
+          <Text style={styles.navLabel}>Profile</Text>
+        </TouchableOpacity>
+      </View>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  scrollView: {
-    flex: 1,
-  },
-  contentContainer: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-  },
-  container: {
-    maxWidth: MaxContentWidth,
-    flexGrow: 1,
-  },
-  titleContainer: {
-    gap: Spacing.three,
-    alignItems: 'center',
-    paddingHorizontal: Spacing.four,
-    paddingVertical: Spacing.six,
-  },
-  centerText: {
-    textAlign: 'center',
-  },
-  pressed: {
-    opacity: 0.7,
-  },
-  linkButton: {
-    flexDirection: 'row',
-    paddingHorizontal: Spacing.four,
-    paddingVertical: Spacing.two,
-    borderRadius: Spacing.five,
-    justifyContent: 'center',
-    gap: Spacing.one,
-    alignItems: 'center',
-  },
-  sectionsWrapper: {
-    gap: Spacing.five,
-    paddingHorizontal: Spacing.four,
-    paddingTop: Spacing.three,
-  },
-  collapsibleContent: {
-    alignItems: 'center',
-  },
-  imageTutorial: {
-    width: '100%',
-    aspectRatio: 296 / 171,
-    borderRadius: Spacing.three,
-    marginTop: Spacing.two,
-  },
-  imageReact: {
-    width: 100,
-    height: 100,
-    alignSelf: 'center',
-  },
+  container: { flex: 1, backgroundColor: BLACK },
+  header: { paddingHorizontal: 16, paddingTop: 50, paddingBottom: 10 },
+  headerTitle: { color: '#fff', fontSize: 22, fontWeight: '700' },
+  searchBar: { flexDirection: 'row', alignItems: 'center', backgroundColor: DARK, borderRadius: 12, marginHorizontal: 16, marginBottom: 16, paddingHorizontal: 12, paddingVertical: 10 },
+  searchIcon: { fontSize: 16, marginRight: 8 },
+  searchInput: { flex: 1, color: '#fff', fontSize: 13 },
+  sectionTitle: { color: '#fff', fontSize: 13, fontWeight: '700', paddingHorizontal: 16, marginBottom: 10 },
+  catGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, paddingHorizontal: 16, marginBottom: 20 },
+  catItem: { backgroundColor: DARK, borderRadius: 10, padding: 10, width: '22%', alignItems: 'center' },
+  catIcon: { fontSize: 20, marginBottom: 4 },
+  catLabel: { color: '#ccc', fontSize: 10 },
+  listingGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, paddingHorizontal: 16 },
+  listingCard: { backgroundColor: '#222', borderRadius: 12, overflow: 'hidden', width: '47.5%' },
+  listingImg: { height: 120, width: '100%' },
+  listingBody: { padding: 8 },
+  listingTitle: { color: '#fff', fontSize: 12, fontWeight: '700', marginBottom: 2 },
+  listingPrice: { color: GOLD, fontSize: 13, fontWeight: '800', marginBottom: 4 },
+  listingMeta: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  listingLoc: { color: GREY, fontSize: 10 },
+  badgeVerified: { backgroundColor: '#1a3a1a', borderRadius: 4, paddingHorizontal: 5, paddingVertical: 2 },
+  badgeVerifiedText: { color: '#4A90D9', fontSize: 9 },
+  badgeDealer: { backgroundColor: '#3a2800', borderRadius: 4, paddingHorizontal: 5, paddingVertical: 2 },
+  badgeDealerText: { color: GOLD, fontSize: 9 },
+  bottomNav: { position: 'absolute', bottom: 0, left: 0, right: 0, backgroundColor: BLACK, borderTopWidth: 0.5, borderTopColor: DARK, flexDirection: 'row', justifyContent: 'space-around', alignItems: 'center', paddingVertical: 10 },
+  navItem: { alignItems: 'center' },
+  navIcon: { fontSize: 22, color: '#555' },
+  navIconActive: { fontSize: 22, color: GOLD },
+  navLabel: { fontSize: 9, color: '#555', marginTop: 2 },
+  navLabelActive: { fontSize: 9, color: GOLD, marginTop: 2 },
+  navPost: { width: 44, height: 44, backgroundColor: GOLD, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
+  navPostText: { color: BLACK, fontSize: 24, fontWeight: '700' },
 });
