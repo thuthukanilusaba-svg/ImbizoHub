@@ -1,7 +1,10 @@
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { useEffect, useState } from 'react';
+import { ActivityIndicator, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { supabase } from '../../lib/supabase';
+
 const GOLD = '#B8860B';
 const BLACK = '#1A1A18';
 const DARK = '#2a2a2a';
@@ -18,15 +21,27 @@ const categories = [
   { icon: '⋯', label: 'More' },
 ];
 
-const listings = [
-  { image: 'https://images.unsplash.com/photo-1496181133206-80ce9b88a853?w=400', title: 'HP Laptop i5', price: '$180', location: 'Bulawayo', badge: 'Verified', badgeType: 'verified' },
-  { image: 'https://images.unsplash.com/photo-1549317661-bd32c8ce0db2?w=400', title: 'Toyota Vitz 2010', price: '$4,200', location: 'Harare', badge: 'Dealer', badgeType: 'dealer' },
-  { image: 'https://images.unsplash.com/photo-1555041469-a586c61ea9bc?w=400', title: 'L-shaped sofa', price: '$95', location: 'Harare', badge: 'Verified', badgeType: 'verified' },
-  { image: 'https://images.unsplash.com/photo-1461151304267-38535e780c79?w=400', title: 'Samsung 43" TV', price: '$210', location: 'Mutare', badge: 'Dealer', badgeType: 'dealer' },
-];
-
 export default function HomeScreen() {
   const router = useRouter();
+  const [listings, setListings] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (!session) router.replace('/login');
+    });
+    fetchListings();
+  }, []);
+
+  const fetchListings = async () => {
+    const { data } = await supabase
+      .from('listings')
+      .select('*')
+      .order('created_at', { ascending: false });
+    if (data) setListings(data);
+    setLoading(false);
+  };
+
   return (
     <View style={styles.container}>
       <StatusBar style="light" />
@@ -89,27 +104,35 @@ export default function HomeScreen() {
             <Text style={styles.sectionTitle}>Recent listings</Text>
             <TouchableOpacity onPress={() => router.push('/explore')}>
               <Text style={styles.seeAll}>See all</Text>
-              </TouchableOpacity>
-          <View style={styles.listingGrid}>
-            {listings.map((item, i) => (
-              <TouchableOpacity key={i} style={styles.listingCard} onPress={() => router.push('/listing')}>
-                <Image source={{ uri: item.image }} style={styles.listingImg} contentFit="cover" />
-                <View style={styles.listingBody}>
-                  <Text style={styles.listingTitle}>{item.title}</Text>
-                  <Text style={styles.listingPrice}>{item.price}</Text>
-                  <View style={styles.listingMeta}>
-                    <Text style={styles.listingLoc}>{item.location}</Text>
-                    <View style={item.badgeType === 'verified' ? styles.badgeVerified : styles.badgeDealer}>
-                      <Text style={item.badgeType === 'verified' ? styles.badgeVerifiedText : styles.badgeDealerText}>
-                        {item.badge}
-                      </Text>
+            </TouchableOpacity>
+          </View>
+          {loading ? (
+            <ActivityIndicator color={GOLD} />
+          ) : (
+            <View style={styles.listingGrid}>
+              {listings.map((item) => (
+                <TouchableOpacity
+                  key={item.id}
+                  style={styles.listingCard}
+                  onPress={() => router.push(`/listing?id=${item.id}`)}
+                >
+                  <Image source={{ uri: item.image_url }} style={styles.listingImg} contentFit="cover" />
+                  <View style={styles.listingBody}>
+                    <Text style={styles.listingTitle}>{item.title}</Text>
+                    <Text style={styles.listingPrice}>${item.price}</Text>
+                    <View style={styles.listingMeta}>
+                      <Text style={styles.listingLoc}>{item.location}</Text>
+                      <View style={item.badge === 'Verified' ? styles.badgeVerified : styles.badgeDealer}>
+                        <Text style={item.badge === 'Verified' ? styles.badgeVerifiedText : styles.badgeDealerText}>
+                          {item.badge}
+                        </Text>
+                      </View>
                     </View>
                   </View>
-                </View>
-              </TouchableOpacity>
-            ))}
-          </View>
-        </View>
+                </TouchableOpacity>
+              ))}
+            </View>
+          )}
         </View>
 
         <View style={{ height: 80 }} />
@@ -146,24 +169,24 @@ const styles = StyleSheet.create({
   logoRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   logoIcon: { width: 24, height: 24, backgroundColor: GOLD, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
   logoLetter: { color: BLACK, fontSize: 11, fontWeight: '900' },
-  logoText: { fontSize: 18, fontWeight: '800', fontFamily: 'Inter_800ExtraBold', color: '#fff' },
+  logoText: { fontSize: 18, fontWeight: '800', color: '#fff' },
   logoGold: { color: GOLD },
   greeting: { color: GREY, fontSize: 12, marginTop: 2 },
   avatar: { width: 36, height: 36, backgroundColor: GOLD, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
-  avatarText: { color: BLACK, fontSize: 13, fontWeight: '700', fontFamily: 'Inter_700Bold' },
+  avatarText: { color: BLACK, fontSize: 13, fontWeight: '700' },
   searchWrap: { backgroundColor: BLACK, paddingHorizontal: 16, paddingBottom: 14 },
   searchBar: { backgroundColor: DARK, borderRadius: 12, padding: 10, flexDirection: 'row', alignItems: 'center', gap: 10, borderWidth: 0.5, borderColor: '#333' },
   searchIcon: { fontSize: 16 },
   searchPlaceholder: { color: '#555', fontSize: 13 },
   section: { backgroundColor: BLACK, paddingHorizontal: 16, paddingBottom: 14 },
-  sectionTitle: { color: '#fff', fontSize: 13, fontWeight: '700', fontFamily: 'Inter_700Bold', marginBottom: 10 },
+  sectionTitle: { color: '#fff', fontSize: 13, fontWeight: '700', marginBottom: 10 },
   sectionRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 },
   seeAll: { color: GOLD, fontSize: 11 },
   featuredCard: { backgroundColor: DARK, borderRadius: 14, padding: 16, borderWidth: 0.5, borderColor: GOLD, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   featuredBadge: { backgroundColor: GOLD, borderRadius: 20, paddingHorizontal: 8, paddingVertical: 2, marginBottom: 6, alignSelf: 'flex-start' },
-  featuredBadgeText: { color: BLACK, fontSize: 10, fontWeight: '700', fontFamily: 'Inter_700Bold' },
-  featuredTitle: { color: '#fff', fontSize: 14, fontWeight: '700', fontFamily: 'Inter_700Bold', marginBottom: 2 },
-  featuredPrice: { color: GOLD, fontSize: 16, fontWeight: '800', fontFamily: 'Inter_800ExtraBold' },
+  featuredBadgeText: { color: BLACK, fontSize: 10, fontWeight: '700' },
+  featuredTitle: { color: '#fff', fontSize: 14, fontWeight: '700', marginBottom: 2 },
+  featuredPrice: { color: GOLD, fontSize: 16, fontWeight: '800' },
   featuredLoc: { color: GREY, fontSize: 11, marginTop: 3 },
   featuredImg: { width: 80, height: 80, backgroundColor: '#333', borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
   featuredEmoji: { fontSize: 32 },
@@ -175,11 +198,10 @@ const styles = StyleSheet.create({
   catLabelActive: { color: GOLD },
   listingGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, alignItems: 'flex-start' },
   listingCard: { backgroundColor: '#222', borderRadius: 12, overflow: 'hidden', borderWidth: 0.5, borderColor: '#333', width: '47.5%' },
-  listingImg: { height: 120, width: '100%', overflow: 'hidden' },
-  listingEmoji: { fontSize: 28 },
+  listingImg: { height: 120, width: '100%' },
   listingBody: { padding: 8 },
-  listingTitle: { color: '#fff', fontSize: 12, fontWeight: '700', fontFamily: 'Inter_700Bold', marginBottom: 2 },
-  listingPrice: { color: GOLD, fontSize: 13, fontWeight: '800', fontFamily: 'Inter_800ExtraBold', marginBottom: 4 },
+  listingTitle: { color: '#fff', fontSize: 12, fontWeight: '700', marginBottom: 2 },
+  listingPrice: { color: GOLD, fontSize: 13, fontWeight: '800', marginBottom: 4 },
   listingMeta: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   listingLoc: { color: GREY, fontSize: 10 },
   badgeVerified: { backgroundColor: '#1a3a1a', borderRadius: 4, paddingHorizontal: 5, paddingVertical: 2 },
@@ -193,5 +215,5 @@ const styles = StyleSheet.create({
   navLabel: { fontSize: 9, color: '#555', marginTop: 2 },
   navLabelActive: { fontSize: 9, color: GOLD, marginTop: 2 },
   navPost: { width: 44, height: 44, backgroundColor: GOLD, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
-  navPostText: { color: BLACK, fontSize: 24, fontWeight: '700', fontFamily: 'Inter_700Bold', lineHeight: 28 },
+  navPostText: { color: BLACK, fontSize: 24, fontWeight: '700', lineHeight: 28 },
 });

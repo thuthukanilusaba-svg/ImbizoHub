@@ -1,6 +1,8 @@
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
-import { ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { useEffect, useState } from 'react';
+import { ActivityIndicator, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { supabase } from '../../lib/supabase';
 
 const GOLD = '#B8860B';
 const BLACK = '#1A1A18';
@@ -18,17 +20,47 @@ const categories = [
   { icon: '📦', label: 'Other' },
 ];
 
-const listings = [
-  { image: 'https://images.unsplash.com/photo-1496181133206-80ce9b88a853?w=400', title: 'HP Laptop i5', price: '$180', location: 'Bulawayo', badge: 'Verified', badgeType: 'verified' },
-  { image: 'https://images.unsplash.com/photo-1494976388531-d1058494cdd8?w=400', title: 'Toyota Vitz 2010', price: '$4,200', location: 'Harare', badge: 'Dealer', badgeType: 'dealer' },
-  { image: 'https://images.unsplash.com/photo-1555041469-a586c61ea9bc?w=400', title: 'L-shaped sofa', price: '$95', location: 'Harare', badge: 'Verified', badgeType: 'verified' },
-  { image: 'https://images.unsplash.com/photo-1461151304267-38535e780c79?w=400', title: 'Samsung 43" TV', price: '$210', location: 'Mutare', badge: 'Dealer', badgeType: 'dealer' },
-  { image: 'https://images.unsplash.com/photo-1511707171634-5f897ff02aa9?w=400', title: 'iPhone 12', price: '$280', location: 'Harare', badge: 'Verified', badgeType: 'verified' },
-  { image: 'https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=400', title: 'Nike Air Max', price: '$45', location: 'Bulawayo', badge: 'Verified', badgeType: 'verified' },
-];
-
 export default function ExploreScreen() {
   const router = useRouter();
+  const [listings, setListings] = useState<any[]>([]);
+  const [filtered, setFiltered] = useState<any[]>([]);
+  const [search, setSearch] = useState('');
+  const [selectedCategory, setSelectedCategory] = useState('');
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetchListings();
+  }, []);
+
+  useEffect(() => {
+    let results = listings;
+    if (search) {
+      results = results.filter(item =>
+        item.title.toLowerCase().includes(search.toLowerCase()) ||
+        item.location.toLowerCase().includes(search.toLowerCase())
+      );
+    }
+    if (selectedCategory) {
+      results = results.filter(item =>
+        item.category.toLowerCase() === selectedCategory.toLowerCase()
+      );
+    }
+    setFiltered(results);
+  }, [search, selectedCategory, listings]);
+
+  const fetchListings = async () => {
+    const { data, error } = await supabase
+      .from('listings')
+      .select('*')
+      .order('created_at', { ascending: false });
+    console.log('listings data:', data);
+    console.log('listings error:', error);
+    if (data) {
+      setListings(data);
+      setFiltered(data);
+    }
+    setLoading(false);
+  };
 
   return (
     <View style={styles.container}>
@@ -39,37 +71,61 @@ export default function ExploreScreen() {
       <ScrollView showsVerticalScrollIndicator={false}>
         <View style={styles.searchBar}>
           <Text style={styles.searchIcon}>🔍</Text>
-          <TextInput style={styles.searchInput} placeholder="Search listings..." placeholderTextColor={GREY} />
+          <TextInput
+            style={styles.searchInput}
+            placeholder="Search listings..."
+            placeholderTextColor={GREY}
+            value={search}
+            onChangeText={setSearch}
+          />
+          {search ? (
+            <TouchableOpacity onPress={() => setSearch('')}>
+              <Text style={{ color: GREY, fontSize: 16 }}>✕</Text>
+            </TouchableOpacity>
+          ) : null}
         </View>
 
         <Text style={styles.sectionTitle}>Categories</Text>
         <View style={styles.catGrid}>
           {categories.map((cat, i) => (
-            <TouchableOpacity key={i} style={styles.catItem}>
+            <TouchableOpacity
+              key={i}
+              style={[styles.catItem, selectedCategory === cat.label && styles.catItemActive]}
+              onPress={() => setSelectedCategory(selectedCategory === cat.label ? '' : cat.label)}
+            >
               <Text style={styles.catIcon}>{cat.icon}</Text>
-              <Text style={styles.catLabel}>{cat.label}</Text>
+              <Text style={[styles.catLabel, selectedCategory === cat.label && styles.catLabelActive]}>{cat.label}</Text>
             </TouchableOpacity>
           ))}
         </View>
 
-        <Text style={styles.sectionTitle}>All Listings</Text>
-        <View style={styles.listingGrid}>
-          {listings.map((item, i) => (
-            <TouchableOpacity key={i} style={styles.listingCard} onPress={() => router.push('/listing')}>
-              <Image source={{ uri: item.image }} style={styles.listingImg} contentFit="cover" />
-              <View style={styles.listingBody}>
-                <Text style={styles.listingTitle}>{item.title}</Text>
-                <Text style={styles.listingPrice}>{item.price}</Text>
-                <View style={styles.listingMeta}>
-                  <Text style={styles.listingLoc}>{item.location}</Text>
-                  <View style={item.badgeType === 'verified' ? styles.badgeVerified : styles.badgeDealer}>
-                    <Text style={item.badgeType === 'verified' ? styles.badgeVerifiedText : styles.badgeDealerText}>{item.badge}</Text>
+        <Text style={styles.sectionTitle}>
+          {selectedCategory ? `${selectedCategory} (${filtered.length})` : `All Listings (${filtered.length})`}
+        </Text>
+
+        {loading ? (
+          <ActivityIndicator color={GOLD} style={{ marginTop: 20 }} />
+        ) : filtered.length === 0 ? (
+          <Text style={{ color: GREY, textAlign: 'center', marginTop: 20 }}>No listings found</Text>
+        ) : (
+          <View style={styles.listingGrid}>
+            {filtered.map((item) => (
+              <TouchableOpacity key={item.id} style={styles.listingCard} onPress={() => router.push(`/listing?id=${item.id}`)}>
+                <Image source={{ uri: item.image_url }} style={styles.listingImg} contentFit="cover" />
+                <View style={styles.listingBody}>
+                  <Text style={styles.listingTitle}>{item.title}</Text>
+                  <Text style={styles.listingPrice}>${item.price}</Text>
+                  <View style={styles.listingMeta}>
+                    <Text style={styles.listingLoc}>{item.location}</Text>
+                    <View style={item.badge === 'Verified' ? styles.badgeVerified : styles.badgeDealer}>
+                      <Text style={item.badge === 'Verified' ? styles.badgeVerifiedText : styles.badgeDealerText}>{item.badge}</Text>
+                    </View>
                   </View>
                 </View>
-              </View>
-            </TouchableOpacity>
-          ))}
-        </View>
+              </TouchableOpacity>
+            ))}
+          </View>
+        )}
         <View style={{ height: 80 }} />
       </ScrollView>
 
@@ -107,9 +163,11 @@ const styles = StyleSheet.create({
   searchInput: { flex: 1, color: '#fff', fontSize: 13 },
   sectionTitle: { color: '#fff', fontSize: 13, fontWeight: '700', paddingHorizontal: 16, marginBottom: 10 },
   catGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, paddingHorizontal: 16, marginBottom: 20 },
-  catItem: { backgroundColor: DARK, borderRadius: 10, padding: 10, width: '22%', alignItems: 'center' },
+  catItem: { backgroundColor: DARK, borderRadius: 10, padding: 10, width: '22%', alignItems: 'center', borderWidth: 0.5, borderColor: '#333' },
+  catItemActive: { borderColor: GOLD },
   catIcon: { fontSize: 20, marginBottom: 4 },
   catLabel: { color: '#ccc', fontSize: 10 },
+  catLabelActive: { color: GOLD },
   listingGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, paddingHorizontal: 16 },
   listingCard: { backgroundColor: '#222', borderRadius: 12, overflow: 'hidden', width: '47.5%' },
   listingImg: { height: 120, width: '100%' },

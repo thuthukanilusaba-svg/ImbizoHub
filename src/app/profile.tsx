@@ -1,5 +1,7 @@
+import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { supabase } from '../../lib/supabase';
 
 const GOLD = '#B8860B';
 const BLACK = '#1A1A18';
@@ -14,21 +16,29 @@ const listings = [
 ];
 
 export default function ProfileScreen() {
+  const router = useRouter();
+
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    router.replace('/login');
+  };
+
   return (
     <View style={styles.container}>
       <StatusBar style="light" />
       <ScrollView showsVerticalScrollIndicator={false}>
 
-        {/* Header */}
         <View style={styles.header}>
           <Text style={styles.headerTitle}>My profile</Text>
           <View style={styles.headerIcons}>
             <Text style={styles.headerIcon}>↗</Text>
             <Text style={styles.headerIconGold}>⚙</Text>
+            <TouchableOpacity onPress={handleLogout}>
+              <Text style={styles.headerIcon}>🚪</Text>
+            </TouchableOpacity>
           </View>
         </View>
 
-        {/* Profile info */}
         <View style={styles.profileSection}>
           <View style={styles.avatar}>
             <Text style={styles.avatarText}>TM</Text>
@@ -40,7 +50,6 @@ export default function ProfileScreen() {
             <Text style={styles.verifiedText}>Verified seller</Text>
           </View>
 
-          {/* Stats */}
           <View style={styles.statsGrid}>
             <View style={styles.statCard}>
               <Text style={styles.statVal}>47</Text>
@@ -57,7 +66,6 @@ export default function ProfileScreen() {
           </View>
         </View>
 
-        {/* Tabs */}
         <View style={styles.tabs}>
           <View style={styles.tabActive}>
             <Text style={styles.tabActiveText}>Listings (12)</Text>
@@ -70,7 +78,6 @@ export default function ProfileScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* Listings grid */}
         <View style={styles.section}>
           <View style={styles.listingGrid}>
             {listings.map((item, i) => (
@@ -94,7 +101,6 @@ export default function ProfileScreen() {
           </View>
         </View>
 
-        {/* Latest review */}
         <View style={styles.section}>
           <Text style={styles.lbl}>LATEST REVIEW</Text>
           <View style={styles.reviewCard}>
@@ -112,7 +118,6 @@ export default function ProfileScreen() {
           </View>
         </View>
 
-        {/* Bottom nav */}
         <View style={styles.bottomNav}>
           <TouchableOpacity style={styles.navItem}>
             <Text style={styles.navIcon}>🏠</Text>
