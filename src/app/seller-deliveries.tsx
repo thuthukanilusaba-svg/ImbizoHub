@@ -17,7 +17,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import {
-  ActivityIndicator, Image, Platform, ScrollView, StyleSheet,
+  ActivityIndicator, Alert, Image, Platform, ScrollView, StyleSheet,
   Text, TouchableOpacity, View,
 } from 'react-native';
 import { supabase } from '../../lib/supabase';
@@ -100,26 +100,15 @@ export default function SellerDeliveriesScreen() {
     setBookings(data ?? []);
   }
 
-  async function uploadDispatchPhoto(bookingId: string) {
-    setUploadErrors(prev => ({ ...prev, [bookingId]: '' }));
-
-    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!permission.granted) {
-      setUploadErrors(prev => ({ ...prev, [bookingId]: 'Permission to access photos is required.' }));
-      return;
-    }
-
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: true,
-      quality: 0.7,
-    });
-
-    if (result.canceled) return;
-
+  // NEW: extracted from what used to be inline inside uploadDispatchPhoto()
+  // only — both the gallery picker and the new camera capture share this
+  // exact upload logic. This is arguably the highest-value screen for
+  // camera capture in the whole app: a seller photographing the actual
+  // physical parcel right as they hand it to a driver is a very "take it
+  // now" moment, not a "pick an existing photo" one.
+  async function uploadDispatchUri(bookingId: string, uri: string) {
     setUploadingId(bookingId);
     try {
-      const uri = result.assets[0].uri;
       const response = await fetch(uri);
       const blob = await response.blob();
       const fileExt = uri.split('.').pop()?.split('?')[0] || 'jpg';
@@ -146,6 +135,61 @@ export default function SellerDeliveriesScreen() {
       setUploadErrors(prev => ({ ...prev, [bookingId]: `Upload failed: ${err.message}` }));
     }
     setUploadingId(null);
+  }
+
+  async function uploadDispatchPhoto(bookingId: string) {
+    setUploadErrors(prev => ({ ...prev, [bookingId]: '' }));
+
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) {
+      setUploadErrors(prev => ({ ...prev, [bookingId]: 'Permission to access photos is required.' }));
+      return;
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      quality: 0.7,
+    });
+
+    if (result.canceled) return;
+    await uploadDispatchUri(bookingId, result.assets[0].uri);
+  }
+
+  // NEW: camera capture — see top-of-file-style comment on
+  // uploadDispatchUri above for why this matters especially here.
+  async function takeDispatchPhoto(bookingId: string) {
+    setUploadErrors(prev => ({ ...prev, [bookingId]: '' }));
+
+    const permission = await ImagePicker.requestCameraPermissionsAsync();
+    if (!permission.granted) {
+      setUploadErrors(prev => ({ ...prev, [bookingId]: 'Camera permission is required.' }));
+      return;
+    }
+
+    const result = await ImagePicker.launchCameraAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      quality: 0.7,
+    });
+
+    if (result.canceled) return;
+    await uploadDispatchUri(bookingId, result.assets[0].uri);
+  }
+
+  // NEW: same reasoning as profile.tsx's chooseAvatarSource — a single
+  // per-booking button, so an Alert action sheet fits better than two
+  // separate buttons crowding an already busy per-booking card.
+  function chooseDispatchPhotoSource(bookingId: string) {
+    Alert.alert(
+      'Add dispatch photo',
+      undefined,
+      [
+        { text: 'Take Photo', onPress: () => takeDispatchPhoto(bookingId) },
+        { text: 'Choose from Gallery', onPress: () => uploadDispatchPhoto(bookingId) },
+        { text: 'Cancel', style: 'cancel' },
+      ]
+    );
   }
 
   function currentStepIndex(status: string) {
@@ -234,7 +278,7 @@ export default function SellerDeliveriesScreen() {
                     </Text>
                     <TouchableOpacity
                       style={[styles.photoUploadBtn, isUploading && { opacity: 0.6 }]}
-                      onPress={() => uploadDispatchPhoto(booking.id)}
+                      onPress={() => chooseDispatchPhotoSource(booking.id)}
                       disabled={isUploading}
                     >
                       {isUploading

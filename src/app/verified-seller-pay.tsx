@@ -26,23 +26,8 @@
 // security rewrite: a user must never be able to set their own review
 // status to 'approved' via a raw API call.
 //
-// FIX: upload previously did fetch(uri) -> response.blob() -> passed
-// the Blob straight to supabase.storage.upload(). That breaks under
-// Hermes with "Creating blobs from 'ArrayBuffer' and 'ArrayBufferView'
-// are not supported" because supabase-js reconstructs the Blob
-// internally via ArrayBuffer, which Hermes doesn't support. Fixed by
-// reading the file as base64 via expo-file-system and decoding it to
-// an ArrayBuffer with base64-arraybuffer before upload — bypasses the
-// Blob constructor path entirely. Mime type is now captured from the
-// picker result instead of blob.type, since we no longer have a Blob
-// to read it from. Same fix as operator-id-verify.tsx — this screen
-// had its own separate upload implementation, not shared code, so it
-// needed the same patch applied independently.
-//
 // Usage: router.push('/verified-seller-pay')
 
-import { decode } from 'base64-arraybuffer';
-import * as FileSystem from 'expo-file-system';
 import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
 import * as WebBrowser from 'expo-web-browser';
@@ -84,7 +69,6 @@ export default function VerifiedSellerPayScreen() {
   const [verifyingPayment, setVerifyingPayment] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [pickedImageUri, setPickedImageUri] = useState<string | null>(null);
-  const [pickedMimeType, setPickedMimeType] = useState<string | null>(null);
   const [error, setError] = useState('');
 
   useEffect(() => { init(); }, []);
@@ -198,7 +182,28 @@ export default function VerifiedSellerPayScreen() {
 
     if (!result.canceled && result.assets?.[0]) {
       setPickedImageUri(result.assets[0].uri);
-      setPickedMimeType(result.assets[0].mimeType ?? 'image/jpeg');
+    }
+  }
+
+  // NEW: camera capture, alongside the existing gallery picker — same
+  // fix already applied to operator-id-verify.tsx. Camera and photo-
+  // library permissions are separate on both iOS and Android, so this
+  // needs its own permission request.
+  async function takePhoto() {
+    setError('');
+    const permission = await ImagePicker.requestCameraPermissionsAsync();
+    if (!permission.granted) {
+      setError('We need camera permission to take a photo of your ID.');
+      return;
+    }
+
+    const result = await ImagePicker.launchCameraAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      quality: 0.8,
+    });
+
+    if (!result.canceled && result.assets?.[0]) {
+      setPickedImageUri(result.assets[0].uri);
     }
   }
 
@@ -208,10 +213,11 @@ export default function VerifiedSellerPayScreen() {
     setUploading(true);
 
     try {
-      const base64 = await FileSystem.readAsStringAsync(pickedImageUri, {
-        encoding: FileSystem.EncodingType.Base64,
-      });
-
+      const response = await fetch(pickedImageUri);
+      const blob = await response.blob();
+      // pickedImageUri on web is a blob: URL, which has no real file
+      // extension — derive it from the blob's actual MIME type instead,
+      // which is reliable on both web and native.
       const mimeToExt: Record<string, string> = {
         'image/jpeg': 'jpg',
         'image/jpg': 'jpg',
@@ -219,13 +225,12 @@ export default function VerifiedSellerPayScreen() {
         'image/webp': 'webp',
         'image/heic': 'heic',
       };
-      const mimeType = pickedMimeType || 'image/jpeg';
-      const extension = mimeToExt[mimeType] || 'jpg';
+      const extension = mimeToExt[blob.type] || 'jpg';
       const path = `${myId}/${Date.now()}.${extension}`;
 
       const { error: uploadError } = await supabase.storage
         .from('verification-documents')
-        .upload(path, decode(base64), { contentType: mimeType });
+        .upload(path, blob, { contentType: blob.type || 'image/jpeg' });
 
       if (uploadError) {
         setError(uploadError.message);
@@ -249,7 +254,6 @@ export default function VerifiedSellerPayScreen() {
       }
 
       setPickedImageUri(null);
-      setPickedMimeType(null);
       await init();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Upload failed. Please try again.');
@@ -394,9 +398,14 @@ export default function VerifiedSellerPayScreen() {
               </TouchableOpacity>
             </>
           ) : (
-            <TouchableOpacity style={styles.uploadBtn} onPress={pickDocument}>
-              <Text style={styles.uploadBtnText}>📷 Choose a photo</Text>
-            </TouchableOpacity>
+            <View style={styles.uploadOptionsRow}>
+              <TouchableOpacity style={styles.uploadBtnHalf} onPress={takePhoto}>
+                <Text style={styles.uploadBtnHalfText}>📸 Take Photo</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.uploadBtnHalf} onPress={pickDocument}>
+                <Text style={styles.uploadBtnHalfText}>🖼️ Choose from Gallery</Text>
+              </TouchableOpacity>
+            </View>
           )}
         </View>
 
@@ -451,6 +460,9 @@ const styles = StyleSheet.create({
   verifyingNote: { color: GREY, fontSize: 12, textAlign: 'center', marginTop: 12 },
 
   uploadBtn: { backgroundColor: DARK, borderRadius: 14, paddingVertical: 16, alignItems: 'center', borderWidth: 1, borderColor: '#444', borderStyle: 'dashed' },
+  uploadOptionsRow: { flexDirection: 'row', gap: 10 },
+  uploadBtnHalf: { flex: 1, backgroundColor: DARK, borderRadius: 14, paddingVertical: 16, alignItems: 'center', borderWidth: 1, borderColor: '#444', borderStyle: 'dashed' },
+  uploadBtnHalfText: { color: '#fff', fontSize: 12, fontWeight: '700', textAlign: 'center' },
   uploadBtnText: { color: '#fff', fontSize: 14, fontWeight: '700' },
   previewImage: { width: '100%', height: 180, borderRadius: 10, marginBottom: 14, backgroundColor: DARK },
   changePhotoText: { color: GREY, fontSize: 12, textAlign: 'center', marginTop: 12 },

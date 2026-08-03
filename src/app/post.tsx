@@ -21,21 +21,7 @@
 //      created to reference them.
 //   2. Re-checked in handlePost() as a defensive backstop, in case
 //      session state changed between opening this screen and submitting.
-//
-// FIX (upload bug): uploadImage() previously did fetch(uri) ->
-// response.blob() -> passed the Blob straight to
-// supabase.storage.upload(). That breaks under Hermes with "Creating
-// blobs from 'ArrayBuffer' and 'ArrayBufferView' are not supported"
-// because supabase-js reconstructs the Blob internally via ArrayBuffer,
-// which Hermes doesn't support. Fixed by reading the file as base64 via
-// expo-file-system and decoding it to an ArrayBuffer with
-// base64-arraybuffer before upload — bypasses the Blob constructor path
-// entirely. Mime type is now captured from the picker result (per
-// image) and threaded through to uploadImage(), since we no longer have
-// a Blob to read blob.type from. Same fix as operator-id-verify.tsx.
 
-import { decode } from 'base64-arraybuffer';
-import * as FileSystem from 'expo-file-system';
 import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
@@ -67,7 +53,7 @@ export default function PostScreen() {
   const [price, setPrice] = useState('');
   const [location, setLocation] = useState('');
   const [category, setCategory] = useState('Phones');
-  const [images, setImages] = useState<{ uri: string; uploading: boolean; url?: string; mimeType?: string }[]>([]);
+  const [images, setImages] = useState<{ uri: string; uploading: boolean; url?: string }[]>([]);
   const [posting, setPosting] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
@@ -111,35 +97,63 @@ export default function PostScreen() {
 
     if (result.canceled) return;
 
-    const newImages = result.assets.map((asset) => ({
-      uri: asset.uri,
-      uploading: true,
-      mimeType: asset.mimeType ?? 'image/jpeg',
-    }));
+    const newImages = result.assets.map((asset) => ({ uri: asset.uri, uploading: true }));
     setImages((prev) => [...prev, ...newImages]);
 
     // Upload each new image
     for (const asset of result.assets) {
-      uploadImage(asset.uri, asset.mimeType ?? 'image/jpeg');
+      uploadImage(asset.uri);
     }
   }
 
-  async function uploadImage(uri: string, mimeType: string) {
+  // NEW: camera capture, alongside the existing multi-select gallery
+  // picker. Camera and photo-library permissions are SEPARATE on both
+  // iOS and Android, so this needs its own permission request. Camera
+  // can only capture one photo at a time (no multi-select equivalent),
+  // so this adds exactly one image per tap rather than sharing
+  // pickImages()'s multi-select logic.
+  async function takePhoto() {
+    if (images.length >= MAX_PHOTOS) {
+      setError(`Maximum ${MAX_PHOTOS} photos allowed.`);
+      return;
+    }
+    setError('');
+
+    const ok = await requireRealAccount();
+    if (!ok) return;
+
+    const permission = await ImagePicker.requestCameraPermissionsAsync();
+    if (!permission.granted) {
+      setError('Camera permission is required to take a photo.');
+      return;
+    }
+
+    const result = await ImagePicker.launchCameraAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      quality: 0.7,
+    });
+
+    if (result.canceled || !result.assets?.[0]) return;
+
+    const asset = result.assets[0];
+    setImages((prev) => [...prev, { uri: asset.uri, uploading: true }]);
+    uploadImage(asset.uri);
+  }
+
+  async function uploadImage(uri: string) {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not logged in');
 
-      const base64 = await FileSystem.readAsStringAsync(uri, {
-        encoding: FileSystem.EncodingType.Base64,
-      });
-
+      const response = await fetch(uri);
+      const blob = await response.blob();
       const fileExt = uri.split('.').pop()?.split('?')[0] || 'jpg';
       const fileName = `${user.id}/${Date.now()}-${Math.random().toString(36).slice(2)}.${fileExt}`;
 
       const { error: uploadError } = await supabase.storage
         .from('listing-photos')
-        .upload(fileName, decode(base64), {
-          contentType: mimeType || 'image/jpeg',
+        .upload(fileName, blob, {
+          contentType: blob.type || 'image/jpeg',
           upsert: false,
         });
 
@@ -299,10 +313,16 @@ export default function PostScreen() {
           ))}
 
           {images.length < MAX_PHOTOS && (
-            <TouchableOpacity style={styles.addPhotoBtn} onPress={pickImages}>
-              <Text style={styles.addPhotoIcon}>📷</Text>
-              <Text style={styles.addPhotoText}>Add photo</Text>
-            </TouchableOpacity>
+            <>
+              <TouchableOpacity style={styles.addPhotoBtn} onPress={takePhoto}>
+                <Text style={styles.addPhotoIcon}>📸</Text>
+                <Text style={styles.addPhotoText}>Camera</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.addPhotoBtn} onPress={pickImages}>
+                <Text style={styles.addPhotoIcon}>🖼️</Text>
+                <Text style={styles.addPhotoText}>Gallery</Text>
+              </TouchableOpacity>
+            </>
           )}
         </RNScrollView>
 

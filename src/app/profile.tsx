@@ -2,26 +2,52 @@
 // Profile screen with real Supabase data, optional photo upload, stats,
 // star rating display, and recent reviews section.
 //
-// FIX: pickAvatar() previously did fetch(uri) -> response.blob() ->
-// passed the Blob straight to supabase.storage.upload(). That breaks
-// under Hermes with "Creating blobs from 'ArrayBuffer' and
-// 'ArrayBufferView' are not supported" because supabase-js reconstructs
-// the Blob internally via ArrayBuffer, which Hermes doesn't support.
-// Fixed by reading the file as base64 via expo-file-system and decoding
-// it to an ArrayBuffer with base64-arraybuffer before upload — bypasses
-// the Blob constructor path entirely. Mime type now comes from the
-// picker result instead of blob.type, since there's no Blob to read it
-// from. Same fix as operator-id-verify.tsx, post.tsx, and
-// verified-seller-pay.tsx — this was the fourth screen found with its
-// own independent copy of the same broken pattern.
+// NEW: added the shared bottom nav (Home/Browse/+/Messages/Dashboard/Profile)
+// for consistency with Home, Explore, Dealer, and Messages — this screen
+// previously had no bottom nav at all.
+//
+// FIX (found during a full-app review pass): accountTypeLabel()'s map
+// was missing 'delivery' — register.tsx stores a delivery operator's
+// account_type as the raw string 'delivery' (unlike transport operators,
+// which get mapped to 'transport_operator'). Without this entry, the
+// fallback displayed the raw unformatted word "delivery" in the profile
+// badge instead of a proper label like every other role gets.
+//
+// FLAGGED, NOT FIXED HERE — a real gap, not a quick patch: the "My
+// deliveries" quick-link below always routes to seller-deliveries.tsx,
+// which only shows bookings where this user is the SELLER
+// (eq('seller_id', userId)). There is currently no screen anywhere in
+// this app for a BUYER to track a delivery they booked as the
+// purchaser — despite delivery-booking.tsx explicitly telling buyers
+// "You'll receive a PIN to confirm receipt when the item is delivered."
+// Needs an actual new screen (querying eq('buyer_id', userId) instead),
+// not a quick redirect fix — left as-is pending a product decision on
+// scope, rather than guessed at here.
+//
+// ALSO WORTH NOTING: "My trip requests" links to quotes.tsx, which only
+// ever shows the single most recent OPEN trip request
+// (.order(...).limit(1) in quotes.tsx's loadData()), not a list — so the
+// plural label is a little misleading for someone who's posted more than
+// one trip over time. Low priority, not fixed here.
+//
+// FIX: bottom nav now accounts for the device's own safe-area inset
+// (gesture bar / nav buttons) instead of a hardcoded paddingBottom,
+// which was overlapping with the system navigation on some phones.
+//
+// FIX: wrapped only the scrollable content area (not the whole screen)
+// in KeyboardAvoidingView — this screen has a persistent, absolutely-
+// positioned bottom nav bar, and wrapping the entire screen would have
+// shifted that nav bar around unexpectedly whenever the keyboard opened
+// (e.g. while editing Personal info). Keeping the nav bar as a plain
+// sibling outside the KeyboardAvoidingView means it stays fixed at the
+// real screen bottom regardless of keyboard state, while the scrollable
+// form content above it still shifts to keep the focused field visible.
 
-import { decode } from 'base64-arraybuffer';
-import * as FileSystem from 'expo-file-system';
 import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import {
-  ActivityIndicator, Image, KeyboardAvoidingView, Platform,
+  ActivityIndicator, Alert, Image, KeyboardAvoidingView, Platform,
   ScrollView,
   StyleSheet,
   Text, TextInput, TouchableOpacity,
@@ -57,7 +83,12 @@ export default function ProfileScreen() {
   const [rating, setRating] = useState(0);
   const [ratingCount, setRatingCount] = useState(0);
   const [recentReviews, setRecentReviews] = useState<any[]>([]);
+  // NEW: whether this user is an active paid delivery operator, so the
+  // Dashboard tab can show for delivery operators even if account_type
+  // isn't 'seller' (mirrors the same check in home.tsx/explore.tsx/dealer.tsx).
   const [isActiveOperator, setIsActiveOperator] = useState(false);
+  // NEW: total responses across all of this user's open wanted posts —
+  // drives the badge on "My wanted posts" in the My activity card.
   const [wantedResponseCount, setWantedResponseCount] = useState(0);
 
   const [draftName, setDraftName] = useState('');
@@ -100,6 +131,7 @@ export default function ProfileScreen() {
       .eq('user_id', user.id);
     setListingCount(count ?? 0);
 
+    // Load recent reviews left for this user
     const { data: reviews } = await supabase
       .from('ratings')
       .select('stars, review, role, created_at')
@@ -108,6 +140,8 @@ export default function ProfileScreen() {
       .limit(5);
     setRecentReviews(reviews ?? []);
 
+    // Same "paid and not expired" check used elsewhere to decide whether
+    // this user is an active delivery operator, for the Dashboard tab.
     const { data: operator } = await supabase
       .from('delivery_operators')
       .select('registration_paid, registration_expires_at')
@@ -120,6 +154,11 @@ export default function ProfileScreen() {
       new Date(operator.registration_expires_at).getTime() > Date.now()
     ));
 
+    // NEW: total responses across all of this user's OPEN wanted posts —
+    // "open" specifically, since a matched request's responses aren't
+    // something new to review, they're already resolved. Two-step query
+    // for the same reason used throughout the Wanted feature today: no
+    // real foreign key to embed a count through safely.
     const { data: myOpenRequests } = await supabase
       .from('item_requests')
       .select('id')
@@ -139,6 +178,49 @@ export default function ProfileScreen() {
     setLoading(false);
   }
 
+  // NEW: extracted from what used to be inline inside pickAvatar() only
+  // — both the gallery picker and the new camera capture need this
+  // exact same upload logic, so it's shared rather than duplicated.
+  async function uploadAvatarUri(uri: string) {
+    setUploadingAvatar(true);
+    try {
+      const response = await fetch(uri);
+      const blob = await response.blob();
+      const fileExt = uri.split('.').pop()?.split('?')[0] || 'jpg';
+      const fileName = `${userId}/avatar-${Date.now()}.${fileExt}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from('avatars')
+        .upload(fileName, blob, { contentType: blob.type || 'image/jpeg', upsert: false });
+
+      if (uploadError) throw uploadError;
+
+      const { data: urlData } = supabase.storage.from('avatars').getPublicUrl(fileName);
+      await supabase.from('profiles').update({ avatar_url: urlData.publicUrl }).eq('id', userId);
+      setAvatarUrl(urlData.publicUrl);
+    } catch (err: any) {
+      setError(`Upload failed: ${err.message}`);
+    }
+    setUploadingAvatar(false);
+  }
+
+  // NEW: single tap target (the circular avatar itself) now offers both
+  // camera and gallery — a native Alert action sheet fits this UX
+  // better than adding two separate buttons next to a circular photo,
+  // which the button-row pattern used on the ID-verification screens
+  // wouldn't look right for here.
+  function chooseAvatarSource() {
+    Alert.alert(
+      'Update profile photo',
+      undefined,
+      [
+        { text: 'Take Photo', onPress: takeAvatarPhoto },
+        { text: 'Choose from Gallery', onPress: pickAvatar },
+        { text: 'Cancel', style: 'cancel' },
+      ]
+    );
+  }
+
   async function pickAvatar() {
     setError('');
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -150,32 +232,24 @@ export default function ProfileScreen() {
     });
 
     if (result.canceled) return;
+    await uploadAvatarUri(result.assets[0].uri);
+  }
 
-    setUploadingAvatar(true);
-    try {
-      const uri = result.assets[0].uri;
-      const mimeType = result.assets[0].mimeType ?? 'image/jpeg';
+  // NEW: camera capture, alongside the existing gallery picker. Camera
+  // and photo-library permissions are separate on both iOS and
+  // Android, so this needs its own permission request.
+  async function takeAvatarPhoto() {
+    setError('');
+    const permission = await ImagePicker.requestCameraPermissionsAsync();
+    if (!permission.granted) { setError('Camera permission is required to take a photo.'); return; }
 
-      const base64 = await FileSystem.readAsStringAsync(uri, {
-        encoding: FileSystem.EncodingType.Base64,
-      });
+    const result = await ImagePicker.launchCameraAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true, aspect: [1, 1], quality: 0.7,
+    });
 
-      const fileExt = uri.split('.').pop()?.split('?')[0] || 'jpg';
-      const fileName = `${userId}/avatar-${Date.now()}.${fileExt}`;
-
-      const { error: uploadError } = await supabase.storage
-        .from('avatars')
-        .upload(fileName, decode(base64), { contentType: mimeType, upsert: false });
-
-      if (uploadError) throw uploadError;
-
-      const { data: urlData } = supabase.storage.from('avatars').getPublicUrl(fileName);
-      await supabase.from('profiles').update({ avatar_url: urlData.publicUrl }).eq('id', userId);
-      setAvatarUrl(urlData.publicUrl);
-    } catch (err: any) {
-      setError(`Upload failed: ${err.message}`);
-    }
-    setUploadingAvatar(false);
+    if (result.canceled) return;
+    await uploadAvatarUri(result.assets[0].uri);
   }
 
   function startEditing() {
@@ -211,6 +285,12 @@ export default function ProfileScreen() {
   }
 
   function accountTypeLabel() {
+    // FIX: was missing 'delivery' — register.tsx stores a delivery
+    // operator's account_type as the raw string 'delivery' (unlike
+    // transport operators, which get mapped to 'transport_operator').
+    // Without this entry, the fallback (map[accountType] || accountType)
+    // displayed the raw unformatted word "delivery" instead of a proper
+    // label like every other role gets.
     const map: Record<string, string> = {
       buyer: 'Buyer', seller: 'Seller', transport_operator: 'Transport Operator',
       delivery: 'Delivery Operator',
@@ -218,6 +298,7 @@ export default function ProfileScreen() {
     return map[accountType] || accountType;
   }
 
+  // Render filled/empty stars
   function renderStars(count: number, size = 16) {
     return (
       <View style={{ flexDirection: 'row', gap: 2 }}>
@@ -252,8 +333,9 @@ export default function ProfileScreen() {
             </TouchableOpacity>
           </View>
 
+          {/* Avatar + name */}
           <View style={styles.avatarSection}>
-            <TouchableOpacity onPress={pickAvatar} disabled={uploadingAvatar} style={styles.avatarWrap}>
+            <TouchableOpacity onPress={chooseAvatarSource} disabled={uploadingAvatar} style={styles.avatarWrap}>
               {avatarUrl ? (
                 <Image source={{ uri: avatarUrl }} style={styles.avatarImage} />
               ) : (
@@ -275,6 +357,7 @@ export default function ProfileScreen() {
             <Text style={styles.name}>{fullName || 'Add your name'}</Text>
             <Text style={styles.email}>{email}</Text>
 
+            {/* Star rating display under name */}
             {ratingCount > 0 && (
               <View style={styles.ratingRow}>
                 {renderStars(rating)}
@@ -287,6 +370,7 @@ export default function ProfileScreen() {
             </View>
           </View>
 
+          {/* Stats */}
           <View style={styles.statsRow}>
             <View style={styles.statBox}>
               <Text style={styles.statValue}>{listingCount}</Text>
@@ -314,12 +398,30 @@ export default function ProfileScreen() {
             </View>
           ) : null}
 
+          {/* FIX: "My activity" moved up here, right after the top stats —
+              it previously sat at the very bottom of the screen, below
+              Personal info and Recent reviews, meaning "My wanted posts"
+              (and everything else in this card) was easy to miss without
+              scrolling past unrelated content first. */}
           <View style={styles.card}>
             <Text style={styles.cardTitle}>My activity</Text>
             <MenuRow icon="🏷️" label="My listings" onPress={() => router.push('/explore')} />
+            {/* FIX: this used to be one ambiguous "My deliveries" link that
+                always pointed to seller-deliveries.tsx — meaning a buyer
+                waiting to receive something had no way to track it at all.
+                Split into two clear, correctly-scoped directions, matching
+                the new buyer-deliveries.tsx screen built to close that gap. */}
             <MenuRow icon="📥" label="Deliveries to me" onPress={() => router.push('/buyer-deliveries')} />
             <MenuRow icon="📤" label="Deliveries from my listings" onPress={() => router.push('/seller-deliveries')} />
             <MenuRow icon="🚐" label="My trip requests" onPress={() => router.push('/quotes')} />
+            {/* NEW: entry point into my-wanted-posts.tsx — closes a real
+                gap where posting a want (post-wanted.tsx) and browsing/
+                responding to others' wants (browse-wanted.tsx) both
+                worked, but there was nowhere to track your own posts or
+                discover that responses had come in.
+                FIX: added a response-count badge, computed in
+                loadProfile() below — a quick visual "something's waiting"
+                signal without building a full push-notification system. */}
             <MenuRow
               icon="🔍"
               label="My wanted posts"
@@ -332,6 +434,7 @@ export default function ProfileScreen() {
             )}
           </View>
 
+          {/* Editable info */}
           <View style={styles.card}>
             <View style={styles.cardHeader}>
               <Text style={styles.cardTitle}>Personal info</Text>
@@ -372,6 +475,7 @@ export default function ProfileScreen() {
             )}
           </View>
 
+          {/* Recent reviews */}
           {recentReviews.length > 0 && (
             <View style={styles.card}>
               <Text style={styles.cardTitle}>Recent reviews</Text>
@@ -389,10 +493,21 @@ export default function ProfileScreen() {
             </View>
           )}
 
+          {/* FIX: same overlap bug already fixed on index.tsx, listing.tsx,
+              explore.tsx, and dealer.tsx — bottomNav below is position:
+              'absolute' with real height = 10 (paddingTop) + content +
+              24 + insets.bottom. A hardcoded height: 100 spacer only
+              covers devices with near-zero safe-area inset; on any phone
+              with a real bottom inset, bottomNav was taller than the
+              100px reserved for it, letting it creep up over whatever
+              sat last in this scroll view (ratings/reviews list). */}
           <View style={{ height: 100 + insets.bottom }} />
         </ScrollView>
       </KeyboardAvoidingView>
 
+      {/* NEW: shared bottom nav, matching Home/Explore/Messages/Dealer.
+          Kept OUTSIDE the KeyboardAvoidingView above — see top-of-file
+          FIX comment for why. */}
       <View style={[styles.bottomNav, { paddingBottom: 24 + insets.bottom }]}>
         <TouchableOpacity style={styles.navItem} onPress={() => router.push('/')}>
           <Text style={styles.navIcon}>🏠</Text>
@@ -438,6 +553,9 @@ function MenuRow({ icon, label, badge, onPress }: { icon: string; label: string;
     <TouchableOpacity style={styles.menuRow} onPress={onPress}>
       <Text style={styles.menuIcon}>{icon}</Text>
       <Text style={styles.menuLabel}>{label}</Text>
+      {/* NEW: small count badge — used by "My wanted posts" to show
+          responses waiting for review at a glance, no push notification
+          system needed for this to be useful. */}
       {badge != null && badge > 0 ? (
         <View style={styles.menuBadge}>
           <Text style={styles.menuBadgeText}>{badge}</Text>

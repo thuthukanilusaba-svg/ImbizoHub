@@ -20,19 +20,7 @@
 //
 // Usage: router.push('/operator-id-verify?type=delivery_operator')
 //        router.push('/operator-id-verify?type=transport_operator')
-//
-// FIX: upload previously did fetch(uri) -> response.blob() -> pass Blob
-// straight to supabase.storage.upload(). That breaks under Hermes with
-// "Creating blobs from 'ArrayBuffer' and 'ArrayBufferView' are not
-// supported" because supabase-js reconstructs the Blob internally via
-// ArrayBuffer, which Hermes doesn't support. Fixed by reading the file
-// as base64 via expo-file-system and decoding it to an ArrayBuffer with
-// base64-arraybuffer before upload — bypasses the Blob constructor path
-// entirely. Mime type is now captured from the picker result instead of
-// blob.type, since we no longer have a Blob to read it from.
 
-import { decode } from 'base64-arraybuffer';
-import * as FileSystem from 'expo-file-system';
 import * as ImagePicker from 'expo-image-picker';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
@@ -79,7 +67,6 @@ export default function OperatorIdVerifyScreen() {
 
   const [uploading, setUploading] = useState(false);
   const [pickedImageUri, setPickedImageUri] = useState<string | null>(null);
-  const [pickedMimeType, setPickedMimeType] = useState<string | null>(null);
   const [error, setError] = useState('');
 
   useEffect(() => { init(); }, [operatorType]);
@@ -142,7 +129,28 @@ export default function OperatorIdVerifyScreen() {
 
     if (!result.canceled && result.assets?.[0]) {
       setPickedImageUri(result.assets[0].uri);
-      setPickedMimeType(result.assets[0].mimeType ?? 'image/jpeg');
+    }
+  }
+
+  // NEW: camera capture, alongside the existing gallery picker. Camera
+  // and photo-library permissions are SEPARATE on both iOS and
+  // Android — granting one doesn't grant the other, so this needs its
+  // own permission request rather than reusing pickDocument's.
+  async function takePhoto() {
+    setError('');
+    const permission = await ImagePicker.requestCameraPermissionsAsync();
+    if (!permission.granted) {
+      setError('We need camera permission to take a photo of your ID.');
+      return;
+    }
+
+    const result = await ImagePicker.launchCameraAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      quality: 0.8,
+    });
+
+    if (!result.canceled && result.assets?.[0]) {
+      setPickedImageUri(result.assets[0].uri);
     }
   }
 
@@ -152,10 +160,8 @@ export default function OperatorIdVerifyScreen() {
     setUploading(true);
 
     try {
-      const base64 = await FileSystem.readAsStringAsync(pickedImageUri, {
-        encoding: FileSystem.EncodingType.Base64,
-      });
-
+      const response = await fetch(pickedImageUri);
+      const blob = await response.blob();
       const mimeToExt: Record<string, string> = {
         'image/jpeg': 'jpg',
         'image/jpg': 'jpg',
@@ -163,13 +169,12 @@ export default function OperatorIdVerifyScreen() {
         'image/webp': 'webp',
         'image/heic': 'heic',
       };
-      const mimeType = pickedMimeType || 'image/jpeg';
-      const extension = mimeToExt[mimeType] || 'jpg';
+      const extension = mimeToExt[blob.type] || 'jpg';
       const path = `${myId}/${Date.now()}.${extension}`;
 
       const { error: uploadError } = await supabase.storage
         .from('verification-documents')
-        .upload(path, decode(base64), { contentType: mimeType });
+        .upload(path, blob, { contentType: blob.type || 'image/jpeg' });
 
       if (uploadError) {
         setError(uploadError.message);
@@ -189,7 +194,6 @@ export default function OperatorIdVerifyScreen() {
       }
 
       setPickedImageUri(null);
-      setPickedMimeType(null);
       await init();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Upload failed. Please try again.');
@@ -288,9 +292,18 @@ export default function OperatorIdVerifyScreen() {
               </TouchableOpacity>
             </>
           ) : (
-            <TouchableOpacity style={styles.uploadBtn} onPress={pickDocument}>
-              <Text style={styles.uploadBtnText}>📷 Choose a photo of your national ID</Text>
-            </TouchableOpacity>
+            // NEW: two options instead of one — Take Photo (camera) and
+            // Choose from Gallery, since camera capture is often more
+            // convenient for an ID photo taken in the moment, while
+            // gallery still supports uploading an existing scan/photo.
+            <View style={styles.uploadOptionsRow}>
+              <TouchableOpacity style={styles.uploadBtnHalf} onPress={takePhoto}>
+                <Text style={styles.uploadBtnHalfText}>📸 Take Photo</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.uploadBtnHalf} onPress={pickDocument}>
+                <Text style={styles.uploadBtnHalfText}>🖼️ Choose from Gallery</Text>
+              </TouchableOpacity>
+            </View>
           )}
         </View>
 
@@ -319,7 +332,10 @@ const styles = StyleSheet.create({
   errorText: { color: RED, fontSize: 13 },
 
   uploadBtn: { backgroundColor: DARK, borderRadius: 14, paddingVertical: 16, alignItems: 'center', borderWidth: 1, borderColor: '#444', borderStyle: 'dashed' },
+  uploadOptionsRow: { flexDirection: 'row', gap: 10 },
+  uploadBtnHalf: { flex: 1, backgroundColor: DARK, borderRadius: 14, paddingVertical: 16, alignItems: 'center', borderWidth: 1, borderColor: '#444', borderStyle: 'dashed' },
   uploadBtnText: { color: '#fff', fontSize: 14, fontWeight: '700' },
+  uploadBtnHalfText: { color: '#fff', fontSize: 12, fontWeight: '700', textAlign: 'center' },
   previewImage: { width: '100%', height: 180, borderRadius: 10, marginBottom: 14, backgroundColor: DARK },
   changePhotoText: { color: GREY, fontSize: 12, textAlign: 'center', marginTop: 12 },
 
