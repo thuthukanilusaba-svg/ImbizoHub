@@ -1,154 +1,467 @@
-import { Image } from 'expo-image';
+// app/listing.tsx
+// Listing detail screen with swipeable photo carousel and mark as sold
+//
+// FIX (found during a full-app review pass): when a listing was marked
+// sold, the bottom action bar disappeared entirely for the OWNER too —
+// not just buyers. The two action-bar blocks were `{!isSold && (...)}`
+// (owner's "Message buyers" / buyer's "Message seller") and
+// `{isSold && !isOwner && (...)}` ("This item has been sold", buyers
+// only) — meaning a seller viewing their own SOLD listing got no action
+// bar at all, with no way to message existing buyers about pickup or
+// final details from this screen (they could still reach Messages via
+// the bottom nav, but this screen offered nothing). Fixed by giving the
+// owner their own sold-state action bar too, keeping "Message buyers"
+// available regardless of sold status.
+//
+// ALSO FIXED: handleMarkAsSold() / handleReactivate() previously
+// swallowed their own update errors completely — `if (!error) {...}`
+// with no else branch, so a failed update just silently stopped the
+// loading spinner with zero feedback. Now surfaced via a lightweight
+// error message, consistent with the error-handling standard applied
+// elsewhere in this app.
+//
+// FIX: the bottom actionBar (Message buyers / Message seller / sold
+// notice) was position: 'absolute', bottom: 0 with a hardcoded
+// paddingBottom: 28 — same root cause as the bottom nav bug fixed
+// earlier across index.tsx/explore.tsx/messages.tsx/profile.tsx/
+// dealer.tsx: a fixed guess at safe-area clearance instead of reading
+// the device's real inset, so the button overlapped the phone's own
+// system navigation bar on devices with a taller gesture bar/nav
+// buttons than 28px. Same fix: useSafeAreaInsets(), real inset added on
+// top of the existing padding instead of a hardcoded number.
+
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { StatusBar } from 'expo-status-bar';
-import { useEffect, useState } from 'react';
-import { ActivityIndicator, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { useEffect, useRef, useState } from 'react';
+import {
+  ActivityIndicator, Alert, Dimensions,
+  Image,
+  NativeScrollEvent,
+  NativeSyntheticEvent,
+  Platform,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { supabase } from '../../lib/supabase';
 
 const GOLD = '#B8860B';
 const BLACK = '#1A1A18';
 const DARK = '#2a2a2a';
 const GREY = '#AAAAAA';
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 export default function ListingScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const { id } = useLocalSearchParams();
   const [listing, setListing] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [activeIndex, setActiveIndex] = useState(0);
+  const [myId, setMyId] = useState('');
+  const [markingAsSold, setMarkingAsSold] = useState(false);
+  const [statusError, setStatusError] = useState('');
+  // NEW: the seller's real, paid verification status — see fetchListing()
+  const [sellerVerified, setSellerVerified] = useState(false);
+  const scrollRef = useRef<ScrollView>(null);
 
-  useEffect(() => {
-    if (id) fetchListing();
-  }, [id]);
+  useEffect(() => { fetchListing(); fetchMe(); }, [id]);
 
-  const fetchListing = async () => {
+  async function fetchMe() {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (user) setMyId(user.id);
+  }
+
+  async function fetchListing() {
+    setLoading(true);
     const { data } = await supabase
       .from('listings')
       .select('*')
       .eq('id', id)
-      .single();
-    if (data) setListing(data);
+      .maybeSingle();
+    setListing(data);
+
+    // FIX: "Verified" used to just read listing.badge directly, a plain
+    // stored text value with zero enforcement. Now fetches the seller's
+    // real, paid verification status separately (same two-query pattern
+    // already proven correct elsewhere, not a broken embedded-join).
+    if (data?.user_id) {
+      const { data: seller } = await supabase
+        .from('profiles')
+        .select('is_verified, verified_expires_at')
+        .eq('id', data.user_id)
+        .maybeSingle();
+      setSellerVerified(!!(
+        seller?.is_verified &&
+        seller?.verified_expires_at &&
+        new Date(seller.verified_expires_at).getTime() > Date.now()
+      ));
+    }
+
     setLoading(false);
-  };
+  }
+
+  async function handleMarkAsSold() {
+    const message = 'Mark this listing as sold? It will be hidden from buyers. You can reactivate it later.';
+
+    const proceed = await new Promise<boolean>((resolve) => {
+      if (Platform.OS === 'web') {
+        resolve(window.confirm(message));
+      } else {
+        Alert.alert(
+          'Mark as sold?',
+          message,
+          [
+            { text: 'Cancel', style: 'cancel', onPress: () => resolve(false) },
+            { text: 'Mark as sold', style: 'destructive', onPress: () => resolve(true) },
+          ]
+        );
+      }
+    });
+
+    if (!proceed) return;
+
+    setStatusError('');
+    setMarkingAsSold(true);
+    const { error } = await supabase
+      .from('listings')
+      .update({ status: 'sold' })
+      .eq('id', listing.id);
+    setMarkingAsSold(false);
+    if (!error) {
+      setListing({ ...listing, status: 'sold' });
+    } else {
+      setStatusError('Couldn\'t mark as sold: ' + error.message);
+    }
+  }
+
+  async function handleReactivate() {
+    setStatusError('');
+    setMarkingAsSold(true);
+    const { error } = await supabase
+      .from('listings')
+      .update({ status: 'active' })
+      .eq('id', listing.id);
+    setMarkingAsSold(false);
+    if (!error) {
+      setListing({ ...listing, status: 'active' });
+    } else {
+      setStatusError('Couldn\'t reactivate: ' + error.message);
+    }
+  }
+
+  function onScroll(e: NativeSyntheticEvent<NativeScrollEvent>) {
+    const index = Math.round(e.nativeEvent.contentOffset.x / SCREEN_WIDTH);
+    setActiveIndex(index);
+  }
 
   if (loading) {
     return (
-      <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
-        <ActivityIndicator color={GOLD} size="large" />
+      <View style={styles.center}>
+        <ActivityIndicator size="large" color={GOLD} />
       </View>
     );
   }
 
   if (!listing) {
     return (
-      <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
-        <Text style={{ color: '#fff' }}>Listing not found</Text>
+      <View style={styles.center}>
+        <Text style={{ color: GREY }}>Listing not found.</Text>
+        <TouchableOpacity onPress={() => router.back()} style={{ marginTop: 16 }}>
+          <Text style={{ color: GOLD }}>← Back</Text>
+        </TouchableOpacity>
       </View>
     );
   }
 
+  const photos: string[] =
+    listing.image_urls && listing.image_urls.length > 0
+      ? listing.image_urls
+      : listing.image_url
+        ? [listing.image_url]
+        : [];
+
+  const isOwner = myId === listing.user_id;
+  const isSold = listing.status === 'sold';
+
   return (
     <View style={styles.container}>
-      <StatusBar style="light" />
       <ScrollView showsVerticalScrollIndicator={false}>
-        <View style={styles.topnav}>
-          <TouchableOpacity onPress={() => router.back()}>
-            <Text style={styles.backBtn}>←</Text>
+
+        {/* Photo carousel */}
+        <View style={styles.carouselWrap}>
+          {photos.length > 0 ? (
+            <>
+              <ScrollView
+                ref={scrollRef}
+                horizontal
+                pagingEnabled
+                showsHorizontalScrollIndicator={false}
+                onScroll={onScroll}
+                scrollEventThrottle={16}
+              >
+                {photos.map((url, i) => (
+                  <Image key={i} source={{ uri: url }} style={styles.carouselImage} resizeMode="cover" />
+                ))}
+              </ScrollView>
+
+              {photos.length > 1 && (
+                <View style={styles.dotsRow}>
+                  {photos.map((_, i) => (
+                    <View key={i} style={[styles.dot, i === activeIndex && styles.dotActive]} />
+                  ))}
+                </View>
+              )}
+
+              {photos.length > 1 && (
+                <View style={styles.photoCounter}>
+                  <Text style={styles.photoCounterText}>{activeIndex + 1}/{photos.length}</Text>
+                </View>
+              )}
+            </>
+          ) : (
+            <View style={styles.noPhoto}>
+              <Text style={{ fontSize: 48 }}>📦</Text>
+              <Text style={{ color: GREY, marginTop: 8, fontSize: 12 }}>No photos yet</Text>
+            </View>
+          )}
+
+          {/* Sold overlay */}
+          {isSold && (
+            <View style={styles.soldOverlay}>
+              <Text style={styles.soldOverlayText}>SOLD</Text>
+            </View>
+          )}
+
+          <TouchableOpacity style={styles.backFloat} onPress={() => router.back()}>
+            <Text style={styles.backFloatText}>←</Text>
           </TouchableOpacity>
-          <Text style={styles.navTitle}>Listing detail</Text>
-          <View style={styles.navIcons}>
-            <Text style={styles.heartIcon}>♡</Text>
-            <Text style={styles.shareIcon}>↗</Text>
-          </View>
         </View>
 
-        <Image source={{ uri: listing.image_url }} style={styles.imgArea} contentFit="cover" />
+        {/* Details */}
+        <View style={styles.details}>
+          <View style={styles.titleRow}>
+            <Text style={styles.title}>{listing.title}</Text>
+            {isSold ? (
+              <View style={styles.soldBadge}>
+                <Text style={styles.soldBadgeText}>SOLD</Text>
+              </View>
+            ) : sellerVerified ? (
+              <View style={styles.badgeVerified}>
+                <Text style={styles.badgeVerifiedText}>Verified</Text>
+              </View>
+            ) : listing.badge && listing.badge !== 'Verified' ? (
+              <View style={styles.badgeNew}>
+                <Text style={styles.badgeNewText}>{listing.badge}</Text>
+              </View>
+            ) : null}
+          </View>
 
-        <View style={styles.section}>
-          <View style={styles.priceRow}>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.itemTitle}>{listing.title}</Text>
-              <Text style={styles.itemLoc}>{listing.location}</Text>
+          <Text style={[styles.price, isSold && { color: GREY }]}>${listing.price}</Text>
+          <Text style={styles.location}>📍 {listing.location}</Text>
+
+          {listing.description ? (
+            <>
+              <Text style={styles.sectionTitle}>Description</Text>
+              <Text style={styles.description}>{listing.description}</Text>
+            </>
+          ) : null}
+
+          <Text style={styles.sectionTitle}>Category</Text>
+          <View style={styles.categoryChip}>
+            <Text style={styles.categoryChipText}>{listing.category}</Text>
+          </View>
+
+          {statusError ? (
+            <View style={styles.statusErrorBox}>
+              <Text style={styles.statusErrorText}>⚠️ {statusError}</Text>
             </View>
-            <Text style={styles.itemPrice}>${listing.price}</Text>
-          </View>
-          <View style={styles.badges}>
-            <View style={styles.badgeGrey}><Text style={styles.badgeGreyText}>{listing.category}</Text></View>
-            <View style={styles.badgeGold}><Text style={styles.badgeGoldText}>Meet & Pay</Text></View>
-            <View style={styles.badgeGrey}><Text style={styles.badgeGreyText}>{listing.badge}</Text></View>
-          </View>
-        </View>
+          ) : null}
 
-        <View style={styles.divider} />
-
-        <View style={styles.section}>
-          <Text style={styles.lbl}>DESCRIPTION</Text>
-          <Text style={styles.descText}>{listing.description}</Text>
-        </View>
-
-        <View style={styles.divider} />
-
-        <View style={styles.section}>
-          <Text style={styles.lbl}>HOW TO TRADE</Text>
-          <View style={styles.tradeGrid}>
-            <View style={[styles.tradeCard, styles.tradeCardActive]}>
-              <Text style={styles.tradeIcon}>📍</Text>
-              <Text style={styles.tradeTitle}>Meet & Pay</Text>
-              <Text style={styles.tradeSub}>Meet in person, inspect, then pay</Text>
+          {/* NEW: real purchase entry points for the owner — previously
+              there was no way to actually buy either of these upgrades
+              anywhere in the app. */}
+          {isOwner && !isSold && (
+            <View style={styles.promoRow}>
+              {!listing.featured_until || new Date(listing.featured_until).getTime() < Date.now() ? (
+                <TouchableOpacity
+                  style={styles.promoBtn}
+                  onPress={() => router.push(`/feature-listing-pay?listing_id=${listing.id}`)}
+                >
+                  <Text style={styles.promoBtnText}>⭐ Feature this listing — $5</Text>
+                </TouchableOpacity>
+              ) : (
+                <View style={styles.promoActiveBox}>
+                  <Text style={styles.promoActiveText}>
+                    ⭐ Featured until {new Date(listing.featured_until).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
+                  </Text>
+                </View>
+              )}
+              {!sellerVerified && (
+                <TouchableOpacity
+                  style={styles.promoBtnSecondary}
+                  onPress={() => router.push('/verified-seller-pay')}
+                >
+                  <Text style={styles.promoBtnSecondaryText}>✅ Get Verified Seller status</Text>
+                </TouchableOpacity>
+              )}
             </View>
-            <View style={styles.tradeCard}>
-              <Text style={styles.tradeIcon}>📦</Text>
-              <Text style={styles.tradeTitle}>Escrow delivery</Text>
-              <Text style={styles.tradeSub}>Pay securely, released on receipt</Text>
-            </View>
-          </View>
+          )}
+
+          {/* Mark as sold / reactivate — only visible to owner */}
+          {isOwner && (
+            <TouchableOpacity
+              style={[styles.soldToggleBtn, isSold && styles.reactivateBtn]}
+              onPress={isSold ? handleReactivate : handleMarkAsSold}
+              disabled={markingAsSold}
+            >
+              {markingAsSold
+                ? <ActivityIndicator color={isSold ? GOLD : '#ff8a8a'} />
+                : <Text style={[styles.soldToggleBtnText, isSold && styles.reactivateBtnText]}>
+                    {isSold ? '🔄 Reactivate listing' : '✅ Mark as sold'}
+                  </Text>
+              }
+            </TouchableOpacity>
+          )}
+
+          {/* NEW: real entry point for reporting a seller — previously
+              nowhere in the app to do this at all. Kept deliberately
+              low-key (a plain text link, not a prominent button) since
+              this is a rare-use safety feature, not a primary action. */}
+          {!isOwner && (
+            <TouchableOpacity
+              style={styles.reportLink}
+              onPress={() => router.push(
+                `/report-user?user_id=${listing.user_id}&context=listing&context_id=${listing.id}`
+              )}
+            >
+              <Text style={styles.reportLinkText}>⚑ Report this seller</Text>
+            </TouchableOpacity>
+          )}
         </View>
 
-        <View style={{ height: 100 }} />
+        {/* FIX: this spacer reserves room above the floating actionBar
+            below so scrolled-to-bottom content (here, the owner's "Mark
+            as sold" button) doesn't end up partially covered by it. It
+            was a hardcoded height: 100 — a static guess that only held
+            up on devices with near-zero safe-area inset. The actionBar
+            itself is genuinely taller than that on any phone with a
+            real bottom inset (paddingBottom: 16 + insets.bottom, per
+            the FIX above), so the reserved space fell short by exactly
+            insets.bottom on those devices, letting the actionBar creep
+            up over the sold-toggle button. Same fix as the actionBar's
+            own padding: add the real inset instead of trusting a fixed
+            number. */}
+        <View style={{ height: 100 + insets.bottom }} />
       </ScrollView>
 
-      <View style={styles.ctaRow}>
-        <TouchableOpacity style={styles.btnMsg} onPress={() => router.push('/chat')}>
-          <Text style={styles.btnMsgText}>💬 Message</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.btnBuy} onPress={() => router.push('/payment')}>
-          <Text style={styles.btnBuyText}>Buy now — ${listing.price}</Text>
-        </TouchableOpacity>
-      </View>
+      {/* Bottom action bar */}
+      {isOwner ? (
+        // FIX: owner now always gets "Message buyers", sold or not —
+        // previously this whole block was gated by `!isSold`, meaning a
+        // seller lost access to messaging buyers the moment they marked
+        // their own listing sold, with no equivalent offered anywhere on
+        // this screen.
+        <View style={[styles.actionBar, { paddingBottom: 16 + insets.bottom }]}>
+          <TouchableOpacity
+            style={styles.chatBtn}
+            onPress={() => router.push(`/messages?listing_id=${listing.id}`)}
+          >
+            <Text style={styles.chatBtnText}>💬 Message buyers</Text>
+          </TouchableOpacity>
+        </View>
+      ) : isSold ? (
+        <View style={[styles.actionBar, { paddingBottom: 16 + insets.bottom }]}>
+          <View style={[styles.chatBtn, { backgroundColor: DARK }]}>
+            <Text style={[styles.chatBtnText, { color: GREY }]}>This item has been sold</Text>
+          </View>
+        </View>
+      ) : (
+        <View style={[styles.actionBar, { paddingBottom: 16 + insets.bottom }]}>
+          <TouchableOpacity
+            style={styles.chatBtn}
+            onPress={() => {
+              // Chat is unconditionally free for everyone — owner or buyer.
+              // The "Arrange deal" fee gate lives inside chat.tsx itself,
+              // not here. This screen should never route to /unlock.
+              router.push(`/chat?listing_id=${listing.id}&receiver_id=${listing.user_id}`);
+            }}
+          >
+            <Text style={styles.chatBtnText}>💬 Message seller</Text>
+          </TouchableOpacity>
+        </View>
+      )}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#111111' },
-  topnav: { backgroundColor: BLACK, padding: 16, paddingTop: 50, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  backBtn: { color: '#fff', fontSize: 22 },
-  navTitle: { color: '#fff', fontSize: 14, fontWeight: '700' },
-  navIcons: { flexDirection: 'row', gap: 14 },
-  heartIcon: { color: GOLD, fontSize: 20 },
-  shareIcon: { color: '#fff', fontSize: 20 },
-  imgArea: { height: 260, width: '100%' },
-  section: { backgroundColor: BLACK, padding: 16 },
-  divider: { height: 0.5, backgroundColor: DARK, marginHorizontal: 16 },
-  priceRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
-  itemTitle: { color: '#fff', fontSize: 17, fontWeight: '800', marginBottom: 2 },
-  itemLoc: { color: GREY, fontSize: 12 },
-  itemPrice: { color: GOLD, fontSize: 22, fontWeight: '800' },
-  badges: { flexDirection: 'row', gap: 8, marginTop: 10, flexWrap: 'wrap' },
-  badgeGrey: { backgroundColor: DARK, borderRadius: 20, paddingHorizontal: 10, paddingVertical: 4, borderWidth: 0.5, borderColor: '#444' },
-  badgeGreyText: { color: '#ccc', fontSize: 10 },
-  badgeGold: { backgroundColor: '#3a2800', borderRadius: 20, paddingHorizontal: 10, paddingVertical: 4, borderWidth: 0.5, borderColor: GOLD },
-  badgeGoldText: { color: GOLD, fontSize: 10 },
-  lbl: { color: GREY, fontSize: 11, marginBottom: 8, letterSpacing: 0.5 },
-  descText: { color: '#ccc', fontSize: 13, lineHeight: 22 },
-  tradeGrid: { flexDirection: 'row', gap: 8 },
-  tradeCard: { flex: 1, backgroundColor: DARK, borderRadius: 10, padding: 12, borderWidth: 0.5, borderColor: '#333' },
-  tradeCardActive: { borderColor: GOLD, borderWidth: 1 },
-  tradeIcon: { fontSize: 18, marginBottom: 4 },
-  tradeTitle: { color: '#fff', fontSize: 12, fontWeight: '700', marginBottom: 2 },
-  tradeSub: { color: GREY, fontSize: 10 },
-  ctaRow: { position: 'absolute', bottom: 0, left: 0, right: 0, backgroundColor: BLACK, padding: 16, paddingBottom: 30, flexDirection: 'row', gap: 10 },
-  btnMsg: { flex: 1, backgroundColor: DARK, borderRadius: 12, padding: 14, alignItems: 'center', borderWidth: 0.5, borderColor: '#444' },
-  btnMsgText: { color: '#fff', fontSize: 13, fontWeight: '700' },
-  btnBuy: { flex: 2, backgroundColor: GOLD, borderRadius: 12, padding: 14, alignItems: 'center' },
-  btnBuyText: { color: BLACK, fontSize: 14, fontWeight: '800' },
+  center: { flex: 1, backgroundColor: '#111', alignItems: 'center', justifyContent: 'center' },
+
+  carouselWrap: { width: SCREEN_WIDTH, height: SCREEN_WIDTH, backgroundColor: DARK, position: 'relative' },
+  carouselImage: { width: SCREEN_WIDTH, height: SCREEN_WIDTH },
+  noPhoto: { width: SCREEN_WIDTH, height: SCREEN_WIDTH, alignItems: 'center', justifyContent: 'center' },
+
+  soldOverlay: {
+    position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
+    backgroundColor: 'rgba(0,0,0,0.55)', alignItems: 'center', justifyContent: 'center',
+  },
+  soldOverlayText: { color: '#fff', fontSize: 48, fontWeight: '900', letterSpacing: 8, opacity: 0.9 },
+
+  dotsRow: { position: 'absolute', bottom: 16, left: 0, right: 0, flexDirection: 'row', justifyContent: 'center', gap: 6 },
+  dot: { width: 6, height: 6, borderRadius: 3, backgroundColor: 'rgba(255,255,255,0.4)' },
+  dotActive: { backgroundColor: GOLD, width: 18 },
+
+  photoCounter: { position: 'absolute', top: 50, right: 16, backgroundColor: 'rgba(0,0,0,0.6)', borderRadius: 12, paddingHorizontal: 10, paddingVertical: 4 },
+  photoCounterText: { color: '#fff', fontSize: 11, fontWeight: '600' },
+
+  backFloat: { position: 'absolute', top: 50, left: 16, width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(0,0,0,0.6)', alignItems: 'center', justifyContent: 'center' },
+  backFloatText: { color: '#fff', fontSize: 20 },
+
+  details: { padding: 20 },
+  titleRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10 },
+  title: { fontSize: 20, fontWeight: '800', color: '#fff', flex: 1 },
+
+  soldBadge: { backgroundColor: '#3a1a1a', borderRadius: 6, paddingHorizontal: 8, paddingVertical: 4 },
+  soldBadgeText: { color: '#ff8a8a', fontSize: 11, fontWeight: '700' },
+  badgeVerified: { backgroundColor: '#1a3a1a', borderRadius: 6, paddingHorizontal: 8, paddingVertical: 4 },
+  badgeVerifiedText: { color: '#4A90D9', fontSize: 11, fontWeight: '700' },
+  badgeNew: { backgroundColor: '#3a2800', borderRadius: 6, paddingHorizontal: 8, paddingVertical: 4 },
+  badgeNewText: { color: GOLD, fontSize: 11, fontWeight: '700' },
+
+  price: { fontSize: 28, fontWeight: '800', color: GOLD, marginTop: 8 },
+  location: { fontSize: 13, color: GREY, marginTop: 6 },
+
+  sectionTitle: { fontSize: 13, fontWeight: '700', color: '#fff', marginTop: 24, marginBottom: 8 },
+  description: { fontSize: 14, color: '#ccc', lineHeight: 22 },
+
+  categoryChip: { alignSelf: 'flex-start', backgroundColor: DARK, borderRadius: 20, paddingHorizontal: 14, paddingVertical: 8, borderWidth: 0.5, borderColor: '#333' },
+  categoryChipText: { color: GREY, fontSize: 12 },
+
+  statusErrorBox: { backgroundColor: '#3a1a1a', borderRadius: 10, padding: 12, marginTop: 20 },
+  promoRow: { marginTop: 16, gap: 10 },
+  promoBtn: { backgroundColor: DARK, borderRadius: 12, paddingVertical: 13, alignItems: 'center', borderWidth: 1, borderColor: GOLD },
+  promoBtnText: { color: GOLD, fontSize: 13, fontWeight: '700' },
+  promoActiveBox: { backgroundColor: '#2a2200', borderRadius: 12, paddingVertical: 13, alignItems: 'center' },
+  promoActiveText: { color: GOLD, fontSize: 13, fontWeight: '700' },
+  promoBtnSecondary: { backgroundColor: DARK, borderRadius: 12, paddingVertical: 13, alignItems: 'center', borderWidth: 0.5, borderColor: '#333' },
+  promoBtnSecondaryText: { color: '#4A90D9', fontSize: 13, fontWeight: '700' },
+  reportLink: { alignItems: 'center', paddingVertical: 16, marginTop: 8 },
+  reportLinkText: { color: '#888', fontSize: 12 },
+  statusErrorText: { color: '#ff8a8a', fontSize: 13 },
+
+  soldToggleBtn: {
+    marginTop: 24, borderRadius: 14, paddingVertical: 14, alignItems: 'center',
+    borderWidth: 1, borderColor: '#ff8a8a', backgroundColor: 'transparent',
+  },
+  soldToggleBtnText: { color: '#ff8a8a', fontSize: 14, fontWeight: '700' },
+  reactivateBtn: { borderColor: GOLD },
+  reactivateBtnText: { color: GOLD },
+
+  actionBar: { position: 'absolute', bottom: 0, left: 0, right: 0, backgroundColor: BLACK, padding: 16, borderTopWidth: 0.5, borderTopColor: DARK },
+  chatBtn: { backgroundColor: GOLD, borderRadius: 14, paddingVertical: 16, alignItems: 'center' },
+  chatBtnText: { color: BLACK, fontSize: 15, fontWeight: '800' },
 });

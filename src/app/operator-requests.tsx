@@ -1,0 +1,411 @@
+// app/operator-requests.tsx
+// Operators browse open trips — blocked until $10 registration paid
+
+import { useRouter } from 'expo-router';
+import { useEffect, useState } from 'react';
+import {
+  ActivityIndicator,
+  FlatList,
+  Modal,
+  Platform,
+  RefreshControl,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from 'react-native';
+import { supabase } from '../../lib/supabase';
+
+const GOLD = '#B8860B';
+const BLACK = '#1A1A18';
+const DARK = '#2a2a2a';
+const GREY = '#AAAAAA';
+const GREEN = '#4fc96e';
+const RED = '#ff8a8a';
+const COMMISSION = 0.03;
+
+type Request = {
+  id: string;
+  pickup: string;
+  destination: string;
+  date: string;
+  passengers: number;
+  description: string;
+  status: string;
+  created_at: string;
+};
+
+export default function OperatorRequestsScreen() {
+  const router = useRouter();
+  const [requests, setRequests] = useState<Request[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [operatorActive, setOperatorActive] = useState<boolean | null>(null);
+
+  const [modalVisible, setModalVisible] = useState(false);
+  const [selected, setSelected] = useState<Request | null>(null);
+  const [price, setPrice] = useState('');
+  const [vehicle, setVehicle] = useState('');
+  const [message, setMessage] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [submitted, setSubmitted] = useState(false);
+  const [submitError, setSubmitError] = useState('');
+
+  useEffect(() => {
+    checkStatus();
+    fetchRequests();
+  }, []);
+
+  async function checkStatus() {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) { setOperatorActive(false); return; }
+
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('operator_status, account_type, registration_expires_at')
+      .eq('id', user.id)
+      .single();
+
+    if (profile?.account_type !== 'transport_operator') {
+      setOperatorActive(false);
+      return;
+    }
+
+    // Check if registration is active and not expired
+    const isActive = profile?.operator_status === 'active';
+    const notExpired = profile?.registration_expires_at
+      ? new Date(profile.registration_expires_at) > new Date()
+      : false;
+
+    setOperatorActive(isActive && notExpired);
+  }
+
+  async function fetchRequests() {
+    setLoading(true);
+    const { data } = await supabase
+      .from('requests')
+      .select('*')
+      .eq('status', 'open')
+      .order('created_at', { ascending: false });
+    setRequests(data ?? []);
+    setLoading(false);
+  }
+
+  async function handleRefresh() {
+    setRefreshing(true);
+    await Promise.all([checkStatus(), fetchRequests()]);
+    setRefreshing(false);
+  }
+
+  function openModal(req: Request) {
+    setSelected(req);
+    setPrice('');
+    setVehicle('');
+    setMessage('');
+    setSubmitted(false);
+    setSubmitError('');
+    setModalVisible(true);
+  }
+
+  async function submitQuote() {
+    setSubmitError('');
+    if (!price || !vehicle) {
+      setSubmitError('Please enter your price and vehicle details.');
+      return;
+    }
+    const priceNum = parseFloat(price);
+    if (isNaN(priceNum) || priceNum <= 0) {
+      setSubmitError('Enter a valid price.');
+      return;
+    }
+
+    setSubmitting(true);
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) { setSubmitting(false); return; }
+
+    const { error } = await supabase.from('quotes').insert({
+      request_id: selected!.id,
+      operator_id: user.id,
+      price: priceNum,
+      vehicle: vehicle.trim(),
+      message: message.trim(),
+      status: 'pending',
+      commission_amount: parseFloat((priceNum * COMMISSION).toFixed(2)),
+    });
+
+    setSubmitting(false);
+    if (error) { setSubmitError(error.message); return; }
+    setSubmitted(true);
+  }
+
+  // ── Not an operator or not paid ──
+  if (operatorActive === false) {
+    return (
+      <View style={styles.blockedScreen}>
+        <TouchableOpacity onPress={() => router.back()} style={styles.backBtnSmall}>
+          <Text style={styles.backTextSmall}>← Back</Text>
+        </TouchableOpacity>
+        <Text style={styles.blockedEmoji}>🔒</Text>
+        <Text style={styles.blockedTitle}>Registration required</Text>
+        <Text style={styles.blockedBody}>
+          Pay the $10 yearly registration fee to start bidding on trip requests. Instant access — no waiting for approval.
+        </Text>
+        <View style={styles.blockedFeeBox}>
+          <Text style={styles.blockedFeeLabel}>Registration fee</Text>
+          <Text style={styles.blockedFeeAmount}>$10 / year</Text>
+          <Text style={styles.blockedFeeNote}>+ 3% commission per completed job</Text>
+        </View>
+        <TouchableOpacity
+          style={styles.blockedBtn}
+          onPress={() => router.push('/operator-register-pay')}
+        >
+          <Text style={styles.blockedBtnText}>Pay $10 and start bidding</Text>
+        </TouchableOpacity>
+        <TouchableOpacity onPress={() => router.push('/')}>
+          <Text style={styles.blockedLink}>Back to home</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
+
+  if (loading || operatorActive === null) {
+    return (
+      <View style={styles.center}>
+        <ActivityIndicator size="large" color={GOLD} />
+      </View>
+    );
+  }
+
+  return (
+    <View style={styles.container}>
+      <View style={styles.header}>
+        <TouchableOpacity onPress={() => router.back()}>
+          <Text style={styles.backText}>← Back</Text>
+        </TouchableOpacity>
+        <Text style={styles.heading}>Open trip requests</Text>
+        <Text style={styles.subheading}>
+          {requests.length} trip{requests.length !== 1 ? 's' : ''} · you keep 97% per job
+        </Text>
+      </View>
+
+      <FlatList
+        data={requests}
+        keyExtractor={(item) => item.id}
+        contentContainerStyle={styles.list}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={GOLD} />}
+        ListEmptyComponent={
+          <View style={styles.empty}>
+            <Text style={styles.emptyEmoji}>🛣️</Text>
+            <Text style={styles.emptyText}>No open requests right now.</Text>
+            <Text style={styles.emptySubtext}>Pull down to refresh.</Text>
+          </View>
+        }
+        renderItem={({ item }) => (
+          <View style={styles.card}>
+            <View style={styles.routeRow}>
+              <View style={styles.dotGreen} />
+              <Text style={styles.routeText} numberOfLines={1}>{item.pickup}</Text>
+            </View>
+            <View style={styles.routeLine} />
+            <View style={styles.routeRow}>
+              <View style={styles.dotRed} />
+              <Text style={styles.routeText} numberOfLines={1}>{item.destination}</Text>
+            </View>
+
+            <View style={styles.chips}>
+              <Chip label={`📅 ${item.date}`} />
+              <Chip label={`👥 ${item.passengers} pax`} />
+            </View>
+
+            {item.description ? (
+              <Text style={styles.notes} numberOfLines={2}>{item.description}</Text>
+            ) : null}
+
+            <TouchableOpacity style={styles.bidBtn} onPress={() => openModal(item)} activeOpacity={0.85}>
+              <Text style={styles.bidBtnText}>Submit a quote</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+      />
+
+      {/* Quote modal */}
+      <Modal visible={modalVisible} animationType="slide" transparent onRequestClose={() => setModalVisible(false)}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalSheet}>
+            {!submitted ? (
+              <>
+                <Text style={styles.modalTitle}>Your quote</Text>
+                {selected && (
+                  <Text style={styles.modalRoute}>{selected.pickup} → {selected.destination}</Text>
+                )}
+
+                <Text style={styles.modalLabel}>Your price (USD) *</Text>
+                <TextInput
+                  style={styles.modalInput}
+                  placeholder="e.g. 35"
+                  placeholderTextColor="#666"
+                  value={price}
+                  onChangeText={setPrice}
+                  keyboardType="decimal-pad"
+                />
+
+                {price && parseFloat(price) > 0 && (
+                  <View style={styles.commissionPreview}>
+                    <Text style={styles.commissionPreviewText}>
+                      Your earnings: ${(parseFloat(price) * 0.97).toFixed(2)} · Platform fee (3%): ${(parseFloat(price) * COMMISSION).toFixed(2)}
+                    </Text>
+                  </View>
+                )}
+
+                <Text style={styles.modalLabel}>Your vehicle *</Text>
+                <TextInput
+                  style={styles.modalInput}
+                  placeholder="e.g. Toyota HiAce, 15-seater"
+                  placeholderTextColor="#666"
+                  value={vehicle}
+                  onChangeText={setVehicle}
+                />
+
+                <Text style={styles.modalLabel}>Message (optional)</Text>
+                <TextInput
+                  style={[styles.modalInput, styles.modalTextArea]}
+                  placeholder="Any extra info for the customer..."
+                  placeholderTextColor="#666"
+                  value={message}
+                  onChangeText={setMessage}
+                  multiline
+                  numberOfLines={3}
+                />
+
+                {submitError ? (
+                  <Text style={styles.submitError}>{submitError}</Text>
+                ) : null}
+
+                <View style={styles.modalActions}>
+                  <TouchableOpacity style={styles.cancelBtn} onPress={() => setModalVisible(false)}>
+                    <Text style={styles.cancelText}>Cancel</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.submitBtn, submitting && { opacity: 0.6 }]}
+                    onPress={submitQuote}
+                    disabled={submitting}
+                  >
+                    {submitting
+                      ? <ActivityIndicator color={BLACK} />
+                      : <Text style={styles.submitBtnText}>Send quote</Text>
+                    }
+                  </TouchableOpacity>
+                </View>
+              </>
+            ) : (
+              <View style={styles.successBox}>
+                <Text style={styles.successEmoji}>✅</Text>
+                <Text style={styles.successTitle}>Quote sent!</Text>
+                <Text style={styles.successBody}>
+                  The customer will review your bid. If they accept, you'll be notified and their deposit unlocks your contact details.
+                </Text>
+                <TouchableOpacity style={styles.submitBtn} onPress={() => setModalVisible(false)}>
+                  <Text style={styles.submitBtnText}>Done</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+          </View>
+        </View>
+      </Modal>
+    </View>
+  );
+}
+
+function Chip({ label }: { label: string }) {
+  return (
+    <View style={styles.chip}>
+      <Text style={styles.chipText}>{label}</Text>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: { flex: 1, backgroundColor: '#111111' },
+  center: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#111111' },
+
+  header: {
+    backgroundColor: BLACK,
+    paddingTop: Platform.OS === 'ios' ? 56 : 32,
+    paddingBottom: 20, paddingHorizontal: 20,
+    borderBottomWidth: 0.5, borderBottomColor: DARK,
+  },
+  backText: { color: GREY, fontSize: 14, marginBottom: 12 },
+  heading: { color: '#fff', fontSize: 22, fontWeight: '800' },
+  subheading: { color: GREY, fontSize: 13, marginTop: 4 },
+
+  list: { padding: 16, gap: 14 },
+  card: {
+    backgroundColor: BLACK, borderRadius: 14, padding: 16,
+    borderWidth: 0.5, borderColor: '#333',
+  },
+  routeRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  dotGreen: { width: 10, height: 10, borderRadius: 5, backgroundColor: GREEN },
+  dotRed: { width: 10, height: 10, borderRadius: 5, backgroundColor: '#f44336' },
+  routeLine: { width: 2, height: 14, backgroundColor: '#333', marginLeft: 4, marginVertical: 3 },
+  routeText: { fontSize: 15, fontWeight: '600', color: '#fff', flex: 1 },
+  chips: { flexDirection: 'row', gap: 8, marginTop: 12, flexWrap: 'wrap' },
+  chip: { backgroundColor: DARK, borderRadius: 20, paddingHorizontal: 10, paddingVertical: 4, borderWidth: 0.5, borderColor: '#333' },
+  chipText: { fontSize: 12, color: GREY },
+  notes: { fontSize: 13, color: GREY, marginTop: 10, lineHeight: 18 },
+  bidBtn: { marginTop: 14, backgroundColor: GOLD, borderRadius: 10, paddingVertical: 12, alignItems: 'center' },
+  bidBtnText: { color: BLACK, fontWeight: '800', fontSize: 14 },
+
+  empty: { alignItems: 'center', paddingTop: 60 },
+  emptyEmoji: { fontSize: 40, marginBottom: 12 },
+  emptyText: { fontSize: 16, color: '#fff', fontWeight: '600' },
+  emptySubtext: { fontSize: 13, color: GREY, marginTop: 6 },
+
+  // Blocked screen
+  blockedScreen: { flex: 1, backgroundColor: '#111111', padding: 28, paddingTop: 60 },
+  backBtnSmall: { marginBottom: 28 },
+  backTextSmall: { color: GREY, fontSize: 14 },
+  blockedEmoji: { fontSize: 52, marginBottom: 14 },
+  blockedTitle: { fontSize: 24, fontWeight: '800', color: '#fff', marginBottom: 10 },
+  blockedBody: { fontSize: 15, color: GREY, lineHeight: 22, marginBottom: 20 },
+  blockedFeeBox: {
+    backgroundColor: BLACK, borderRadius: 14, padding: 18, marginBottom: 24,
+    borderWidth: 0.5, borderColor: '#333',
+    alignItems: 'center',
+  },
+  blockedFeeLabel: { fontSize: 12, color: GREY, marginBottom: 4 },
+  blockedFeeAmount: { fontSize: 32, fontWeight: '800', color: '#fff', marginBottom: 4 },
+  blockedFeeNote: { fontSize: 12, color: GREY },
+  blockedBtn: { backgroundColor: GOLD, borderRadius: 14, paddingVertical: 16, alignItems: 'center', marginBottom: 14 },
+  blockedBtnText: { color: BLACK, fontSize: 16, fontWeight: '800' },
+  blockedLink: { color: GREY, fontSize: 14, textAlign: 'center' },
+
+  // Modal
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },
+  modalSheet: {
+    backgroundColor: BLACK, borderTopLeftRadius: 20, borderTopRightRadius: 20,
+    padding: 24, paddingBottom: Platform.OS === 'ios' ? 40 : 24,
+  },
+  modalTitle: { fontSize: 18, fontWeight: '800', color: '#fff', marginBottom: 4 },
+  modalRoute: { fontSize: 13, color: GREY, marginBottom: 16 },
+  modalLabel: { fontSize: 13, fontWeight: '700', color: '#fff', marginBottom: 6, marginTop: 14 },
+  modalInput: {
+    backgroundColor: DARK, borderRadius: 10,
+    paddingHorizontal: 14, paddingVertical: Platform.OS === 'ios' ? 13 : 10,
+    fontSize: 14, color: '#fff', borderWidth: 0.5, borderColor: '#333',
+  },
+  modalTextArea: { height: 90, textAlignVertical: 'top', paddingTop: 10 },
+  commissionPreview: { backgroundColor: '#1a2a1a', borderRadius: 8, padding: 10, marginTop: 6, borderWidth: 0.5, borderColor: '#2a4a2a' },
+  commissionPreviewText: { fontSize: 12, color: GREEN, fontWeight: '600' },
+  submitError: { color: RED, fontSize: 13, marginTop: 10 },
+  modalActions: { flexDirection: 'row', gap: 12, marginTop: 20 },
+  cancelBtn: { flex: 1, borderRadius: 10, paddingVertical: 13, alignItems: 'center', backgroundColor: DARK },
+  cancelText: { color: GREY, fontWeight: '600' },
+  submitBtn: { flex: 2, borderRadius: 10, paddingVertical: 13, alignItems: 'center', backgroundColor: GOLD },
+  submitBtnText: { color: BLACK, fontWeight: '800', fontSize: 15 },
+
+  successBox: { alignItems: 'center', paddingVertical: 16 },
+  successEmoji: { fontSize: 48, marginBottom: 12 },
+  successTitle: { fontSize: 20, fontWeight: '800', color: '#fff', marginBottom: 8 },
+  successBody: { fontSize: 14, color: GREY, textAlign: 'center', lineHeight: 20, marginBottom: 24 },
+});

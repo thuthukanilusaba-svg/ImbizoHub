@@ -1,6 +1,33 @@
+// app/profile.tsx
+// Profile screen with real Supabase data, optional photo upload, stats,
+// star rating display, and recent reviews section.
+//
+// FIX: pickAvatar() previously did fetch(uri) -> response.blob() ->
+// passed the Blob straight to supabase.storage.upload(). That breaks
+// under Hermes with "Creating blobs from 'ArrayBuffer' and
+// 'ArrayBufferView' are not supported" because supabase-js reconstructs
+// the Blob internally via ArrayBuffer, which Hermes doesn't support.
+// Fixed by reading the file as base64 via expo-file-system and decoding
+// it to an ArrayBuffer with base64-arraybuffer before upload — bypasses
+// the Blob constructor path entirely. Mime type now comes from the
+// picker result instead of blob.type, since there's no Blob to read it
+// from. Same fix as operator-id-verify.tsx, post.tsx, and
+// verified-seller-pay.tsx — this was the fourth screen found with its
+// own independent copy of the same broken pattern.
+
+import { decode } from 'base64-arraybuffer';
+import * as FileSystem from 'expo-file-system';
+import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
-import { StatusBar } from 'expo-status-bar';
-import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { useEffect, useState } from 'react';
+import {
+  ActivityIndicator, Image, KeyboardAvoidingView, Platform,
+  ScrollView,
+  StyleSheet,
+  Text, TextInput, TouchableOpacity,
+  View
+} from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { supabase } from '../../lib/supabase';
 
 const GOLD = '#B8860B';
@@ -8,196 +35,496 @@ const BLACK = '#1A1A18';
 const DARK = '#2a2a2a';
 const GREY = '#AAAAAA';
 
-const listings = [
-  { icon: '📱', title: 'iPhone 13 Pro', price: '$320', badge: 'Active', badgeType: 'active' },
-  { icon: '💻', title: 'HP Laptop i5', price: '$180', badge: 'Active', badgeType: 'active' },
-  { icon: '📺', title: 'Samsung 43" TV', price: '$210', badge: 'Sold', badgeType: 'sold' },
-  { icon: '🛋️', title: 'L-shaped sofa', price: '$95', badge: 'Active', badgeType: 'active' },
-];
-
 export default function ProfileScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
 
-  const handleLogout = async () => {
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
+  const [error, setError] = useState('');
+
+  const [userId, setUserId] = useState('');
+  const [email, setEmail] = useState('');
+  const [fullName, setFullName] = useState('');
+  const [phone, setPhone] = useState('');
+  const [location, setLocation] = useState('');
+  const [accountType, setAccountType] = useState('');
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
+  const [createdAt, setCreatedAt] = useState('');
+  const [listingCount, setListingCount] = useState(0);
+  const [rating, setRating] = useState(0);
+  const [ratingCount, setRatingCount] = useState(0);
+  const [recentReviews, setRecentReviews] = useState<any[]>([]);
+  const [isActiveOperator, setIsActiveOperator] = useState(false);
+  const [wantedResponseCount, setWantedResponseCount] = useState(0);
+
+  const [draftName, setDraftName] = useState('');
+  const [draftPhone, setDraftPhone] = useState('');
+  const [draftLocation, setDraftLocation] = useState('');
+
+  useEffect(() => { loadProfile(); }, []);
+
+  async function loadProfile() {
+    setLoading(true);
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) { router.replace('/login'); return; }
+
+    setUserId(user.id);
+    setEmail(user.email ?? '');
+
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('id', user.id)
+      .maybeSingle();
+
+    if (profile) {
+      setFullName(profile.full_name ?? '');
+      setPhone(profile.phone ?? '');
+      setLocation(profile.location ?? '');
+      setAccountType(profile.account_type ?? 'buyer');
+      setAvatarUrl(profile.avatar_url ?? null);
+      setCreatedAt(profile.created_at ?? '');
+      setRating(profile.rating ?? 0);
+      setRatingCount(profile.rating_count ?? 0);
+      setDraftName(profile.full_name ?? '');
+      setDraftPhone(profile.phone ?? '');
+      setDraftLocation(profile.location ?? '');
+    }
+
+    const { count } = await supabase
+      .from('listings')
+      .select('*', { count: 'exact', head: true })
+      .eq('user_id', user.id);
+    setListingCount(count ?? 0);
+
+    const { data: reviews } = await supabase
+      .from('ratings')
+      .select('stars, review, role, created_at')
+      .eq('reviewee_id', user.id)
+      .order('created_at', { ascending: false })
+      .limit(5);
+    setRecentReviews(reviews ?? []);
+
+    const { data: operator } = await supabase
+      .from('delivery_operators')
+      .select('registration_paid, registration_expires_at')
+      .eq('user_id', user.id)
+      .maybeSingle();
+
+    setIsActiveOperator(!!(
+      operator?.registration_paid &&
+      operator?.registration_expires_at &&
+      new Date(operator.registration_expires_at).getTime() > Date.now()
+    ));
+
+    const { data: myOpenRequests } = await supabase
+      .from('item_requests')
+      .select('id')
+      .eq('user_id', user.id)
+      .eq('status', 'open');
+
+    if (myOpenRequests && myOpenRequests.length > 0) {
+      const { count } = await supabase
+        .from('item_responses')
+        .select('*', { count: 'exact', head: true })
+        .in('item_request_id', myOpenRequests.map((r) => r.id));
+      setWantedResponseCount(count ?? 0);
+    } else {
+      setWantedResponseCount(0);
+    }
+
+    setLoading(false);
+  }
+
+  async function pickAvatar() {
+    setError('');
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) { setError('Permission to access photos is required.'); return; }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true, aspect: [1, 1], quality: 0.7,
+    });
+
+    if (result.canceled) return;
+
+    setUploadingAvatar(true);
+    try {
+      const uri = result.assets[0].uri;
+      const mimeType = result.assets[0].mimeType ?? 'image/jpeg';
+
+      const base64 = await FileSystem.readAsStringAsync(uri, {
+        encoding: FileSystem.EncodingType.Base64,
+      });
+
+      const fileExt = uri.split('.').pop()?.split('?')[0] || 'jpg';
+      const fileName = `${userId}/avatar-${Date.now()}.${fileExt}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from('avatars')
+        .upload(fileName, decode(base64), { contentType: mimeType, upsert: false });
+
+      if (uploadError) throw uploadError;
+
+      const { data: urlData } = supabase.storage.from('avatars').getPublicUrl(fileName);
+      await supabase.from('profiles').update({ avatar_url: urlData.publicUrl }).eq('id', userId);
+      setAvatarUrl(urlData.publicUrl);
+    } catch (err: any) {
+      setError(`Upload failed: ${err.message}`);
+    }
+    setUploadingAvatar(false);
+  }
+
+  function startEditing() {
+    setDraftName(fullName); setDraftPhone(phone); setDraftLocation(location);
+    setEditing(true); setError('');
+  }
+
+  async function saveProfile() {
+    setError(''); setSaving(true);
+    const { error: updateError } = await supabase
+      .from('profiles')
+      .update({ full_name: draftName.trim(), phone: draftPhone.trim(), location: draftLocation.trim() })
+      .eq('id', userId);
+    setSaving(false);
+    if (updateError) { setError(updateError.message); return; }
+    setFullName(draftName.trim()); setPhone(draftPhone.trim()); setLocation(draftLocation.trim());
+    setEditing(false);
+  }
+
+  async function handleLogout() {
     await supabase.auth.signOut();
     router.replace('/login');
-  };
+  }
+
+  function initials() {
+    if (fullName) return fullName.split(' ').map((w) => w[0]).join('').slice(0, 2).toUpperCase();
+    return email ? email[0].toUpperCase() : '?';
+  }
+
+  function joinedDate() {
+    if (!createdAt) return '';
+    return new Date(createdAt).toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
+  }
+
+  function accountTypeLabel() {
+    const map: Record<string, string> = {
+      buyer: 'Buyer', seller: 'Seller', transport_operator: 'Transport Operator',
+      delivery: 'Delivery Operator',
+    };
+    return map[accountType] || accountType;
+  }
+
+  function renderStars(count: number, size = 16) {
+    return (
+      <View style={{ flexDirection: 'row', gap: 2 }}>
+        {[1, 2, 3, 4, 5].map((s) => (
+          <Text key={s} style={{ fontSize: size, color: s <= Math.round(count) ? GOLD : '#333' }}>★</Text>
+        ))}
+      </View>
+    );
+  }
+
+  if (loading) {
+    return (
+      <View style={styles.center}>
+        <ActivityIndicator size="large" color={GOLD} />
+      </View>
+    );
+  }
+
+  const showDashboardTab = accountType === 'seller' || isActiveOperator;
 
   return (
-    <View style={styles.container}>
-      <StatusBar style="light" />
-      <ScrollView showsVerticalScrollIndicator={false}>
-
-        <View style={styles.header}>
-          <Text style={styles.headerTitle}>My profile</Text>
-          <View style={styles.headerIcons}>
-            <Text style={styles.headerIcon}>↗</Text>
-            <Text style={styles.headerIconGold}>⚙</Text>
+    <View style={styles.screen}>
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      >
+        <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+          <View style={styles.header}>
+            <Text style={styles.headerTitle}>Profile</Text>
             <TouchableOpacity onPress={handleLogout}>
-              <Text style={styles.headerIcon}>🚪</Text>
+              <Text style={styles.logoutText}>Logout</Text>
             </TouchableOpacity>
           </View>
-        </View>
 
-        <View style={styles.profileSection}>
-          <View style={styles.avatar}>
-            <Text style={styles.avatarText}>TM</Text>
-          </View>
-          <Text style={styles.profileName}>Tatenda Moyo</Text>
-          <Text style={styles.profileLoc}>Harare, Zimbabwe · Member since Jan 2024</Text>
-          <View style={styles.verifiedBadge}>
-            <Text style={styles.verifiedIcon}>✓</Text>
-            <Text style={styles.verifiedText}>Verified seller</Text>
+          <View style={styles.avatarSection}>
+            <TouchableOpacity onPress={pickAvatar} disabled={uploadingAvatar} style={styles.avatarWrap}>
+              {avatarUrl ? (
+                <Image source={{ uri: avatarUrl }} style={styles.avatarImage} />
+              ) : (
+                <View style={styles.avatarPlaceholder}>
+                  <Text style={styles.avatarInitials}>{initials()}</Text>
+                </View>
+              )}
+              {uploadingAvatar ? (
+                <View style={styles.avatarOverlay}>
+                  <ActivityIndicator color="#fff" size="small" />
+                </View>
+              ) : (
+                <View style={styles.avatarEditBadge}>
+                  <Text style={styles.avatarEditIcon}>📷</Text>
+                </View>
+              )}
+            </TouchableOpacity>
+
+            <Text style={styles.name}>{fullName || 'Add your name'}</Text>
+            <Text style={styles.email}>{email}</Text>
+
+            {ratingCount > 0 && (
+              <View style={styles.ratingRow}>
+                {renderStars(rating)}
+                <Text style={styles.ratingText}>{rating.toFixed(1)} ({ratingCount} review{ratingCount === 1 ? '' : 's'})</Text>
+              </View>
+            )}
+
+            <View style={styles.accountTypeBadge}>
+              <Text style={styles.accountTypeText}>{accountTypeLabel()}</Text>
+            </View>
           </View>
 
-          <View style={styles.statsGrid}>
-            <View style={styles.statCard}>
-              <Text style={styles.statVal}>47</Text>
+          <View style={styles.statsRow}>
+            <View style={styles.statBox}>
+              <Text style={styles.statValue}>{listingCount}</Text>
               <Text style={styles.statLabel}>Listings</Text>
             </View>
-            <View style={styles.statCard}>
-              <Text style={styles.statVal}>34</Text>
-              <Text style={styles.statLabel}>Sales</Text>
+            <View style={styles.statDivider} />
+            <View style={styles.statBox}>
+              <Text style={styles.statValue}>
+                {ratingCount > 0 ? rating.toFixed(1) : '—'}
+              </Text>
+              <Text style={styles.statLabel}>
+                {ratingCount > 0 ? `Rating (${ratingCount})` : 'No ratings yet'}
+              </Text>
             </View>
-            <View style={[styles.statCard, styles.statCardHighlight]}>
-              <Text style={styles.statVal}>4.8</Text>
-              <Text style={styles.statLabel}>Rating</Text>
+            <View style={styles.statDivider} />
+            <View style={styles.statBox}>
+              <Text style={styles.statValueSmall}>{joinedDate() || '—'}</Text>
+              <Text style={styles.statLabel}>Joined</Text>
             </View>
           </View>
-        </View>
 
-        <View style={styles.tabs}>
-          <View style={styles.tabActive}>
-            <Text style={styles.tabActiveText}>Listings (12)</Text>
+          {error ? (
+            <View style={styles.errorBox}>
+              <Text style={styles.errorText}>⚠️ {error}</Text>
+            </View>
+          ) : null}
+
+          <View style={styles.card}>
+            <Text style={styles.cardTitle}>My activity</Text>
+            <MenuRow icon="🏷️" label="My listings" onPress={() => router.push('/explore')} />
+            <MenuRow icon="📥" label="Deliveries to me" onPress={() => router.push('/buyer-deliveries')} />
+            <MenuRow icon="📤" label="Deliveries from my listings" onPress={() => router.push('/seller-deliveries')} />
+            <MenuRow icon="🚐" label="My trip requests" onPress={() => router.push('/quotes')} />
+            <MenuRow
+              icon="🔍"
+              label="My wanted posts"
+              badge={wantedResponseCount > 0 ? wantedResponseCount : undefined}
+              onPress={() => router.push('/my-wanted-posts')}
+            />
+            <MenuRow icon="💬" label="Messages" onPress={() => router.push('/messages')} />
+            {accountType === 'transport_operator' && (
+              <MenuRow icon="📋" label="Browse trip requests" onPress={() => router.push('/operator-requests')} />
+            )}
           </View>
-          <TouchableOpacity style={styles.tab}>
-            <Text style={styles.tabText}>Reviews (34)</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.tab}>
-            <Text style={styles.tabText}>Sales (34)</Text>
-          </TouchableOpacity>
-        </View>
 
-        <View style={styles.section}>
-          <View style={styles.listingGrid}>
-            {listings.map((item, i) => (
-              <TouchableOpacity key={i} style={styles.listingCard}>
-                <View style={styles.listingImg}>
-                  <Text style={styles.listingEmoji}>{item.icon}</Text>
-                  <View style={item.badgeType === 'active' ? styles.badgeActive : styles.badgeSold}>
-                    <Text style={item.badgeType === 'active' ? styles.badgeActiveText : styles.badgeSoldText}>
-                      {item.badge}
+          <View style={styles.card}>
+            <View style={styles.cardHeader}>
+              <Text style={styles.cardTitle}>Personal info</Text>
+              {!editing && (
+                <TouchableOpacity onPress={startEditing}>
+                  <Text style={styles.editLink}>Edit</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+
+            {editing ? (
+              <>
+                <Text style={styles.label}>Full name</Text>
+                <TextInput style={styles.input} value={draftName} onChangeText={setDraftName}
+                  placeholder="Your full name" placeholderTextColor="#666" />
+                <Text style={styles.label}>Phone</Text>
+                <TextInput style={styles.input} value={draftPhone} onChangeText={setDraftPhone}
+                  placeholder="e.g. +263 77 123 4567" placeholderTextColor="#666" keyboardType="phone-pad" />
+                <Text style={styles.label}>Location</Text>
+                <TextInput style={styles.input} value={draftLocation} onChangeText={setDraftLocation}
+                  placeholder="e.g. Harare" placeholderTextColor="#666" />
+                <View style={styles.editActions}>
+                  <TouchableOpacity style={styles.cancelBtn} onPress={() => setEditing(false)}>
+                    <Text style={styles.cancelBtnText}>Cancel</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={[styles.saveBtn, saving && { opacity: 0.6 }]}
+                    onPress={saveProfile} disabled={saving}>
+                    {saving ? <ActivityIndicator color={BLACK} /> : <Text style={styles.saveBtnText}>Save</Text>}
+                  </TouchableOpacity>
+                </View>
+              </>
+            ) : (
+              <>
+                <InfoRow label="Full name" value={fullName || 'Not set'} />
+                <InfoRow label="Phone" value={phone || 'Not set'} />
+                <InfoRow label="Location" value={location || 'Not set'} />
+              </>
+            )}
+          </View>
+
+          {recentReviews.length > 0 && (
+            <View style={styles.card}>
+              <Text style={styles.cardTitle}>Recent reviews</Text>
+              {recentReviews.map((r, i) => (
+                <View key={i} style={styles.reviewItem}>
+                  <View style={styles.reviewHeader}>
+                    {renderStars(r.stars, 14)}
+                    <Text style={styles.reviewRole}>
+                      {r.role === 'buyer' ? 'Buyer' : 'Seller'} · {new Date(r.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
                     </Text>
                   </View>
+                  {r.review ? <Text style={styles.reviewText}>{r.review}</Text> : null}
                 </View>
-                <View style={styles.listingBody}>
-                  <Text style={styles.listingTitle}>{item.title}</Text>
-                  <Text style={item.badgeType === 'sold' ? styles.listingPriceSold : styles.listingPrice}>
-                    {item.price}
-                  </Text>
-                </View>
-              </TouchableOpacity>
-            ))}
-          </View>
-        </View>
-
-        <View style={styles.section}>
-          <Text style={styles.lbl}>LATEST REVIEW</Text>
-          <View style={styles.reviewCard}>
-            <View style={styles.reviewHeader}>
-              <View style={styles.reviewAvatar}>
-                <Text style={styles.reviewAvatarText}>CZ</Text>
-              </View>
-              <View style={styles.reviewInfo}>
-                <Text style={styles.reviewName}>Chiedza Z.</Text>
-                <Text style={styles.reviewStars}>★★★★★</Text>
-              </View>
-              <Text style={styles.reviewTime}>2 days ago</Text>
+              ))}
             </View>
-            <Text style={styles.reviewText}>Very honest seller. Phone was exactly as described. Met at Sam Levy's, quick and easy. Highly recommend!</Text>
-          </View>
-        </View>
+          )}
 
-        <View style={styles.bottomNav}>
-          <TouchableOpacity style={styles.navItem}>
-            <Text style={styles.navIcon}>🏠</Text>
-            <Text style={styles.navLabel}>Home</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.navItem}>
-            <Text style={styles.navIcon}>🔍</Text>
-            <Text style={styles.navLabel}>Browse</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.navPost}>
-            <Text style={styles.navPostText}>+</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.navItem}>
-            <Text style={styles.navIcon}>💬</Text>
-            <Text style={styles.navLabel}>Messages</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.navItem}>
-            <Text style={[styles.navIcon, { color: GOLD }]}>👤</Text>
-            <Text style={[styles.navLabel, { color: GOLD }]}>Profile</Text>
-          </TouchableOpacity>
-        </View>
+          <View style={{ height: 100 + insets.bottom }} />
+        </ScrollView>
+      </KeyboardAvoidingView>
 
-        <View style={{ height: 80 }} />
-      </ScrollView>
+      <View style={[styles.bottomNav, { paddingBottom: 24 + insets.bottom }]}>
+        <TouchableOpacity style={styles.navItem} onPress={() => router.push('/')}>
+          <Text style={styles.navIcon}>🏠</Text>
+          <Text style={styles.navLabel}>Home</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.navItem} onPress={() => router.push('/explore')}>
+          <Text style={styles.navIcon}>🔍</Text>
+          <Text style={styles.navLabel}>Browse</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.navPost} onPress={() => router.push('/post')}>
+          <Text style={styles.navPostText}>+</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.navItem} onPress={() => router.push('/messages')}>
+          <Text style={styles.navIcon}>💬</Text>
+          <Text style={styles.navLabel}>Messages</Text>
+        </TouchableOpacity>
+        {showDashboardTab && (
+          <TouchableOpacity style={styles.navItem} onPress={() => router.push('/dealer')}>
+            <Text style={styles.navIcon}>🏪</Text>
+            <Text style={styles.navLabel}>Dashboard</Text>
+          </TouchableOpacity>
+        )}
+        <TouchableOpacity style={styles.navItem}>
+          <Text style={styles.navIconActive}>👤</Text>
+          <Text style={styles.navLabelActive}>Profile</Text>
+        </TouchableOpacity>
+      </View>
     </View>
   );
 }
 
+function InfoRow({ label, value }: { label: string; value: string }) {
+  return (
+    <View style={styles.infoRow}>
+      <Text style={styles.infoLabel}>{label}</Text>
+      <Text style={styles.infoValue}>{value}</Text>
+    </View>
+  );
+}
+
+function MenuRow({ icon, label, badge, onPress }: { icon: string; label: string; badge?: number; onPress: () => void }) {
+  return (
+    <TouchableOpacity style={styles.menuRow} onPress={onPress}>
+      <Text style={styles.menuIcon}>{icon}</Text>
+      <Text style={styles.menuLabel}>{label}</Text>
+      {badge != null && badge > 0 ? (
+        <View style={styles.menuBadge}>
+          <Text style={styles.menuBadgeText}>{badge}</Text>
+        </View>
+      ) : null}
+      <Text style={styles.menuArrow}>›</Text>
+    </TouchableOpacity>
+  );
+}
+
 const styles = StyleSheet.create({
+  screen: { flex: 1, backgroundColor: '#111111' },
   container: { flex: 1, backgroundColor: '#111111' },
-  header: { backgroundColor: BLACK, padding: 16, paddingTop: 50, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  headerTitle: { color: '#fff', fontSize: 14, fontWeight: '700', fontFamily: 'Inter_700Bold' },
-  headerIcons: { flexDirection: 'row', gap: 14 },
-  headerIcon: { color: '#fff', fontSize: 20 },
-  headerIconGold: { color: GOLD, fontSize: 20 },
-  profileSection: { backgroundColor: BLACK, padding: 16, alignItems: 'center' },
-  avatar: { width: 80, height: 80, backgroundColor: GOLD, borderRadius: 40, alignItems: 'center', justifyContent: 'center', borderWidth: 3, borderColor: GOLD, marginBottom: 10 },
-  avatarText: { color: BLACK, fontSize: 28, fontWeight: '800', fontFamily: 'Inter_800ExtraBold' },
-  profileName: { color: '#fff', fontSize: 18, fontWeight: '800', fontFamily: 'Inter_800ExtraBold', marginBottom: 2 },
-  profileLoc: { color: GREY, fontSize: 12, marginBottom: 8 },
-  verifiedBadge: { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: '#1a2a3e', borderRadius: 20, paddingHorizontal: 12, paddingVertical: 4 },
-  verifiedIcon: { color: '#4A90D9', fontSize: 13 },
-  verifiedText: { color: '#4A90D9', fontSize: 11, fontWeight: '700', fontFamily: 'Inter_700Bold' },
-  statsGrid: { flexDirection: 'row', gap: 10, marginTop: 16, width: '100%' },
-  statCard: { flex: 1, backgroundColor: DARK, borderRadius: 10, padding: 10, alignItems: 'center', borderWidth: 0.5, borderColor: '#333' },
-  statCardHighlight: { borderColor: GOLD },
-  statVal: { color: GOLD, fontSize: 20, fontWeight: '800', fontFamily: 'Inter_800ExtraBold' },
-  statLabel: { color: GREY, fontSize: 10, marginTop: 2 },
-  tabs: { backgroundColor: BLACK, flexDirection: 'row', borderBottomWidth: 0.5, borderBottomColor: DARK },
-  tabActive: { flex: 1, padding: 12, alignItems: 'center', borderBottomWidth: 2, borderBottomColor: GOLD },
-  tabActiveText: { color: GOLD, fontSize: 12, fontWeight: '700', fontFamily: 'Inter_700Bold' },
-  tab: { flex: 1, padding: 12, alignItems: 'center' },
-  tabText: { color: '#555', fontSize: 12 },
-  section: { backgroundColor: BLACK, padding: 16 },
-  lbl: { color: GREY, fontSize: 11, marginBottom: 8, letterSpacing: 0.5 },
-  listingGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
-  listingCard: { backgroundColor: '#222', borderRadius: 12, overflow: 'hidden', borderWidth: 0.5, borderColor: '#333', width: '47.5%' },
-  listingImg: { height: 80, backgroundColor: DARK, alignItems: 'center', justifyContent: 'center', position: 'relative' },
-  listingEmoji: { fontSize: 26 },
-  badgeActive: { position: 'absolute', top: 6, right: 6, backgroundColor: '#1a2a3e', borderRadius: 4, paddingHorizontal: 6, paddingVertical: 2 },
-  badgeActiveText: { color: '#4A90D9', fontSize: 9 },
-  badgeSold: { position: 'absolute', top: 6, right: 6, backgroundColor: '#3a2800', borderRadius: 4, paddingHorizontal: 6, paddingVertical: 2 },
-  badgeSoldText: { color: GOLD, fontSize: 9 },
-  listingBody: { padding: 8 },
-  listingTitle: { color: '#fff', fontSize: 12, fontWeight: '700', fontFamily: 'Inter_700Bold', marginBottom: 2 },
-  listingPrice: { color: GOLD, fontSize: 13, fontWeight: '800', fontFamily: 'Inter_800ExtraBold' },
-  listingPriceSold: { color: '#555', fontSize: 13, fontWeight: '800', fontFamily: 'Inter_800ExtraBold', textDecorationLine: 'line-through' },
-  reviewCard: { backgroundColor: DARK, borderRadius: 12, padding: 12, borderWidth: 0.5, borderColor: '#333' },
-  reviewHeader: { flexDirection: 'row', gap: 8, alignItems: 'center', marginBottom: 8 },
-  reviewAvatar: { width: 30, height: 30, backgroundColor: '#444', borderRadius: 15, alignItems: 'center', justifyContent: 'center' },
-  reviewAvatarText: { color: '#ccc', fontSize: 11, fontWeight: '700', fontFamily: 'Inter_700Bold' },
-  reviewInfo: { flex: 1 },
-  reviewName: { color: '#fff', fontSize: 12, fontWeight: '700', fontFamily: 'Inter_700Bold' },
-  reviewStars: { color: GOLD, fontSize: 11, marginTop: 2 },
-  reviewTime: { color: '#555', fontSize: 10 },
-  reviewText: { color: '#ccc', fontSize: 12, lineHeight: 18 },
-  bottomNav: { backgroundColor: BLACK, borderTopWidth: 0.5, borderTopColor: DARK, paddingVertical: 10, paddingBottom: 24, flexDirection: 'row', justifyContent: 'space-around', alignItems: 'center' },
+  content: { padding: 20, paddingTop: Platform.OS === 'ios' ? 56 : 40, paddingBottom: 60 },
+  center: { flex: 1, backgroundColor: '#111', alignItems: 'center', justifyContent: 'center' },
+
+  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 },
+  headerTitle: { fontSize: 22, fontWeight: '800', color: '#fff' },
+  logoutText: { color: '#ff8a8a', fontSize: 13, fontWeight: '600' },
+
+  avatarSection: { alignItems: 'center', marginBottom: 24 },
+  avatarWrap: { position: 'relative', marginBottom: 14 },
+  avatarImage: { width: 96, height: 96, borderRadius: 48 },
+  avatarPlaceholder: { width: 96, height: 96, borderRadius: 48, backgroundColor: GOLD, alignItems: 'center', justifyContent: 'center' },
+  avatarInitials: { color: BLACK, fontSize: 32, fontWeight: '800' },
+  avatarOverlay: { ...StyleSheet.absoluteFillObject, borderRadius: 48, backgroundColor: 'rgba(0,0,0,0.5)', alignItems: 'center', justifyContent: 'center' },
+  avatarEditBadge: { position: 'absolute', bottom: 0, right: 0, width: 30, height: 30, borderRadius: 15, backgroundColor: DARK, borderWidth: 2, borderColor: '#111', alignItems: 'center', justifyContent: 'center' },
+  avatarEditIcon: { fontSize: 14 },
+
+  name: { fontSize: 19, fontWeight: '800', color: '#fff' },
+  email: { fontSize: 13, color: GREY, marginTop: 2 },
+
+  ratingRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 8 },
+  ratingText: { fontSize: 12, color: GREY },
+
+  accountTypeBadge: { backgroundColor: '#3a2800', borderRadius: 20, paddingHorizontal: 12, paddingVertical: 5, marginTop: 10 },
+  accountTypeText: { color: GOLD, fontSize: 11, fontWeight: '700' },
+
+  statsRow: { flexDirection: 'row', backgroundColor: BLACK, borderRadius: 14, padding: 16, marginBottom: 16, borderWidth: 0.5, borderColor: '#333' },
+  statBox: { flex: 1, alignItems: 'center' },
+  statValue: { fontSize: 20, fontWeight: '800', color: '#fff' },
+  statValueSmall: { fontSize: 13, fontWeight: '700', color: '#fff', textAlign: 'center' },
+  statLabel: { fontSize: 10, color: GREY, marginTop: 4, textAlign: 'center' },
+  statDivider: { width: 0.5, backgroundColor: '#333', marginHorizontal: 8 },
+
+  errorBox: { backgroundColor: '#3a1a1a', borderRadius: 10, padding: 12, marginBottom: 16 },
+  errorText: { color: '#ff8a8a', fontSize: 13 },
+
+  card: { backgroundColor: BLACK, borderRadius: 14, padding: 18, marginBottom: 16, borderWidth: 0.5, borderColor: '#333' },
+  cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 },
+  cardTitle: { fontSize: 14, fontWeight: '700', color: '#fff', marginBottom: 4 },
+  editLink: { color: GOLD, fontSize: 13, fontWeight: '600' },
+
+  label: { fontSize: 12, fontWeight: '600', color: GREY, marginBottom: 6, marginTop: 12 },
+  input: {
+    backgroundColor: DARK, borderRadius: 10, paddingHorizontal: 14,
+    paddingVertical: Platform.OS === 'ios' ? 13 : 10, fontSize: 14, color: '#fff',
+    borderWidth: 0.5, borderColor: '#333',
+  },
+  editActions: { flexDirection: 'row', gap: 10, marginTop: 18 },
+  cancelBtn: { flex: 1, borderRadius: 10, paddingVertical: 12, alignItems: 'center', backgroundColor: DARK },
+  cancelBtnText: { color: GREY, fontWeight: '600' },
+  saveBtn: { flex: 2, borderRadius: 10, paddingVertical: 12, alignItems: 'center', backgroundColor: GOLD },
+  saveBtnText: { color: BLACK, fontWeight: '700' },
+
+  infoRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 10, borderBottomWidth: 0.5, borderBottomColor: '#2a2a2a' },
+  infoLabel: { fontSize: 13, color: GREY },
+  infoValue: { fontSize: 13, color: '#fff', fontWeight: '600' },
+
+  reviewItem: { paddingVertical: 12, borderBottomWidth: 0.5, borderBottomColor: '#2a2a2a' },
+  reviewHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 },
+  reviewRole: { fontSize: 11, color: GREY },
+  reviewText: { fontSize: 13, color: '#ccc', lineHeight: 19 },
+
+  menuRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 12, borderBottomWidth: 0.5, borderBottomColor: '#2a2a2a' },
+  menuIcon: { fontSize: 18, marginRight: 12 },
+  menuLabel: { flex: 1, fontSize: 14, color: '#fff' },
+  menuBadge: { backgroundColor: GOLD, borderRadius: 10, minWidth: 20, height: 20, paddingHorizontal: 6, alignItems: 'center', justifyContent: 'center', marginRight: 8 },
+  menuBadgeText: { color: BLACK, fontSize: 11, fontWeight: '800' },
+  menuArrow: { fontSize: 18, color: GREY },
+
+  bottomNav: { position: 'absolute', bottom: 0, left: 0, right: 0, backgroundColor: BLACK, borderTopWidth: 0.5, borderTopColor: DARK, paddingVertical: 10, flexDirection: 'row', justifyContent: 'space-around', alignItems: 'center' },
   navItem: { alignItems: 'center' },
   navIcon: { fontSize: 22, color: '#555' },
+  navIconActive: { fontSize: 22, color: GOLD },
   navLabel: { fontSize: 9, color: '#555', marginTop: 2 },
+  navLabelActive: { fontSize: 9, color: GOLD, marginTop: 2 },
   navPost: { width: 44, height: 44, backgroundColor: GOLD, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
-  navPostText: { color: BLACK, fontSize: 24, fontWeight: '700', fontFamily: 'Inter_700Bold', lineHeight: 28 },
+  navPostText: { color: BLACK, fontSize: 24, fontWeight: '700', lineHeight: 28 },
 });

@@ -1,0 +1,324 @@
+// app/hirevan.tsx
+//
+// PAUSED (product decision, same treatment as Dealer Pro in
+// dealer.tsx/dealer-pro-pay.tsx): van-hire moved from fully HIDDEN
+// (no entry point at all) to VISIBLE-BUT-PAUSED — the "Need a van?"
+// banner in index.tsx and the Transport Operator card in register.tsx
+// are both visible again, but this screen itself won't accept a real
+// submission until VAN_HIRE_PAUSED is flipped to false.
+//
+// UNLIKE dealer-pro-pay.tsx (which has NO internal guard at all —
+// pausing only happens at dealer.tsx's entry-point card, so a direct
+// deep link there could still complete a real purchase), this screen
+// guards itself directly: handleSubmit() checks VAN_HIRE_PAUSED before
+// ever reaching the insert, and the whole form is replaced with a
+// "Coming soon" screen when paused. Reaching this route by any path —
+// the banner, a bookmark, a deep link — always shows the same paused
+// state, not just when arriving via index.tsx's banner.
+//
+// Everything else (operator-register-pay.tsx, operator-requests.tsx,
+// the transport_operator_registration payment kind, quotes.tsx) is
+// untouched and stays fully functional for operators already
+// registered — this pause only affects NEW trip requests being posted.
+const VAN_HIRE_PAUSED = true;
+
+import { useRouter } from 'expo-router';
+import { useState } from 'react';
+import {
+  ActivityIndicator,
+  Platform,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from 'react-native';
+import { supabase } from '../../lib/supabase';
+
+const GOLD = '#B8860B';
+const BLACK = '#1A1A18';
+const DARK = '#2a2a2a';
+const GREY = '#AAAAAA';
+
+export default function HireVanScreen() {
+  const router = useRouter();
+
+  const [pickup, setPickup] = useState('');
+  const [destination, setDestination] = useState('');
+  const [date, setDate] = useState('');
+  const [passengers, setPassengers] = useState('');
+  const [description, setDescription] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState(false);
+
+  async function handleSubmit() {
+    // Guard lives here, not just at the entry point — matches the
+    // reasoning in the top-of-file comment.
+    if (VAN_HIRE_PAUSED) return;
+
+    setError('');
+
+    if (!pickup || !destination || !date || !passengers) {
+      setError('Please fill in all required fields.');
+      return;
+    }
+
+    const passengerCount = parseInt(passengers, 10);
+    if (isNaN(passengerCount) || passengerCount < 1) {
+      setError('Enter a valid number of passengers.');
+      return;
+    }
+
+    setLoading(true);
+
+    // FIX (consistent with chat.tsx, post-wanted.tsx, browse-wanted.tsx):
+    // requesting a quote reveals no contact info and isn't a financial
+    // commitment — same free/anonymous treatment as the rest of the
+    // browse-and-engage surface. This previously showed an error and
+    // hard-blocked posting entirely without an account, which is exactly
+    // the kind of friction that deters casual customers before they've
+    // even seen a quote. A real account is only needed once money
+    // actually changes hands — paying the 10% deposit in quotes.tsx.
+    let { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      const { data, error: signInError } = await supabase.auth.signInAnonymously();
+      if (signInError) {
+        setError('Couldn\'t post — please check your connection and try again.');
+        setLoading(false);
+        return;
+      }
+      user = data.user;
+    }
+    if (!user) {
+      setError('Something went wrong. Please try again.');
+      setLoading(false);
+      return;
+    }
+
+    const { error: insertError } = await supabase.from('requests').insert({
+      user_id: user.id,
+      pickup: pickup.trim(),
+      destination: destination.trim(),
+      date: date.trim(),
+      passengers: passengerCount,
+      description: description.trim(),
+      status: 'open',
+    });
+
+    setLoading(false);
+
+    if (insertError) {
+      setError(insertError.message);
+      return;
+    }
+
+    setSuccess(true);
+  }
+
+  if (VAN_HIRE_PAUSED) {
+    return (
+      <View style={styles.successScreen}>
+        <Text style={styles.successEmoji}>🚐</Text>
+        <Text style={styles.successTitle}>Coming soon</Text>
+        <Text style={styles.successSub}>
+          Van-hire is on its way — post a trip and let operators bid
+          for your fare. Check back soon.
+        </Text>
+        <TouchableOpacity
+          style={styles.successBtnOutline}
+          onPress={() => router.push('/')}
+        >
+          <Text style={styles.successBtnOutlineText}>Back to home</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
+
+  if (success) {
+    return (
+      <View style={styles.successScreen}>
+        <Text style={styles.successEmoji}>🎉</Text>
+        <Text style={styles.successTitle}>Trip request posted!</Text>
+        <Text style={styles.successSub}>
+          Operators can now see your trip and submit quotes.
+        </Text>
+        <TouchableOpacity
+          style={styles.successBtn}
+          onPress={() => router.push('/quotes')}
+        >
+          <Text style={styles.successBtnText}>View quotes</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.successBtnOutline}
+          onPress={() => router.push('/')}
+        >
+          <Text style={styles.successBtnOutlineText}>Back to home</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
+
+  return (
+    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+      <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+        <Text style={styles.backText}>← Back</Text>
+      </TouchableOpacity>
+
+      <Text style={styles.heading}>Hire a Van</Text>
+      <Text style={styles.subheading}>
+        Post your trip and let operators compete for your fare.
+      </Text>
+
+      {error ? (
+        <View style={styles.errorBox}>
+          <Text style={styles.errorText}>⚠️ {error}</Text>
+        </View>
+      ) : null}
+
+      <View style={styles.card}>
+        <Text style={styles.label}>Pickup location *</Text>
+        <TextInput
+          style={styles.input}
+          placeholder="e.g. Mbare Musika, Harare"
+          placeholderTextColor="#666"
+          value={pickup}
+          onChangeText={setPickup}
+        />
+
+        <Text style={styles.label}>Destination *</Text>
+        <TextInput
+          style={styles.input}
+          placeholder="e.g. Chinhoyi Bus Terminus"
+          placeholderTextColor="#666"
+          value={destination}
+          onChangeText={setDestination}
+        />
+
+        <Text style={styles.label}>Travel date *</Text>
+        <TextInput
+          style={styles.input}
+          placeholder="e.g. 2026-08-15"
+          placeholderTextColor="#666"
+          value={date}
+          onChangeText={setDate}
+        />
+
+        <Text style={styles.label}>Number of passengers *</Text>
+        <TextInput
+          style={styles.input}
+          placeholder="e.g. 4"
+          placeholderTextColor="#666"
+          value={passengers}
+          onChangeText={setPassengers}
+          keyboardType="number-pad"
+        />
+
+        <Text style={styles.label}>Extra notes (optional)</Text>
+        <TextInput
+          style={[styles.input, styles.textArea]}
+          placeholder="Any special requirements, luggage, stops..."
+          placeholderTextColor="#666"
+          value={description}
+          onChangeText={setDescription}
+          multiline
+          numberOfLines={4}
+        />
+      </View>
+
+      <View style={styles.infoBox}>
+        <Text style={styles.infoText}>
+          🔒 Your contact details stay private until you choose an operator and pay a small deposit.
+        </Text>
+      </View>
+
+      <TouchableOpacity
+        style={[styles.submitBtn, loading && styles.submitBtnDisabled]}
+        onPress={handleSubmit}
+        disabled={loading}
+        activeOpacity={0.85}
+      >
+        {loading ? (
+          <ActivityIndicator color={BLACK} />
+        ) : (
+          <Text style={styles.submitText}>Post trip request</Text>
+        )}
+      </TouchableOpacity>
+    </ScrollView>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: { flex: 1, backgroundColor: '#111111' },
+  content: { padding: 20, paddingTop: Platform.OS === 'ios' ? 56 : 40, paddingBottom: 48 },
+
+  backBtn: { marginBottom: 16 },
+  backText: { color: GREY, fontSize: 14 },
+
+  heading: { fontSize: 24, fontWeight: '800', color: '#fff', marginBottom: 6 },
+  subheading: { fontSize: 13, color: GREY, marginBottom: 24, lineHeight: 19 },
+
+  errorBox: { backgroundColor: '#3a1a1a', borderRadius: 10, padding: 12, marginBottom: 16 },
+  errorText: { color: '#ff8a8a', fontSize: 13 },
+
+  card: {
+    backgroundColor: BLACK,
+    borderRadius: 14,
+    padding: 18,
+    marginBottom: 16,
+    borderWidth: 0.5,
+    borderColor: '#333',
+  },
+  label: { fontSize: 13, fontWeight: '700', color: '#fff', marginBottom: 8, marginTop: 14 },
+  input: {
+    backgroundColor: DARK,
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: Platform.OS === 'ios' ? 13 : 10,
+    fontSize: 14,
+    color: '#fff',
+    borderWidth: 0.5,
+    borderColor: '#333',
+  },
+  textArea: { height: 90, textAlignVertical: 'top', paddingTop: 10 },
+
+  infoBox: { backgroundColor: '#1a1a2e', borderRadius: 10, padding: 14, marginBottom: 20, borderWidth: 0.5, borderColor: '#3a3a5e' },
+  infoText: { color: '#8888ff', fontSize: 12, lineHeight: 18 },
+
+  submitBtn: { backgroundColor: GOLD, borderRadius: 14, paddingVertical: 16, alignItems: 'center' },
+  submitBtnDisabled: { opacity: 0.6 },
+  submitText: { color: BLACK, fontSize: 16, fontWeight: '800' },
+
+  // Success screen
+  successScreen: {
+    flex: 1,
+    backgroundColor: '#111111',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 32,
+  },
+  successEmoji: { fontSize: 64, marginBottom: 20 },
+  successTitle: { fontSize: 24, fontWeight: '800', color: '#fff', marginBottom: 10, textAlign: 'center' },
+  successSub: { fontSize: 15, color: GREY, textAlign: 'center', lineHeight: 22, marginBottom: 32 },
+  successBtn: {
+    backgroundColor: GOLD,
+    borderRadius: 14,
+    paddingVertical: 16,
+    paddingHorizontal: 40,
+    marginBottom: 12,
+    width: '100%',
+    alignItems: 'center',
+  },
+  successBtnText: { color: BLACK, fontSize: 16, fontWeight: '800' },
+  successBtnOutline: {
+    borderRadius: 14,
+    paddingVertical: 16,
+    paddingHorizontal: 40,
+    width: '100%',
+    alignItems: 'center',
+    borderWidth: 1.5,
+    borderColor: GOLD,
+  },
+  successBtnOutlineText: { color: GOLD, fontSize: 16, fontWeight: '700' },
+});

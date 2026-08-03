@@ -59,6 +59,13 @@ export default function LoginScreen() {
           secureTextEntry
         />
 
+        {/* NEW: previously there was no password recovery path at all
+            anywhere in the app — see forgot-password.tsx for the full
+            reasoning and known caveats. */}
+        <TouchableOpacity onPress={() => router.push('/forgot-password')} style={styles.forgotLink}>
+          <Text style={styles.forgotLinkText}>Forgot your password?</Text>
+        </TouchableOpacity>
+
         <TouchableOpacity style={styles.button} onPress={handleLogin} disabled={loading}>
           {loading ? <ActivityIndicator color={BLACK} /> : <Text style={styles.buttonText}>Sign in</Text>}
         </TouchableOpacity>
@@ -83,6 +90,8 @@ const styles = StyleSheet.create({
   label: { color: '#aaa', fontSize: 12, marginBottom: 6, marginTop: 16 },
   input: { backgroundColor: DARK, borderRadius: 10, padding: 14, color: '#fff', fontSize: 15 },
   button: { backgroundColor: GOLD, borderRadius: 10, padding: 16, alignItems: 'center', marginTop: 24 },
+  forgotLink: { alignSelf: 'flex-end', marginTop: 8 },
+  forgotLinkText: { color: GOLD, fontSize: 12 },
   buttonText: { color: BLACK, fontSize: 16, fontWeight: '700' },
   link: { color: '#aaa', fontSize: 13, textAlign: 'center', marginTop: 20 },
 });

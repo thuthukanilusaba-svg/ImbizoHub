@@ -1,0 +1,340 @@
+// app/operator-id-verify.tsx
+// ID verification for delivery and transport operators — the step
+// dealer.tsx has referenced for a while ("Submit your national ID to
+// become verified and get more jobs") but that never actually existed
+// as a screen. No payment here — operators already pay a separate
+// registration fee (delivery-operator-register-pay.tsx /
+// operator-register-pay.tsx); this is purely the identity-check step
+// that upgrades their standing once approved.
+//
+// Shares the same backend as Verified Seller
+// (verified-seller-pay.tsx) — submit_verification /
+// my_verification_status / the verification_requests table and admin
+// review flow — see unified-verification.sql. Approval sets:
+//   delivery_operator  -> delivery_operators.verification_tier = 'id_verified'
+//   transport_operator -> profiles.operator_id_verified = true
+//
+// SCOPE: this is the ID-photo tier only. delivery_operators has a
+// third tier ('trusted') that needs an affidavit + referee, a
+// meaningfully different process not built here.
+//
+// Usage: router.push('/operator-id-verify?type=delivery_operator')
+//        router.push('/operator-id-verify?type=transport_operator')
+//
+// FIX: upload previously did fetch(uri) -> response.blob() -> pass Blob
+// straight to supabase.storage.upload(). That breaks under Hermes with
+// "Creating blobs from 'ArrayBuffer' and 'ArrayBufferView' are not
+// supported" because supabase-js reconstructs the Blob internally via
+// ArrayBuffer, which Hermes doesn't support. Fixed by reading the file
+// as base64 via expo-file-system and decoding it to an ArrayBuffer with
+// base64-arraybuffer before upload — bypasses the Blob constructor path
+// entirely. Mime type is now captured from the picker result instead of
+// blob.type, since we no longer have a Blob to read it from.
+
+import { decode } from 'base64-arraybuffer';
+import * as FileSystem from 'expo-file-system';
+import * as ImagePicker from 'expo-image-picker';
+import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useEffect, useState } from 'react';
+import {
+  ActivityIndicator, Image, Platform, ScrollView, StyleSheet,
+  Text, TouchableOpacity, View,
+} from 'react-native';
+import { supabase } from '../../lib/supabase';
+
+const GOLD = '#B8860B';
+const BLACK = '#1A1A18';
+const DARK = '#2a2a2a';
+const GREY = '#AAAAAA';
+const GREEN = '#4fc96e';
+const RED = '#ff8a8a';
+
+type OperatorType = 'delivery_operator' | 'transport_operator';
+type ReviewStatus = 'not_submitted' | 'pending_review' | 'approved' | 'rejected';
+
+const COPY: Record<OperatorType, { title: string; benefit: string; emoji: string }> = {
+  delivery_operator: {
+    title: 'Delivery operator ID verification',
+    benefit: 'Verified drivers appear higher in the driver list buyers choose from.',
+    emoji: '📦',
+  },
+  transport_operator: {
+    title: 'Transport operator ID verification',
+    benefit: 'Verified operators appear higher when customers review quotes.',
+    emoji: '🚐',
+  },
+};
+
+export default function OperatorIdVerifyScreen() {
+  const router = useRouter();
+  const { type } = useLocalSearchParams<{ type: OperatorType }>();
+  const operatorType: OperatorType = type === 'transport_operator' ? 'transport_operator' : 'delivery_operator';
+  const copy = COPY[operatorType];
+
+  const [loading, setLoading] = useState(true);
+  const [myId, setMyId] = useState('');
+  const [currentlyIdVerified, setCurrentlyIdVerified] = useState(false);
+  const [reviewStatus, setReviewStatus] = useState<ReviewStatus>('not_submitted');
+  const [rejectionReason, setRejectionReason] = useState<string | null>(null);
+
+  const [uploading, setUploading] = useState(false);
+  const [pickedImageUri, setPickedImageUri] = useState<string | null>(null);
+  const [pickedMimeType, setPickedMimeType] = useState<string | null>(null);
+  const [error, setError] = useState('');
+
+  useEffect(() => { init(); }, [operatorType]);
+
+  async function init() {
+    setLoading(true);
+    setError('');
+    const { data: { user } } = await supabase.auth.getUser();
+
+    if (!user || user.is_anonymous) {
+      router.push('/register');
+      return;
+    }
+    setMyId(user.id);
+
+    if (operatorType === 'delivery_operator') {
+      const { data } = await supabase
+        .from('delivery_operators')
+        .select('verification_tier')
+        .eq('user_id', user.id)
+        .maybeSingle();
+
+      if (!data) {
+        setError('No delivery operator profile found. Please register as a delivery operator first.');
+        setLoading(false);
+        return;
+      }
+      setCurrentlyIdVerified(data.verification_tier === 'id_verified' || data.verification_tier === 'trusted');
+    } else {
+      const { data } = await supabase
+        .from('profiles')
+        .select('operator_id_verified')
+        .eq('id', user.id)
+        .maybeSingle();
+      setCurrentlyIdVerified(!!data?.operator_id_verified);
+    }
+
+    const { data: statusRows } = await supabase.rpc('my_verification_status', {
+      p_verification_type: operatorType,
+    });
+    const latest = statusRows?.[0];
+    setReviewStatus((latest?.status as ReviewStatus) ?? 'not_submitted');
+    setRejectionReason(latest?.rejection_reason ?? null);
+
+    setLoading(false);
+  }
+
+  async function pickDocument() {
+    setError('');
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) {
+      setError('We need permission to access your photos to upload your ID.');
+      return;
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      quality: 0.8,
+    });
+
+    if (!result.canceled && result.assets?.[0]) {
+      setPickedImageUri(result.assets[0].uri);
+      setPickedMimeType(result.assets[0].mimeType ?? 'image/jpeg');
+    }
+  }
+
+  async function handleUpload() {
+    if (!pickedImageUri) return;
+    setError('');
+    setUploading(true);
+
+    try {
+      const base64 = await FileSystem.readAsStringAsync(pickedImageUri, {
+        encoding: FileSystem.EncodingType.Base64,
+      });
+
+      const mimeToExt: Record<string, string> = {
+        'image/jpeg': 'jpg',
+        'image/jpg': 'jpg',
+        'image/png': 'png',
+        'image/webp': 'webp',
+        'image/heic': 'heic',
+      };
+      const mimeType = pickedMimeType || 'image/jpeg';
+      const extension = mimeToExt[mimeType] || 'jpg';
+      const path = `${myId}/${Date.now()}.${extension}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from('verification-documents')
+        .upload(path, decode(base64), { contentType: mimeType });
+
+      if (uploadError) {
+        setError(uploadError.message);
+        setUploading(false);
+        return;
+      }
+
+      const { error: rpcError } = await supabase.rpc('submit_verification', {
+        p_verification_type: operatorType,
+        p_document_path: path,
+      });
+
+      if (rpcError) {
+        setError(rpcError.message);
+        setUploading(false);
+        return;
+      }
+
+      setPickedImageUri(null);
+      setPickedMimeType(null);
+      await init();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Upload failed. Please try again.');
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  if (loading) {
+    return (
+      <View style={styles.center}>
+        <ActivityIndicator size="large" color={GOLD} />
+      </View>
+    );
+  }
+
+  if (currentlyIdVerified) {
+    return (
+      <View style={styles.container}>
+        <ScrollView contentContainerStyle={styles.content}>
+          <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+            <Text style={styles.backText}>← Back</Text>
+          </TouchableOpacity>
+          <View style={styles.successCard}>
+            <Text style={styles.successEmoji}>✅</Text>
+            <Text style={styles.successTitle}>You're ID verified</Text>
+            <Text style={styles.successBody}>{copy.benefit}</Text>
+            <TouchableOpacity style={styles.doneBtn} onPress={() => router.replace('/dealer')}>
+              <Text style={styles.doneBtnText}>Back to Dashboard</Text>
+            </TouchableOpacity>
+          </View>
+        </ScrollView>
+      </View>
+    );
+  }
+
+  if (reviewStatus === 'pending_review') {
+    return (
+      <View style={styles.container}>
+        <ScrollView contentContainerStyle={styles.content}>
+          <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+            <Text style={styles.backText}>← Back</Text>
+          </TouchableOpacity>
+          <View style={styles.pendingCard}>
+            <Text style={styles.pendingEmoji}>🕐</Text>
+            <Text style={styles.pendingTitle}>Your ID is under review</Text>
+            <Text style={styles.pendingBody}>
+              Our team reviews submissions within a few business days — you'll see your verified status
+              here as soon as it's approved.
+            </Text>
+          </View>
+        </ScrollView>
+      </View>
+    );
+  }
+
+  const wasRejected = reviewStatus === 'rejected';
+
+  return (
+    <View style={styles.container}>
+      <ScrollView contentContainerStyle={styles.content}>
+        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+          <Text style={styles.backText}>← Back</Text>
+        </TouchableOpacity>
+
+        <Text style={styles.heading}>{copy.emoji} {copy.title}</Text>
+        <Text style={styles.subheading}>{copy.benefit}</Text>
+
+        {wasRejected && (
+          <View style={styles.errorBox}>
+            <Text style={styles.errorText}>
+              ⚠️ Your last submission wasn't approved{rejectionReason ? `: ${rejectionReason}` : '.'} Please upload a
+              clearer photo to try again.
+            </Text>
+          </View>
+        )}
+
+        <View style={styles.card}>
+          <Text style={styles.stepNote}>Used only to verify your identity — not shown publicly.</Text>
+
+          {pickedImageUri ? (
+            <>
+              <Image source={{ uri: pickedImageUri }} style={styles.previewImage} />
+              <TouchableOpacity
+                style={[styles.submitBtn, uploading && { opacity: 0.6 }]}
+                onPress={handleUpload}
+                disabled={uploading}
+              >
+                {uploading
+                  ? <ActivityIndicator color={BLACK} />
+                  : <Text style={styles.submitBtnText}>Submit for review</Text>
+                }
+              </TouchableOpacity>
+              <TouchableOpacity onPress={() => setPickedImageUri(null)} disabled={uploading}>
+                <Text style={styles.changePhotoText}>Choose a different photo</Text>
+              </TouchableOpacity>
+            </>
+          ) : (
+            <TouchableOpacity style={styles.uploadBtn} onPress={pickDocument}>
+              <Text style={styles.uploadBtnText}>📷 Choose a photo of your national ID</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+
+        {error ? (
+          <View style={styles.errorBox}><Text style={styles.errorText}>⚠️ {error}</Text></View>
+        ) : null}
+      </ScrollView>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: { flex: 1, backgroundColor: '#111111' },
+  content: { padding: 20, paddingTop: Platform.OS === 'ios' ? 56 : 40 },
+  center: { flex: 1, backgroundColor: '#111', alignItems: 'center', justifyContent: 'center' },
+
+  backBtn: { marginBottom: 16 },
+  backText: { color: GREY, fontSize: 14 },
+  heading: { fontSize: 22, fontWeight: '800', color: '#fff', marginBottom: 6 },
+  subheading: { fontSize: 13, color: GREY, marginBottom: 24 },
+
+  card: { backgroundColor: BLACK, borderRadius: 14, padding: 18, marginBottom: 16, borderWidth: 0.5, borderColor: '#333' },
+  stepNote: { color: GREY, fontSize: 11, marginBottom: 14 },
+
+  errorBox: { backgroundColor: '#3a1a1a', borderRadius: 10, padding: 12, marginBottom: 16 },
+  errorText: { color: RED, fontSize: 13 },
+
+  uploadBtn: { backgroundColor: DARK, borderRadius: 14, paddingVertical: 16, alignItems: 'center', borderWidth: 1, borderColor: '#444', borderStyle: 'dashed' },
+  uploadBtnText: { color: '#fff', fontSize: 14, fontWeight: '700' },
+  previewImage: { width: '100%', height: 180, borderRadius: 10, marginBottom: 14, backgroundColor: DARK },
+  changePhotoText: { color: GREY, fontSize: 12, textAlign: 'center', marginTop: 12 },
+
+  submitBtn: { backgroundColor: GOLD, borderRadius: 14, paddingVertical: 16, alignItems: 'center' },
+  submitBtnText: { color: BLACK, fontSize: 15, fontWeight: '800' },
+
+  successCard: { alignItems: 'center', paddingTop: 60 },
+  successEmoji: { fontSize: 56, marginBottom: 16 },
+  successTitle: { color: '#fff', fontSize: 20, fontWeight: '800', marginBottom: 8 },
+  successBody: { color: GREY, fontSize: 13, textAlign: 'center', marginBottom: 28, paddingHorizontal: 10 },
+  doneBtn: { backgroundColor: GOLD, borderRadius: 14, paddingVertical: 14, paddingHorizontal: 32 },
+  doneBtnText: { color: BLACK, fontSize: 14, fontWeight: '800' },
+
+  pendingCard: { alignItems: 'center', paddingTop: 60, paddingHorizontal: 10 },
+  pendingEmoji: { fontSize: 56, marginBottom: 16 },
+  pendingTitle: { color: '#fff', fontSize: 20, fontWeight: '800', marginBottom: 12, textAlign: 'center' },
+  pendingBody: { color: GREY, fontSize: 13, textAlign: 'center', lineHeight: 20 },
+});

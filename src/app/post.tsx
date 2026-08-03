@@ -1,175 +1,375 @@
+// app/post.tsx
+// Post a listing — supports multiple photo uploads to Supabase Storage
+//
+// FIX (product decision, following the pattern established across the
+// rest of the app today): posting a listing now requires a REAL
+// (non-anonymous) account, unlike posting a Wanted request or a van-hire
+// trip. Reasoning: a listing is persistent inventory, not a one-off
+// request — it sits on the marketplace until someone manages it, and an
+// anonymous session has no recovery path if lost, meaning an abandoned
+// anonymous listing could never be edited, marked sold, or removed
+// again. Buyers messaging that seller would be messaging someone who may
+// never come back. This is closer in kind to "arranging a deal" (which
+// already requires a real account everywhere else in the app) than to
+// casual browsing/posting.
+//
+// The check happens in TWO places:
+//   1. requireRealAccount(), called BEFORE pickImages() does anything —
+//      so an anonymous user is redirected to register before they invest
+//      time picking and uploading photos, rather than after, which would
+//      leave those uploads orphaned in storage with no listing ever
+//      created to reference them.
+//   2. Re-checked in handlePost() as a defensive backstop, in case
+//      session state changed between opening this screen and submitting.
+//
+// FIX (upload bug): uploadImage() previously did fetch(uri) ->
+// response.blob() -> passed the Blob straight to
+// supabase.storage.upload(). That breaks under Hermes with "Creating
+// blobs from 'ArrayBuffer' and 'ArrayBufferView' are not supported"
+// because supabase-js reconstructs the Blob internally via ArrayBuffer,
+// which Hermes doesn't support. Fixed by reading the file as base64 via
+// expo-file-system and decoding it to an ArrayBuffer with
+// base64-arraybuffer before upload — bypasses the Blob constructor path
+// entirely. Mime type is now captured from the picker result (per
+// image) and threaded through to uploadImage(), since we no longer have
+// a Blob to read blob.type from. Same fix as operator-id-verify.tsx.
+
+import { decode } from 'base64-arraybuffer';
+import * as FileSystem from 'expo-file-system';
+import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
-import { StatusBar } from 'expo-status-bar';
 import { useState } from 'react';
-import { ActivityIndicator, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import {
+  ActivityIndicator,
+  Image,
+  Platform,
+  ScrollView as RNScrollView,
+  ScrollView,
+  StyleSheet,
+  Text, TextInput, TouchableOpacity,
+  View,
+} from 'react-native';
 import { supabase } from '../../lib/supabase';
 
 const GOLD = '#B8860B';
 const BLACK = '#1A1A18';
 const DARK = '#2a2a2a';
 const GREY = '#AAAAAA';
+const MAX_PHOTOS = 6;
 
-const categories = ['Phones', 'Vehicles', 'Furniture', 'Clothing', 'Appliances', 'Building', 'Baby', 'Electronics', 'Other'];
+const categories = ['Phones', 'Vehicles', 'Furniture', 'Clothing', 'Appliances', 'Building', 'Baby', 'Other'];
 
 export default function PostScreen() {
   const router = useRouter();
+
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [price, setPrice] = useState('');
   const [location, setLocation] = useState('');
-  const [category, setCategory] = useState('');
-  const [imageUrl, setImageUrl] = useState('');
-  const [loading, setLoading] = useState(false);
+  const [category, setCategory] = useState('Phones');
+  const [images, setImages] = useState<{ uri: string; uploading: boolean; url?: string; mimeType?: string }[]>([]);
+  const [posting, setPosting] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
 
-  const handlePost = async () => {
-    if (!title || !price || !location || !category) {
-      setError('Please fill in title, price, location and category.');
+  // Returns true if there's a real, non-anonymous session. Redirects to
+  // /register and returns false otherwise — callers should bail out
+  // immediately when this returns false.
+  async function requireRealAccount(): Promise<boolean> {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user || user.is_anonymous) {
+      router.push('/register');
+      return false;
+    }
+    return true;
+  }
+
+  async function pickImages() {
+    if (images.length >= MAX_PHOTOS) {
+      setError(`Maximum ${MAX_PHOTOS} photos allowed.`);
       return;
     }
-    setLoading(true);
     setError('');
 
-    const { data: { session } } = await supabase.auth.getSession();
+    // Checked here, before any photo picking/uploading starts — see file
+    // header comment for why this can't wait until final submit.
+    const ok = await requireRealAccount();
+    if (!ok) return;
 
-    const { error: insertError } = await supabase.from('listings').insert({
-      title,
-      description,
-      price: parseFloat(price),
-      location,
-      category,
-      image_url: imageUrl || 'https://images.unsplash.com/photo-1496181133206-80ce9b88a853?w=400',
-      badge: 'Verified',
-      user_id: session?.user?.id,
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) {
+      setError('Permission to access photos is required.');
+      return;
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsMultipleSelection: true,
+      quality: 0.7,
+      selectionLimit: MAX_PHOTOS - images.length,
     });
 
-    setLoading(false);
+    if (result.canceled) return;
+
+    const newImages = result.assets.map((asset) => ({
+      uri: asset.uri,
+      uploading: true,
+      mimeType: asset.mimeType ?? 'image/jpeg',
+    }));
+    setImages((prev) => [...prev, ...newImages]);
+
+    // Upload each new image
+    for (const asset of result.assets) {
+      uploadImage(asset.uri, asset.mimeType ?? 'image/jpeg');
+    }
+  }
+
+  async function uploadImage(uri: string, mimeType: string) {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Not logged in');
+
+      const base64 = await FileSystem.readAsStringAsync(uri, {
+        encoding: FileSystem.EncodingType.Base64,
+      });
+
+      const fileExt = uri.split('.').pop()?.split('?')[0] || 'jpg';
+      const fileName = `${user.id}/${Date.now()}-${Math.random().toString(36).slice(2)}.${fileExt}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from('listing-photos')
+        .upload(fileName, decode(base64), {
+          contentType: mimeType || 'image/jpeg',
+          upsert: false,
+        });
+
+      if (uploadError) throw uploadError;
+
+      const { data: urlData } = supabase.storage
+        .from('listing-photos')
+        .getPublicUrl(fileName);
+
+      setImages((prev) =>
+        prev.map((img) =>
+          img.uri === uri ? { ...img, uploading: false, url: urlData.publicUrl } : img
+        )
+      );
+    } catch (err: any) {
+      setError(`Upload failed: ${err.message}`);
+      setImages((prev) => prev.filter((img) => img.uri !== uri));
+    }
+  }
+
+  function removeImage(uri: string) {
+    setImages((prev) => prev.filter((img) => img.uri !== uri));
+  }
+
+  async function handlePost() {
+    setError('');
+
+    if (!title || !price || !location) {
+      setError('Please fill in title, price, and location.');
+      return;
+    }
+
+    const priceNum = parseFloat(price);
+    if (isNaN(priceNum) || priceNum <= 0) {
+      setError('Enter a valid price.');
+      return;
+    }
+
+    const stillUploading = images.some((img) => img.uploading);
+    if (stillUploading) {
+      setError('Please wait for photos to finish uploading.');
+      return;
+    }
+
+    setPosting(true);
+
+    // Defensive re-check — see file header comment. pickImages() already
+    // guards this at the point photos are picked, but session state
+    // could in principle change between then and submitting.
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user || user.is_anonymous) {
+      setPosting(false);
+      router.push('/register');
+      return;
+    }
+
+    const imageUrls = images.map((img) => img.url).filter(Boolean) as string[];
+
+    // NEW: Dealer Pro benefit — a listing posted by an active Pro
+    // subscriber gets the 'Dealer' badge instead of 'New', making their
+    // listings visually stand out across the app (index.tsx and
+    // explore.tsx both already render this badge style for any value
+    // other than 'Verified' — this was previously hardcoded to 'New'
+    // for absolutely everyone, so the badge rendering existed but
+    // nothing ever actually triggered it). Same "paid boolean + expires_at
+    // checked against now()" pattern already used everywhere else in the
+    // app (dealer.tsx, analytics.tsx, explore.tsx's Pro-sorting check).
+    const { data: posterProfile } = await supabase
+      .from('profiles')
+      .select('dealer_pro_active, dealer_pro_expires_at')
+      .eq('id', user.id)
+      .maybeSingle();
+
+    const posterIsDealerPro = !!(
+      posterProfile?.dealer_pro_active &&
+      posterProfile?.dealer_pro_expires_at &&
+      new Date(posterProfile.dealer_pro_expires_at).getTime() > Date.now()
+    );
+
+    const { error: insertError } = await supabase.from('listings').insert({
+      user_id: user.id,
+      title: title.trim(),
+      description: description.trim(),
+      price: priceNum,
+      location: location.trim(),
+      category,
+      image_url: imageUrls[0] || null, // backwards compatible — first photo
+      image_urls: imageUrls,            // full gallery
+      badge: posterIsDealerPro ? 'Dealer' : 'New',
+    });
+
+    setPosting(false);
+
     if (insertError) {
       setError(insertError.message);
-    } else {
-      setSuccess(true);
-      setTimeout(() => router.push('/'), 1500);
+      return;
     }
-  };
+
+    setSuccess(true);
+  }
+
+  if (success) {
+    return (
+      <View style={styles.successScreen}>
+        <Text style={styles.successEmoji}>🎉</Text>
+        <Text style={styles.successTitle}>Listing posted!</Text>
+        <Text style={styles.successBody}>Your item is now live on ImbizoHub.</Text>
+        <TouchableOpacity style={styles.successBtn} onPress={() => router.replace('/')}>
+          <Text style={styles.successBtnText}>Back to home</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
 
   return (
     <View style={styles.container}>
-      <StatusBar style="light" />
-      <ScrollView showsVerticalScrollIndicator={false}>
+      <ScrollView contentContainerStyle={styles.content}>
+        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+          <Text style={styles.backText}>← Back</Text>
+        </TouchableOpacity>
 
-        <View style={styles.header}>
-          <TouchableOpacity onPress={() => router.back()}>
-            <Text style={styles.closeBtn}>✕</Text>
-          </TouchableOpacity>
-          <Text style={styles.headerTitle}>Post a listing</Text>
-          <Text style={styles.draftBtn}> </Text>
+        <Text style={styles.heading}>Post a listing</Text>
+        <Text style={styles.subheading}>Add photos and details to attract buyers.</Text>
+
+        <TouchableOpacity
+          style={styles.whatsappImportLink}
+          onPress={() => router.push('/whatsapp-import')}
+        >
+          <Text style={styles.whatsappImportLinkText}>
+            💬 Already selling on WhatsApp? Import a listing instead →
+          </Text>
+        </TouchableOpacity>
+
+        {error ? (
+          <View style={styles.errorBox}>
+            <Text style={styles.errorText}>⚠️ {error}</Text>
+          </View>
+        ) : null}
+
+        {/* Photo gallery */}
+        <Text style={styles.label}>Photos ({images.length}/{MAX_PHOTOS})</Text>
+        <RNScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.photoScroll}>
+          {images.map((img) => (
+            <View key={img.uri} style={styles.photoThumb}>
+              <Image source={{ uri: img.uri }} style={styles.photoImage} />
+              {img.uploading && (
+                <View style={styles.photoUploadingOverlay}>
+                  <ActivityIndicator color="#fff" />
+                </View>
+              )}
+              {!img.uploading && (
+                <TouchableOpacity style={styles.photoRemoveBtn} onPress={() => removeImage(img.uri)}>
+                  <Text style={styles.photoRemoveText}>✕</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          ))}
+
+          {images.length < MAX_PHOTOS && (
+            <TouchableOpacity style={styles.addPhotoBtn} onPress={pickImages}>
+              <Text style={styles.addPhotoIcon}>📷</Text>
+              <Text style={styles.addPhotoText}>Add photo</Text>
+            </TouchableOpacity>
+          )}
+        </RNScrollView>
+
+        {/* Form fields */}
+        <View style={styles.card}>
+          <Text style={styles.label}>Title *</Text>
+          <TextInput
+            style={styles.input}
+            placeholder="e.g. iPhone 13 Pro, 256GB"
+            placeholderTextColor="#666"
+            value={title}
+            onChangeText={setTitle}
+          />
+
+          <Text style={styles.label}>Price (USD) *</Text>
+          <TextInput
+            style={styles.input}
+            placeholder="e.g. 320"
+            placeholderTextColor="#666"
+            value={price}
+            onChangeText={setPrice}
+            keyboardType="decimal-pad"
+          />
+
+          <Text style={styles.label}>Location *</Text>
+          <TextInput
+            style={styles.input}
+            placeholder="e.g. Harare"
+            placeholderTextColor="#666"
+            value={location}
+            onChangeText={setLocation}
+          />
+
+          <Text style={styles.label}>Category</Text>
+          <RNScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 4 }}>
+            {categories.map((cat) => (
+              <TouchableOpacity
+                key={cat}
+                style={[styles.categoryChip, category === cat && styles.categoryChipActive]}
+                onPress={() => setCategory(cat)}
+              >
+                <Text style={[styles.categoryChipText, category === cat && styles.categoryChipTextActive]}>
+                  {cat}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </RNScrollView>
+
+          <Text style={styles.label}>Description</Text>
+          <TextInput
+            style={[styles.input, styles.textArea]}
+            placeholder="Describe the item's condition, features..."
+            placeholderTextColor="#666"
+            value={description}
+            onChangeText={setDescription}
+            multiline
+            numberOfLines={4}
+          />
         </View>
 
-        {success ? (
-          <View style={styles.successBox}>
-            <Text style={styles.successIcon}>🎉</Text>
-            <Text style={styles.successText}>Listing posted successfully!</Text>
-            <Text style={styles.successSub}>Redirecting to home...</Text>
-          </View>
-        ) : (
-          <>
-            {error ? <Text style={styles.errorText}>{error}</Text> : null}
-
-            <View style={styles.section}>
-              <Text style={styles.lbl}>TITLE *</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="e.g. iPhone 13 Pro 256GB"
-                placeholderTextColor="#555"
-                value={title}
-                onChangeText={setTitle}
-                maxLength={60}
-              />
-              <Text style={styles.charCount}>{title.length} / 60</Text>
-            </View>
-
-            <View style={styles.section}>
-              <Text style={styles.lbl}>CATEGORY *</Text>
-              <View style={styles.catGrid}>
-                {categories.map((cat) => (
-                  <TouchableOpacity
-                    key={cat}
-                    style={[styles.catPill, category === cat && styles.catPillActive]}
-                    onPress={() => setCategory(cat)}
-                  >
-                    <Text style={[styles.catPillText, category === cat && styles.catPillTextActive]}>{cat}</Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-            </View>
-
-            <View style={styles.section}>
-              <Text style={styles.lbl}>PRICE (USD) *</Text>
-              <View style={styles.inputRow}>
-                <Text style={styles.currency}>$</Text>
-                <TextInput
-                  style={styles.priceInput}
-                  placeholder="0"
-                  placeholderTextColor="#555"
-                  value={price}
-                  onChangeText={setPrice}
-                  keyboardType="numeric"
-                />
-              </View>
-            </View>
-
-            <View style={styles.section}>
-              <Text style={styles.lbl}>LOCATION *</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="e.g. Harare, Avondale"
-                placeholderTextColor="#555"
-                value={location}
-                onChangeText={setLocation}
-              />
-            </View>
-
-            <View style={styles.section}>
-              <Text style={styles.lbl}>DESCRIPTION</Text>
-              <TextInput
-                style={styles.descInput}
-                placeholder="Describe your item..."
-                placeholderTextColor="#555"
-                value={description}
-                onChangeText={setDescription}
-                multiline
-                maxLength={500}
-              />
-              <Text style={styles.charCount}>{description.length} / 500</Text>
-            </View>
-
-            <View style={styles.section}>
-              <Text style={styles.lbl}>IMAGE URL (optional)</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="https://..."
-                placeholderTextColor="#555"
-                value={imageUrl}
-                onChangeText={setImageUrl}
-              />
-              <Text style={styles.photoTip}>Tip: Paste an image URL. Leave blank for a default image.</Text>
-            </View>
-
-            <View style={styles.section}>
-              <TouchableOpacity style={styles.btnPost} onPress={handlePost} disabled={loading}>
-                {loading ? (
-                  <ActivityIndicator color={BLACK} />
-                ) : (
-                  <Text style={styles.btnPostText}>Post listing</Text>
-                )}
-              </TouchableOpacity>
-              <Text style={styles.postNote}>Your listing will be live instantly</Text>
-            </View>
-
-            <View style={{ height: 40 }} />
-          </>
-        )}
+        <TouchableOpacity
+          style={[styles.postBtn, posting && { opacity: 0.6 }]}
+          onPress={handlePost}
+          disabled={posting}
+        >
+          {posting ? <ActivityIndicator color="#fff" /> : <Text style={styles.postBtnText}>Post listing</Text>}
+        </TouchableOpacity>
       </ScrollView>
     </View>
   );
@@ -177,30 +377,51 @@ export default function PostScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#111111' },
-  header: { backgroundColor: BLACK, padding: 16, paddingTop: 50, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  closeBtn: { color: '#fff', fontSize: 20 },
-  headerTitle: { color: '#fff', fontSize: 14, fontWeight: '700' },
-  draftBtn: { color: GOLD, fontSize: 13 },
-  section: { backgroundColor: BLACK, paddingHorizontal: 16, paddingBottom: 14 },
-  lbl: { color: GREY, fontSize: 11, marginBottom: 6, letterSpacing: 0.5 },
-  input: { backgroundColor: DARK, borderRadius: 10, padding: 12, borderWidth: 0.5, borderColor: '#444', color: '#fff', fontSize: 14 },
-  inputRow: { backgroundColor: DARK, borderRadius: 10, padding: 12, borderWidth: 0.5, borderColor: '#444', flexDirection: 'row', alignItems: 'center', gap: 8 },
-  currency: { color: GOLD, fontSize: 16, fontWeight: '800' },
-  priceInput: { color: '#fff', fontSize: 16, fontWeight: '700', flex: 1 },
-  descInput: { backgroundColor: DARK, borderRadius: 10, padding: 12, borderWidth: 0.5, borderColor: '#444', color: '#fff', fontSize: 13, minHeight: 100, textAlignVertical: 'top' },
-  charCount: { color: '#555', fontSize: 10, textAlign: 'right', marginTop: 4 },
-  catGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  catPill: { backgroundColor: DARK, borderRadius: 20, paddingHorizontal: 14, paddingVertical: 7, borderWidth: 0.5, borderColor: '#444' },
-  catPillActive: { backgroundColor: '#3a2800', borderColor: GOLD },
-  catPillText: { color: '#ccc', fontSize: 12 },
-  catPillTextActive: { color: GOLD },
-  photoTip: { color: '#555', fontSize: 10, marginTop: 6 },
-  btnPost: { backgroundColor: GOLD, borderRadius: 14, padding: 16, alignItems: 'center' },
-  btnPostText: { color: BLACK, fontSize: 15, fontWeight: '800' },
-  postNote: { color: '#555', fontSize: 10, textAlign: 'center', marginTop: 8 },
-  errorText: { color: '#ff4444', fontSize: 13, textAlign: 'center', padding: 12 },
-  successBox: { alignItems: 'center', padding: 60 },
-  successIcon: { fontSize: 48, marginBottom: 16 },
-  successText: { color: '#fff', fontSize: 18, fontWeight: '700', marginBottom: 8 },
-  successSub: { color: GREY, fontSize: 13 },
+  content: { padding: 20, paddingBottom: 60 },
+
+  backBtn: { marginBottom: 16 },
+  backText: { color: GREY, fontSize: 14 },
+  heading: { fontSize: 24, fontWeight: '800', color: '#fff', marginBottom: 6 },
+  subheading: { fontSize: 13, color: GREY, marginBottom: 20 },
+
+  whatsappImportLink: { backgroundColor: DARK, borderRadius: 12, padding: 12, marginBottom: 16, borderWidth: 0.5, borderColor: GOLD },
+  whatsappImportLinkText: { color: GOLD, fontSize: 12, fontWeight: '700', textAlign: 'center' },
+
+  errorBox: { backgroundColor: '#3a1a1a', borderRadius: 10, padding: 12, marginBottom: 16 },
+  errorText: { color: '#ff8a8a', fontSize: 13 },
+
+  label: { fontSize: 13, fontWeight: '700', color: '#fff', marginBottom: 8, marginTop: 14 },
+
+  photoScroll: { marginBottom: 8 },
+  photoThumb: { width: 90, height: 90, borderRadius: 12, marginRight: 10, overflow: 'hidden', position: 'relative' },
+  photoImage: { width: '100%', height: '100%' },
+  photoUploadingOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.5)', alignItems: 'center', justifyContent: 'center' },
+  photoRemoveBtn: { position: 'absolute', top: 4, right: 4, width: 22, height: 22, borderRadius: 11, backgroundColor: 'rgba(0,0,0,0.7)', alignItems: 'center', justifyContent: 'center' },
+  photoRemoveText: { color: '#fff', fontSize: 12, fontWeight: '700' },
+  addPhotoBtn: { width: 90, height: 90, borderRadius: 12, borderWidth: 1.5, borderColor: '#444', borderStyle: 'dashed', alignItems: 'center', justifyContent: 'center', backgroundColor: DARK },
+  addPhotoIcon: { fontSize: 22, marginBottom: 4 },
+  addPhotoText: { color: GREY, fontSize: 10 },
+
+  card: { backgroundColor: BLACK, borderRadius: 14, padding: 16, marginTop: 10, borderWidth: 0.5, borderColor: '#333' },
+  input: {
+    backgroundColor: DARK, borderRadius: 10, paddingHorizontal: 14,
+    paddingVertical: Platform.OS === 'ios' ? 13 : 10, fontSize: 14, color: '#fff',
+    borderWidth: 0.5, borderColor: '#333',
+  },
+  textArea: { height: 90, textAlignVertical: 'top', paddingTop: 10 },
+
+  categoryChip: { backgroundColor: DARK, borderRadius: 20, paddingHorizontal: 14, paddingVertical: 8, marginRight: 8, borderWidth: 0.5, borderColor: '#333' },
+  categoryChipActive: { backgroundColor: GOLD, borderColor: GOLD },
+  categoryChipText: { color: GREY, fontSize: 12 },
+  categoryChipTextActive: { color: BLACK, fontWeight: '700' },
+
+  postBtn: { backgroundColor: GOLD, borderRadius: 14, paddingVertical: 16, alignItems: 'center', marginTop: 24 },
+  postBtnText: { color: BLACK, fontSize: 16, fontWeight: '800' },
+
+  successScreen: { flex: 1, backgroundColor: '#111', alignItems: 'center', justifyContent: 'center', padding: 32 },
+  successEmoji: { fontSize: 64, marginBottom: 20 },
+  successTitle: { fontSize: 24, fontWeight: '800', color: '#fff', marginBottom: 10 },
+  successBody: { fontSize: 15, color: GREY, textAlign: 'center', marginBottom: 32 },
+  successBtn: { backgroundColor: GOLD, borderRadius: 12, paddingVertical: 14, paddingHorizontal: 40 },
+  successBtnText: { color: BLACK, fontSize: 16, fontWeight: '700' },
 });

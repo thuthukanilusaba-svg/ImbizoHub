@@ -7,6 +7,12 @@
     "icon": "./assets/images/icon.png",
     "scheme": "imbizohub",
     "userInterfaceStyle": "automatic",
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/08be3d09-3027-4c07-957e-dbe3088ad2ac"
+    },
     "ios": {
       "icon": "./assets/expo.icon"
     },
@@ -17,7 +23,8 @@
         "backgroundImage": "./assets/images/android-icon-background.png",
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "package": "com.imbizohub.app"
     },
     "web": {
       "output": "static",
@@ -42,6 +49,13 @@
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
-    }
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "08be3d09-3027-4c07-957e-dbe3088ad2ac"
+      }
+    },
+    "owner": "imbizohub"
   }
 }

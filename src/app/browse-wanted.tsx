@@ -1,0 +1,466 @@
+// app/browse-wanted.tsx
+// "Wanted" tab — sellers browse what buyers are looking for and respond
+// with a price. Free and open to EVERY account type (buyer, seller,
+// delivery operator, transport operator) — deliberately NOT gated behind
+// a paid registration like operator-requests.tsx, since responding here
+// isn't a professional service with capacity constraints, it's "I happen
+// to have this thing." See ImbizoHub_Wanted_Tab_Spec.md Section 5 for
+// the reasoning.
+//
+// FIX: "+ Post a want" moved from the header (top of screen, competing
+// for attention with the page title on first load) down to the bottom
+// of the list instead — this screen's primary job is browsing and
+// responding to EXISTING wants; posting a new one is a secondary,
+// occasional action that doesn't need top billing every time someone
+// opens this screen.
+//
+// FIX: the "Your response" Modal (price + message text fields) is
+// wrapped in its own KeyboardAvoidingView — React Native's Modal
+// component renders in a separate native layer, so a
+// KeyboardAvoidingView wrapping the rest of the SCREEN has no effect on
+// content inside a Modal. Without this, the price/message fields inside
+// the modal were covered by the keyboard the same way every other
+// screen's fields were, and wrapping the screen alone wouldn't have
+// fixed it — the Modal's own content needs its own wrapper.
+
+import { useRouter } from 'expo-router';
+import { useEffect, useState } from 'react';
+import {
+  ActivityIndicator,
+  FlatList,
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
+  RefreshControl,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { supabase } from '../../lib/supabase';
+
+const GOLD = '#B8860B';
+const BLACK = '#1A1A18';
+const DARK = '#2a2a2a';
+const GREY = '#AAAAAA';
+
+type ItemRequest = {
+  id: string;
+  title: string;
+  description: string;
+  category: string;
+  budget_min: number | null;
+  budget_max: number | null;
+  location: string;
+  status: string;
+  created_at: string;
+};
+
+function budgetLabel(min: number | null, max: number | null): string | null {
+  if (min == null && max == null) return null;
+  if (min != null && max != null) return `$${min} – $${max}`;
+  if (min != null) return `$${min}+`;
+  return `Up to $${max}`;
+}
+
+export default function BrowseWantedScreen() {
+  const router = useRouter();
+  const insets = useSafeAreaInsets();
+  const [requests, setRequests] = useState<ItemRequest[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [myId, setMyId] = useState('');
+
+  // Which of MY OWN responses already exist, keyed by item_request_id —
+  // used to show "You've responded" instead of the respond button, so a
+  // seller doesn't accidentally submit two prices on the same want.
+  const [myResponseIds, setMyResponseIds] = useState<Set<string>>(new Set());
+
+  const [modalVisible, setModalVisible] = useState(false);
+  const [selected, setSelected] = useState<ItemRequest | null>(null);
+  const [price, setPrice] = useState('');
+  const [message, setMessage] = useState('');
+  // NEW: whether this response is a physical item (deliverable via the
+  // Delivery tab) or a service (e.g. "I'm a builder, I can do this" —
+  // nothing to courier). Defaults to true since most current example
+  // wants are physical goods (car parts, scaffolding); a responder
+  // offering a service explicitly turns this off. chat.tsx reads this
+  // off the accepted response to decide whether to show a "Book
+  // delivery" option once the match happens.
+  const [isPhysicalItem, setIsPhysicalItem] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
+  const [submitted, setSubmitted] = useState(false);
+  const [submitError, setSubmitError] = useState('');
+
+  useEffect(() => {
+    init();
+  }, []);
+
+  async function init() {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (user) setMyId(user.id);
+    await fetchRequests(user?.id);
+  }
+
+  async function fetchRequests(uid?: string) {
+    setLoading(true);
+    const { data } = await supabase
+      .from('item_requests')
+      .select('*')
+      .eq('status', 'open')
+      .order('created_at', { ascending: false });
+    setRequests(data ?? []);
+
+    const currentUid = uid ?? myId;
+    if (currentUid && data && data.length > 0) {
+      const ids = data.map((r) => r.id);
+      const { data: myResponses } = await supabase
+        .from('item_responses')
+        .select('item_request_id')
+        .eq('responder_id', currentUid)
+        .in('item_request_id', ids);
+      setMyResponseIds(new Set((myResponses ?? []).map((r) => r.item_request_id)));
+    }
+
+    setLoading(false);
+  }
+
+  async function handleRefresh() {
+    setRefreshing(true);
+    await fetchRequests();
+    setRefreshing(false);
+  }
+
+  function openModal(req: ItemRequest) {
+    setSelected(req);
+    setPrice('');
+    setMessage('');
+    setIsPhysicalItem(true);
+    setSubmitted(false);
+    setSubmitError('');
+    setModalVisible(true);
+  }
+
+  async function submitResponse() {
+    setSubmitError('');
+
+    if (!price) {
+      setSubmitError('Enter a price.');
+      return;
+    }
+    const priceNum = parseFloat(price);
+    if (isNaN(priceNum) || priceNum <= 0) {
+      setSubmitError('Enter a valid price.');
+      return;
+    }
+
+    // FIX (consistent with chat.tsx): responding to a want reveals no
+    // contact info and commits to nothing — the buyer doesn't see who
+    // responded until they accept AND pay the 3% commission. Same trust
+    // tier as sending a chat message, so it gets the same treatment:
+    // free and anonymous, no login wall. A real account is only ever
+    // needed at the moment money or contact info actually changes hands.
+    let { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      const { data, error: signInError } = await supabase.auth.signInAnonymously();
+      if (signInError) {
+        setSubmitError('Couldn\'t submit — please check your connection and try again.');
+        return;
+      }
+      user = data.user;
+    }
+    if (!user) {
+      setSubmitError('Something went wrong. Please try again.');
+      return;
+    }
+
+    setSubmitting(true);
+
+    const { error } = await supabase.from('item_responses').insert({
+      item_request_id: selected!.id,
+      responder_id: user.id,
+      price: priceNum,
+      message: message.trim(),
+      status: 'pending',
+      is_physical_item: isPhysicalItem,
+    });
+
+    setSubmitting(false);
+    if (error) { setSubmitError(error.message); return; }
+
+    setSubmitted(true);
+    setMyResponseIds((prev) => new Set(prev).add(selected!.id));
+  }
+
+  if (loading) {
+    return (
+      <View style={styles.center}>
+        <ActivityIndicator size="large" color={GOLD} />
+      </View>
+    );
+  }
+
+  return (
+    <View style={styles.container}>
+      <View style={styles.header}>
+        <TouchableOpacity onPress={() => router.back()}>
+          <Text style={styles.backText}>← Back</Text>
+        </TouchableOpacity>
+        <Text style={styles.heading}>What people are looking for</Text>
+        <Text style={styles.subheading}>
+          {requests.length} open want{requests.length !== 1 ? 's' : ''} · respond with your price, free
+        </Text>
+      </View>
+
+      <FlatList
+        data={requests}
+        keyExtractor={(item) => item.id}
+        // FIX: "+ Post a want" sits at the bottom of this list as its
+        // footer. Without accounting for the device's own safe-area
+        // inset, it could end up overlapping the phone's system
+        // navigation bar on devices with a taller gesture bar/nav
+        // buttons — same root cause as the bottom-nav fix applied
+        // elsewhere in the app today, just here it's the list's content
+        // padding rather than an absolutely-positioned bar.
+        contentContainerStyle={[styles.list, { paddingBottom: 16 + insets.bottom }]}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={GOLD} />}
+        ListEmptyComponent={
+          <View style={styles.empty}>
+            <Text style={styles.emptyEmoji}>🔍</Text>
+            <Text style={styles.emptyText}>No open wants right now.</Text>
+            <Text style={styles.emptySubtext}>Pull down to refresh.</Text>
+          </View>
+        }
+        renderItem={({ item }) => {
+          const budget = budgetLabel(item.budget_min, item.budget_max);
+          const alreadyResponded = myResponseIds.has(item.id);
+          return (
+            <View style={styles.card}>
+              <View style={styles.cardTop}>
+                <Text style={styles.cardTitle} numberOfLines={1}>{item.title}</Text>
+                <View style={styles.categoryBadge}>
+                  <Text style={styles.categoryBadgeText}>{item.category}</Text>
+                </View>
+              </View>
+
+              {item.description ? (
+                <Text style={styles.cardDesc} numberOfLines={2}>{item.description}</Text>
+              ) : null}
+
+              <View style={styles.chips}>
+                {budget && <Chip label={`💰 ${budget}`} />}
+                <Chip label={`📍 ${item.location}`} />
+              </View>
+
+              {alreadyResponded ? (
+                <View style={styles.respondedBadge}>
+                  <Text style={styles.respondedBadgeText}>✓ You've responded</Text>
+                </View>
+              ) : (
+                <TouchableOpacity style={styles.respondBtn} onPress={() => openModal(item)} activeOpacity={0.85}>
+                  <Text style={styles.respondBtnText}>I have this — respond</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          );
+        }}
+        // FIX: "+ Post a want" moved here, as the list's footer, instead
+        // of living in the header — it now appears after every open
+        // want in the list (or immediately, if the list is empty),
+        // rather than competing with the page title for attention the
+        // moment this screen opens.
+        ListFooterComponent={
+          <TouchableOpacity style={styles.postWantBtnBottom} onPress={() => router.push('/post-wanted')}>
+            <Text style={styles.postWantBtnBottomText}>+ Post a want</Text>
+          </TouchableOpacity>
+        }
+      />
+
+      <Modal visible={modalVisible} animationType="slide" transparent onRequestClose={() => setModalVisible(false)}>
+        {/* FIX: KeyboardAvoidingView wraps the modal's own content —
+            see top-of-file FIX comment. A KeyboardAvoidingView outside
+            this Modal (e.g. wrapping the screen) would have no effect,
+            since Modal content renders in its own native layer. */}
+        <KeyboardAvoidingView
+          style={styles.modalOverlay}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        >
+          <View style={styles.modalSheet}>
+            {!submitted ? (
+              <>
+                <Text style={styles.modalTitle}>Your response</Text>
+                {selected && (
+                  <Text style={styles.modalItemTitle}>{selected.title}</Text>
+                )}
+
+                <Text style={styles.modalLabel}>Your price (USD) *</Text>
+                <TextInput
+                  style={styles.modalInput}
+                  placeholder="e.g. 260"
+                  placeholderTextColor="#666"
+                  value={price}
+                  onChangeText={setPrice}
+                  keyboardType="decimal-pad"
+                />
+
+                <Text style={styles.modalLabel}>Message (optional)</Text>
+                <TextInput
+                  style={[styles.modalInput, styles.modalTextArea]}
+                  placeholder="Condition, extras, anything the buyer should know..."
+                  placeholderTextColor="#666"
+                  value={message}
+                  onChangeText={setMessage}
+                  multiline
+                  numberOfLines={3}
+                />
+
+                <Text style={styles.modalLabel}>What are you offering?</Text>
+                <View style={styles.itemTypeRow}>
+                  <TouchableOpacity
+                    style={[styles.itemTypeChip, isPhysicalItem && styles.itemTypeChipActive]}
+                    onPress={() => setIsPhysicalItem(true)}
+                  >
+                    <Text style={[styles.itemTypeChipText, isPhysicalItem && styles.itemTypeChipTextActive]}>
+                      📦 A physical item
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.itemTypeChip, !isPhysicalItem && styles.itemTypeChipActive]}
+                    onPress={() => setIsPhysicalItem(false)}
+                  >
+                    <Text style={[styles.itemTypeChipText, !isPhysicalItem && styles.itemTypeChipTextActive]}>
+                      🛠️ A service
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+                <Text style={styles.itemTypeHint}>
+                  {isPhysicalItem
+                    ? 'The buyer will be able to book delivery for this once matched.'
+                    : 'Services (like a builder or mechanic) aren\'t deliverable — the buyer will arrange details with you directly in chat.'}
+                </Text>
+
+                {submitError ? <Text style={styles.submitErrorText}>{submitError}</Text> : null}
+
+                <View style={styles.modalActions}>
+                  <TouchableOpacity style={styles.cancelBtn} onPress={() => setModalVisible(false)}>
+                    <Text style={styles.cancelText}>Cancel</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.submitModalBtn, submitting && { opacity: 0.6 }]}
+                    onPress={submitResponse}
+                    disabled={submitting}
+                  >
+                    {submitting
+                      ? <ActivityIndicator color={BLACK} />
+                      : <Text style={styles.submitModalBtnText}>Send response</Text>
+                    }
+                  </TouchableOpacity>
+                </View>
+              </>
+            ) : (
+              <View style={styles.successBox}>
+                <Text style={styles.successEmoji}>✅</Text>
+                <Text style={styles.successTitle}>Response sent!</Text>
+                <Text style={styles.successBody}>
+                  The buyer will review your price. If they pick you, you'll be notified and a chat will
+                  open once they've paid ImbizoHub's small commission.
+                </Text>
+                <TouchableOpacity style={styles.submitModalBtn} onPress={() => setModalVisible(false)}>
+                  <Text style={styles.submitModalBtnText}>Done</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
+    </View>
+  );
+}
+
+function Chip({ label }: { label: string }) {
+  return (
+    <View style={styles.chip}>
+      <Text style={styles.chipText}>{label}</Text>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: { flex: 1, backgroundColor: '#111111' },
+  center: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#111111' },
+
+  header: {
+    backgroundColor: BLACK,
+    paddingTop: Platform.OS === 'ios' ? 56 : 32,
+    paddingBottom: 20, paddingHorizontal: 20,
+    borderBottomWidth: 0.5, borderBottomColor: DARK,
+  },
+  backText: { color: GREY, fontSize: 14, marginBottom: 12 },
+  heading: { color: '#fff', fontSize: 22, fontWeight: '800' },
+  subheading: { color: GREY, fontSize: 13, marginTop: 4 },
+
+  // NEW: bottom "+ Post a want" button, replacing the old header
+  // version (postWantBtn/postWantBtnText kept below only if referenced
+  // elsewhere; safe to remove if unused).
+  postWantBtnBottom: { backgroundColor: GOLD, borderRadius: 14, paddingVertical: 16, alignItems: 'center', marginTop: 4, marginBottom: 20 },
+  postWantBtnBottomText: { color: BLACK, fontSize: 14, fontWeight: '800' },
+
+  list: { padding: 16, gap: 14 },
+  card: {
+    backgroundColor: BLACK, borderRadius: 14, padding: 16,
+    borderWidth: 0.5, borderColor: '#333',
+  },
+  cardTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10, marginBottom: 6 },
+  cardTitle: { color: '#fff', fontSize: 15, fontWeight: '700', flex: 1 },
+  categoryBadge: { backgroundColor: '#3a2800', borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3 },
+  categoryBadgeText: { color: GOLD, fontSize: 10, fontWeight: '700' },
+  cardDesc: { color: GREY, fontSize: 13, lineHeight: 18, marginBottom: 10 },
+
+  chips: { flexDirection: 'row', gap: 8, marginBottom: 12, flexWrap: 'wrap' },
+  chip: { backgroundColor: DARK, borderRadius: 20, paddingHorizontal: 10, paddingVertical: 4, borderWidth: 0.5, borderColor: '#333' },
+  chipText: { fontSize: 12, color: GREY },
+
+  respondBtn: { backgroundColor: GOLD, borderRadius: 10, paddingVertical: 12, alignItems: 'center' },
+  respondBtnText: { color: BLACK, fontWeight: '800', fontSize: 14 },
+  respondedBadge: { backgroundColor: '#1a2a1a', borderRadius: 10, paddingVertical: 12, alignItems: 'center', borderWidth: 0.5, borderColor: '#2a4a2a' },
+  respondedBadgeText: { color: '#4fc96e', fontWeight: '700', fontSize: 13 },
+
+  empty: { alignItems: 'center', paddingTop: 60 },
+  emptyEmoji: { fontSize: 40, marginBottom: 12 },
+  emptyText: { fontSize: 16, color: '#fff', fontWeight: '600' },
+  emptySubtext: { fontSize: 13, color: GREY, marginTop: 6 },
+
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },
+  modalSheet: {
+    backgroundColor: BLACK, borderTopLeftRadius: 20, borderTopRightRadius: 20,
+    padding: 24, paddingBottom: Platform.OS === 'ios' ? 40 : 24,
+  },
+  modalTitle: { fontSize: 18, fontWeight: '800', color: '#fff', marginBottom: 4 },
+  modalItemTitle: { fontSize: 13, color: GREY, marginBottom: 16 },
+  modalLabel: { fontSize: 13, fontWeight: '700', color: '#fff', marginBottom: 6, marginTop: 14 },
+  modalInput: {
+    backgroundColor: DARK, borderRadius: 10,
+    paddingHorizontal: 14, paddingVertical: Platform.OS === 'ios' ? 13 : 10,
+    fontSize: 14, color: '#fff', borderWidth: 0.5, borderColor: '#333',
+  },
+  modalTextArea: { height: 80, textAlignVertical: 'top', paddingTop: 10 },
+  itemTypeRow: { flexDirection: 'row', gap: 8 },
+  itemTypeChip: { flex: 1, backgroundColor: DARK, borderRadius: 10, paddingVertical: 12, alignItems: 'center', borderWidth: 1, borderColor: '#333' },
+  itemTypeChipActive: { borderColor: GOLD, backgroundColor: '#2a2200' },
+  itemTypeChipText: { color: GREY, fontSize: 12, fontWeight: '600' },
+  itemTypeChipTextActive: { color: GOLD, fontWeight: '700' },
+  itemTypeHint: { color: '#888', fontSize: 11, marginTop: 8, lineHeight: 15 },
+  submitErrorText: { color: '#ff8a8a', fontSize: 13, marginTop: 10 },
+  modalActions: { flexDirection: 'row', gap: 12, marginTop: 20 },
+  cancelBtn: { flex: 1, borderRadius: 10, paddingVertical: 13, alignItems: 'center', backgroundColor: DARK },
+  cancelText: { color: GREY, fontWeight: '600' },
+  submitModalBtn: { flex: 2, borderRadius: 10, paddingVertical: 13, alignItems: 'center', backgroundColor: GOLD },
+  submitModalBtnText: { color: BLACK, fontWeight: '800', fontSize: 15 },
+
+  successBox: { alignItems: 'center', paddingVertical: 16 },
+  successEmoji: { fontSize: 48, marginBottom: 12 },
+  successTitle: { fontSize: 20, fontWeight: '800', color: '#fff', marginBottom: 8 },
+  successBody: { fontSize: 14, color: GREY, textAlign: 'center', lineHeight: 20, marginBottom: 24 },
+});

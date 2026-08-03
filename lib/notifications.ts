@@ -1,0 +1,200 @@
+// lib/notifications.ts
+// Push notification utility for ImbizoHub
+// Handles: token registration, permission requests, and sending local notifications
+//
+// IMPORTANT: Since Expo SDK 53, Expo Go on Android throws when the
+// expo-notifications native module is even IMPORTED — not just when its
+// functions are called. This is a hard platform restriction (Google Play
+// policy), not a bug: https://docs.expo.dev/develop/development-builds/introduction/
+// Real notification testing (local or remote) requires a development build,
+// not Expo Go, on Android.
+//
+// Because the crash happens at import time, wrapping function calls in
+// try/catch is not enough — the module must never be statically imported.
+// Instead we lazy-load it with a dynamic import(), guarded by a platform
+// check, so the risky code path only runs where it's actually safe.
+
+import Constants from 'expo-constants';
+import { Platform } from 'react-native';
+import { supabase } from './supabase';
+
+// Detect: are we running inside Expo Go on Android? If so, the
+// expo-notifications native module is entirely unavailable.
+const isExpoGoAndroid =
+  Platform.OS === 'android' && Constants.appOwnership === 'expo';
+
+// Lazily and safely load the expo-notifications module.
+// Returns null if unavailable (web, or Expo Go on Android).
+let cachedModule: typeof import('expo-notifications') | null | undefined;
+async function getNotificationsModule() {
+  if (cachedModule !== undefined) return cachedModule;
+
+  if (Platform.OS === 'web' || isExpoGoAndroid) {
+    cachedModule = null;
+    return cachedModule;
+  }
+
+  try {
+    cachedModule = await import('expo-notifications');
+    // Set the foreground handler once the module is confirmed safe to use.
+    cachedModule.setNotificationHandler({
+      handleNotification: async () => ({
+        shouldShowAlert: true,
+        shouldPlaySound: true,
+        shouldSetBadge: true,
+      }),
+    });
+  } catch (error) {
+    console.log('expo-notifications unavailable on this platform/client:', error);
+    cachedModule = null;
+  }
+
+  return cachedModule;
+}
+
+// Request permission and get the Expo push token
+// Returns the token string, or null if permission denied, on web, or if
+// notifications are unsupported on this platform/client (e.g. Android + Expo Go).
+export async function registerForPushNotifications(): Promise<string | null> {
+  const Notifications = await getNotificationsModule();
+  if (!Notifications) return null;
+
+  try {
+    const { status: existingStatus } = await Notifications.getPermissionsAsync();
+    let finalStatus = existingStatus;
+
+    if (existingStatus !== 'granted') {
+      const { status } = await Notifications.requestPermissionsAsync();
+      finalStatus = status;
+    }
+
+    if (finalStatus !== 'granted') {
+      console.log('Push notification permission denied');
+      return null;
+    }
+
+    const tokenData = await Notifications.getExpoPushTokenAsync();
+    const token = tokenData.data;
+    console.log('Push token:', token);
+    return token;
+  } catch (error) {
+    console.log('Push notification registration skipped (unsupported on this platform/client):', error);
+    return null;
+  }
+}
+
+// Save the push token to the user's profile so we can send them notifications
+export async function savePushToken(token: string) {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return;
+
+  await supabase
+    .from('profiles')
+    .update({ push_token: token })
+    .eq('id', user.id);
+}
+
+// Show a local notification immediately (for foreground alerts)
+export async function showLocalNotification(title: string, body: string, data?: Record<string, any>) {
+  const Notifications = await getNotificationsModule();
+  if (!Notifications) return;
+
+  try {
+    await Notifications.scheduleNotificationAsync({
+      content: {
+        title,
+        body,
+        data: data ?? {},
+        sound: true,
+      },
+      trigger: null, // show immediately
+    });
+  } catch (error) {
+    console.log('Local notification skipped (unsupported on this platform/client):', error);
+  }
+}
+
+// Register listeners for notifications received / tapped while app is running.
+// Returns an unsubscribe function you can call in a useEffect cleanup.
+// If notifications are unsupported here, returns a no-op unsubscribe.
+export async function registerNotificationListeners(
+  onReceived: (notification: any) => void,
+  onResponse: (response: any) => void
+): Promise<() => void> {
+  const Notifications = await getNotificationsModule();
+  if (!Notifications) {
+    return () => {};
+  }
+
+  try {
+    const receivedSub = Notifications.addNotificationReceivedListener(onReceived);
+    const responseSub = Notifications.addNotificationResponseReceivedListener(onResponse);
+
+    return () => {
+      try {
+        receivedSub?.remove?.();
+        responseSub?.remove?.();
+      } catch (error) {
+        // no-op — cleanup unavailable in this environment
+      }
+    };
+  } catch (error) {
+    console.log('Notification listeners skipped (unsupported on this platform/client):', error);
+    return () => {};
+  }
+}
+
+// ── Notification helpers for specific ImbizoHub events ──
+
+export function notifyNewMessage(senderName: string, messageText: string, listingId: string) {
+  return showLocalNotification(
+    `New message from ${senderName}`,
+    messageText.length > 80 ? messageText.slice(0, 80) + '...' : messageText,
+    { type: 'message', listing_id: listingId }
+  );
+}
+
+export function notifyMeetPayPinGenerated(listingTitle: string) {
+  return showLocalNotification(
+    'Meet & Pay PIN ready',
+    `The buyer has generated a PIN for "${listingTitle}". Tap to confirm the transaction.`,
+    { type: 'meetpay' }
+  );
+}
+
+export function notifyTransactionConfirmed(listingTitle: string) {
+  return showLocalNotification(
+    'Transaction confirmed! ✅',
+    `The deal for "${listingTitle}" has been confirmed. Please leave a rating.`,
+    { type: 'confirmed' }
+  );
+}
+
+export function notifyDeliveryUpdate(status: string, listingTitle: string) {
+  const messages: Record<string, string> = {
+    accepted: `A driver has accepted your delivery request for "${listingTitle}".`,
+    dispatched: `"${listingTitle}" has been dispatched and is on its way.`,
+    delivered: `"${listingTitle}" has been delivered. Please confirm receipt.`,
+  };
+  return showLocalNotification(
+    'Delivery update 🚚',
+    messages[status] ?? `Delivery status updated for "${listingTitle}".`,
+    { type: 'delivery', status }
+  );
+}
+
+export function notifySellerDeliveryBooked(listingTitle: string) {
+  return showLocalNotification(
+    'Delivery booked 📦',
+    `A buyer booked delivery for "${listingTitle}". Prepare the parcel for pickup.`,
+    { type: 'delivery_booked' }
+  );
+}
+
+export function notifyUnlockFeeReceived(listingTitle: string) {
+  return showLocalNotification(
+    'New buyer unlocked your chat 🔓',
+    `Someone paid to message you about "${listingTitle}". Reply now.`,
+    { type: 'unlock' }
+  );
+}
