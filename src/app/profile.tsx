@@ -27,7 +27,7 @@
 // ALSO WORTH NOTING: "My trip requests" links to quotes.tsx, which only
 // ever shows the single most recent OPEN trip request
 // (.order(...).limit(1) in quotes.tsx's loadData()), not a list — so the
-// plural label is a little misleading for someone who's posted more than
+// plural label is a little misleading for someone who's posted more thans
 // one trip over time. Low priority, not fixed here.
 //
 // FIX: bottom nav now accounts for the device's own safe-area inset
@@ -410,7 +410,7 @@ export default function ProfileScreen() {
               scrolling past unrelated content first. */}
           <View style={styles.card}>
             <Text style={styles.cardTitle}>My activity</Text>
-            <MenuRow icon="🏷️" label="My listings" onPress={() => router.push('/explore')} />
+            <MenuRow icon="🏷️" label="My listings" onPress={() => router.push('/my-listings')} />
             {/* FIX: this used to be one ambiguous "My deliveries" link that
                 always pointed to seller-deliveries.tsx — meaning a buyer
                 waiting to receive something had no way to track it at all.

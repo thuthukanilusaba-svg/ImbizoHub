@@ -25,11 +25,18 @@ const DARK = '#2a2a2a';
 // (toStoredAccountType, operator-register-pay.tsx, the
 // transport_operator_registration payment kind) changes — those stay
 // fully functional for when this is un-paused, same as before.
+// UPDATED (unpaused): van-hire is now fully live — this card is
+// selectable again, matching hirevan.tsx's VAN_HIRE_PAUSED now being
+// false. Everything downstream (the extra-fields block below,
+// operator-register-pay.tsx, the transport_operator_registration
+// payment kind, quotes.tsx, operator-requests.tsx, meetpay.tsx) was
+// already fully functional the whole time this card was disabled —
+// this was the last remaining gate.
 const accountTypes = [
   { type: 'buyer', icon: '🛍️', label: 'Buyer', desc: 'Browse and buy items' },
   { type: 'seller', icon: '🏪', label: 'Seller', desc: 'Post and sell items' },
   { type: 'delivery', icon: '📦', label: 'Delivery Operator', desc: 'Deliver parcels locally & intercity' },
-  { type: 'operator', icon: '🚐', label: 'Transport Operator', desc: 'Offer van & minibus hire', disabled: true },
+  { type: 'operator', icon: '🚐', label: 'Transport Operator', desc: 'Offer van & minibus hire' },
 ];
 
 // FIX: profiles.account_type must store 'transport_operator' — that's

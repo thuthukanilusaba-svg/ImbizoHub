@@ -15,6 +15,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { supabase } from '../../lib/supabase';
 
 const GOLD = '#B8860B';
@@ -23,7 +24,10 @@ const DARK = '#2a2a2a';
 const GREY = '#AAAAAA';
 const GREEN = '#4fc96e';
 const RED = '#ff8a8a';
-const COMMISSION = 0.03;
+// UPDATED (pricing model simplified): COMMISSION constant removed —
+// the separate 3% commission no longer exists. See confirm-payment.ts's
+// trip_deposit branch for the current, simplified fee model (7%,
+// capped at $30).
 
 type Request = {
   id: string;
@@ -38,6 +42,7 @@ type Request = {
 
 export default function OperatorRequestsScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const [requests, setRequests] = useState<Request[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -124,6 +129,13 @@ export default function OperatorRequestsScreen() {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) { setSubmitting(false); return; }
 
+    // UPDATED (pricing model simplified): commission_amount no longer
+    // set here — the separate 3% commission was removed entirely, see
+    // confirm-payment.ts's trip_deposit branch and quotes.tsx for the
+    // full reasoning. ImbizoHub's entire take is now the customer's
+    // single commitment fee (7%, capped at $30), charged at the
+    // deposit step; the
+    // operator keeps their full quoted price with nothing owed on top.
     const { error } = await supabase.from('quotes').insert({
       request_id: selected!.id,
       operator_id: user.id,
@@ -131,7 +143,6 @@ export default function OperatorRequestsScreen() {
       vehicle: vehicle.trim(),
       message: message.trim(),
       status: 'pending',
-      commission_amount: parseFloat((priceNum * COMMISSION).toFixed(2)),
     });
 
     setSubmitting(false);
@@ -154,7 +165,6 @@ export default function OperatorRequestsScreen() {
         <View style={styles.blockedFeeBox}>
           <Text style={styles.blockedFeeLabel}>Registration fee</Text>
           <Text style={styles.blockedFeeAmount}>$10 / year</Text>
-          <Text style={styles.blockedFeeNote}>+ 3% commission per completed job</Text>
         </View>
         <TouchableOpacity
           style={styles.blockedBtn}
@@ -232,7 +242,16 @@ export default function OperatorRequestsScreen() {
       {/* Quote modal */}
       <Modal visible={modalVisible} animationType="slide" transparent onRequestClose={() => setModalVisible(false)}>
         <View style={styles.modalOverlay}>
-          <View style={styles.modalSheet}>
+          {/* FIX: modalSheet's paddingBottom was a hardcoded per-platform
+              guess (40 iOS / 24 Android), never accounting for the real
+              device safe-area inset — on any phone with a gesture-nav
+              bar or home indicator, "Send quote" sat partially under
+              the phone's OWN system UI, not the app's bottomNav (this
+              screen has no bottomNav at all — different root cause
+              than the index.tsx/dealer.tsx/profile.tsx overlap bugs
+              fixed earlier, same underlying mistake of not using
+              insets.bottom). */}
+          <View style={[styles.modalSheet, { paddingBottom: (Platform.OS === 'ios' ? 40 : 24) + insets.bottom }]}>
             {!submitted ? (
               <>
                 <Text style={styles.modalTitle}>Your quote</Text>
@@ -250,13 +269,13 @@ export default function OperatorRequestsScreen() {
                   keyboardType="decimal-pad"
                 />
 
-                {price && parseFloat(price) > 0 && (
-                  <View style={styles.commissionPreview}>
-                    <Text style={styles.commissionPreviewText}>
-                      Your earnings: ${(parseFloat(price) * 0.97).toFixed(2)} · Platform fee (3%): ${(parseFloat(price) * COMMISSION).toFixed(2)}
-                    </Text>
-                  </View>
-                )}
+                {/* REMOVED: the "Platform fee (3%)" preview — that
+                    commission no longer exists. Operators keep their
+                    full quoted price; ImbizoHub's entire take is the
+                    customer's separate commitment fee (7%, capped at
+                    $30), charged at
+                    the deposit step, nothing owed by the operator on
+                    top of what they quote. */}
 
                 <Text style={styles.modalLabel}>Your vehicle *</Text>
                 <TextInput
@@ -395,8 +414,6 @@ const styles = StyleSheet.create({
     fontSize: 14, color: '#fff', borderWidth: 0.5, borderColor: '#333',
   },
   modalTextArea: { height: 90, textAlignVertical: 'top', paddingTop: 10 },
-  commissionPreview: { backgroundColor: '#1a2a1a', borderRadius: 8, padding: 10, marginTop: 6, borderWidth: 0.5, borderColor: '#2a4a2a' },
-  commissionPreviewText: { fontSize: 12, color: GREEN, fontWeight: '600' },
   submitError: { color: RED, fontSize: 13, marginTop: 10 },
   modalActions: { flexDirection: 'row', gap: 12, marginTop: 20 },
   cancelBtn: { flex: 1, borderRadius: 10, paddingVertical: 13, alignItems: 'center', backgroundColor: DARK },

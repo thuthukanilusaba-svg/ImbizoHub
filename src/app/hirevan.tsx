@@ -20,7 +20,7 @@
 // the transport_operator_registration payment kind, quotes.tsx) is
 // untouched and stays fully functional for operators already
 // registered — this pause only affects NEW trip requests being posted.
-const VAN_HIRE_PAUSED = true;
+const VAN_HIRE_PAUSED = false;
 
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
@@ -80,7 +80,8 @@ export default function HireVanScreen() {
     // hard-blocked posting entirely without an account, which is exactly
     // the kind of friction that deters casual customers before they've
     // even seen a quote. A real account is only needed once money
-    // actually changes hands — paying the 10% deposit in quotes.tsx.
+    // actually changes hands — paying the commitment fee (7%, capped
+    // at $30) in quotes.tsx.
     let { data: { user } } = await supabase.auth.getUser();
     if (!user) {
       const { data, error: signInError } = await supabase.auth.signInAnonymously();

@@ -1,6 +1,17 @@
 // app/quotes.tsx
-// Customer sees quotes, accepts one, pays 10% deposit → contact revealed
-// Remaining 90% paid cash or through app (operator's choice)
+// Customer sees quotes, accepts one, pays a 7% commitment fee (capped
+// at $30) → contact revealed. Remaining balance paid cash or through
+// app (operator's choice), directly to the operator, at the actual
+// trip/handover.
+//
+// UPDATED (pricing model simplified): this used to also charge a
+// SEPARATE 3% commission on top of the 10% deposit — two different
+// charges, with the 3% only ever tracked as a debt (profiles.
+// commission_owed) since there was no digital touchpoint for cash the
+// operator collects in person, and nothing ever actually collected it.
+// Confusing to explain and easy for an operator to just never pay.
+// Simplified: ImbizoHub's entire take is now one upfront commitment
+// fee, no second commission layered on top. See confirm-payment.ts's trip_deposit branch for the actual calculation.
 //
 // FIX: handlePayDeposit() previously did an instant client-side
 // `.update({ deposit_paid: true, ... })` — no real payment was ever
@@ -26,6 +37,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { supabase } from '../../lib/supabase';
 
 const GOLD = '#B8860B';
@@ -34,7 +46,20 @@ const DARK = '#2a2a2a';
 const GREY = '#AAAAAA';
 const GREEN = '#4fc96e';
 const BLUE = '#4A90D9';
-const DEPOSIT_PCT = 0.10;
+// UPDATED (pricing decision): was a flat 10%, no cap. Changed to 7%,
+// capped at $30 — same "percentage with a ceiling" shape already
+// proven on the regular listing unlock fee (5% capped at $15), so a
+// very expensive trip doesn't scale the commitment fee unboundedly.
+// This is genuinely the source of truth for what gets charged — the
+// amount computed here is what's sent to create-payment, and
+// confirm-payment.ts's trip_deposit branch trusts intent.amount as-is
+// rather than recalculating server-side.
+const DEPOSIT_PCT = 0.07;
+const DEPOSIT_CAP = 30;
+
+function calculateDeposit(price: number): number {
+  return Math.min(parseFloat((price * DEPOSIT_PCT).toFixed(2)), DEPOSIT_CAP);
+}
 const COMMISSION_PCT = 0.03;
 
 const POLL_INTERVAL_MS = 2000;
@@ -68,6 +93,7 @@ type Request = {
 
 export default function QuotesScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const [request, setRequest] = useState<Request | null>(null);
   const [quotes, setQuotes] = useState<Quote[]>([]);
   const [loading, setLoading] = useState(true);
@@ -185,7 +211,7 @@ export default function QuotesScreen() {
 
     setPaying(true);
 
-    const deposit = parseFloat((chosenQuote.price * DEPOSIT_PCT).toFixed(2));
+    const deposit = calculateDeposit(chosenQuote.price);
 
     const { data, error: fnError } = await supabase.functions.invoke('create-payment', {
       body: {
@@ -257,8 +283,16 @@ export default function QuotesScreen() {
     );
   }
 
-  const deposit = chosenQuote ? (chosenQuote.price * DEPOSIT_PCT).toFixed(2) : '0';
-  const balance = chosenQuote ? (chosenQuote.price * (1 - DEPOSIT_PCT)).toFixed(2) : '0';
+  // FIX: balance was computed as price * (1 - DEPOSIT_PCT), which is
+  // only correct when the deposit is a pure percentage with no ceiling.
+  // Now that the deposit is capped at $30, that formula silently
+  // undercounts the balance on any trip expensive enough to hit the
+  // cap (e.g. a $1000 trip: real deposit is $30, not $70, so balance
+  // should be $970, not $930). Deriving balance as price - deposit
+  // instead is correct in both the capped and uncapped case.
+  const depositAmount = chosenQuote ? calculateDeposit(chosenQuote.price) : 0;
+  const deposit = depositAmount.toFixed(2);
+  const balance = chosenQuote ? (chosenQuote.price - depositAmount).toFixed(2) : '0';
 
   return (
     <View style={styles.container}>
@@ -291,7 +325,7 @@ export default function QuotesScreen() {
             quotes.length > 0 ? (
               <View style={styles.infoBar}>
                 <Text style={styles.infoBarText}>
-                  {quotes.length} quote{quotes.length !== 1 ? 's' : ''} · sorted cheapest first · accept to pay 10% deposit
+                  {quotes.length} quote{quotes.length !== 1 ? 's' : ''} · sorted cheapest first · accept to pay 7% commitment fee (capped at $30)
                 </Text>
               </View>
             ) : null
@@ -307,7 +341,7 @@ export default function QuotesScreen() {
             const isBest = index === 0 && item.status !== 'declined';
             const isAccepted = item.status === 'accepted';
             const isDeclined = item.status === 'declined';
-            const dep = (item.price * DEPOSIT_PCT).toFixed(2);
+            const dep = calculateDeposit(item.price).toFixed(2);
 
             return (
               <View style={[
@@ -330,7 +364,7 @@ export default function QuotesScreen() {
                   </View>
                   <View style={{ alignItems: 'flex-end' }}>
                     <Text style={styles.priceText}>${item.price}</Text>
-                    <Text style={styles.depositHint}>Deposit: ${dep}</Text>
+                    <Text style={styles.depositHint}>Commitment fee: ${dep}</Text>
                   </View>
                 </View>
 
@@ -338,7 +372,7 @@ export default function QuotesScreen() {
 
                 {!isDeclined && !isAccepted && request.status === 'open' && (
                   <TouchableOpacity style={styles.pickBtn} onPress={() => openModal(item)} activeOpacity={0.85}>
-                    <Text style={styles.pickBtnText}>Accept — pay ${dep} deposit</Text>
+                    <Text style={styles.pickBtnText}>Accept — pay ${dep} commitment fee</Text>
                   </TouchableOpacity>
                 )}
 
@@ -356,12 +390,16 @@ export default function QuotesScreen() {
       {/* Modal */}
       <Modal visible={modalVisible} animationType="slide" transparent onRequestClose={() => setModalVisible(false)}>
         <View style={styles.modalOverlay}>
-          <View style={styles.modalSheet}>
+          {/* FIX: same modal-padding bug already fixed on
+              operator-requests.tsx and browse-wanted.tsx — hardcoded
+              per-platform paddingBottom never accounted for the real
+              device safe-area inset. */}
+          <View style={[styles.modalSheet, { paddingBottom: (Platform.OS === 'ios' ? 44 : 24) + insets.bottom }]}>
 
             {(step === 'confirm' || step === 'paying') && chosenQuote && (
               <>
                 <Text style={styles.modalTitle}>Confirm booking</Text>
-                <Text style={styles.modalSub}>Pay a 10% deposit to lock in this operator and reveal their contact details.</Text>
+                <Text style={styles.modalSub}>Pay a 7% commitment fee (capped at $30) to lock in this operator and reveal their contact details.</Text>
 
                 {/* Summary */}
                 <View style={styles.summaryBox}>
@@ -369,7 +407,7 @@ export default function QuotesScreen() {
                   <SummaryRow label="Vehicle" value={chosenQuote.vehicle} />
                   <SummaryRow label="Total fare" value={`$${chosenQuote.price}`} />
                   <View style={styles.divider} />
-                  <SummaryRow label="Deposit now (10%)" value={`$${deposit}`} gold />
+                  <SummaryRow label="Commitment fee (7%, capped at $30)" value={`$${deposit}`} gold />
                   <SummaryRow label="Balance remaining (90%)" value={`$${balance}`} />
                 </View>
 
@@ -416,7 +454,7 @@ export default function QuotesScreen() {
                       <Text style={styles.payBtnSub}>Confirming your payment…</Text>
                     </>
                   ) : (
-                    <Text style={styles.payBtnText}>Pay ${deposit} deposit</Text>
+                    <Text style={styles.payBtnText}>Pay ${deposit} commitment fee</Text>
                   )}
                 </TouchableOpacity>
 
@@ -429,7 +467,7 @@ export default function QuotesScreen() {
             {step === 'revealed' && chosenQuote && (
               <>
                 <Text style={styles.modalTitle}>Booking confirmed 🎉</Text>
-                <Text style={styles.modalSub}>Deposit paid. Here are your operator's contact details.</Text>
+                <Text style={styles.modalSub}>Commitment fee paid. Here are your operator's contact details.</Text>
 
                 <View style={styles.contactBox}>
                   <Text style={styles.contactLabel}>Operator</Text>

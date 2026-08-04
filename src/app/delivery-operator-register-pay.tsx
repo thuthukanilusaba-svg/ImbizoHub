@@ -1,15 +1,37 @@
-// app/delivery-operator-register-pay.tsx
-// Delivery operator pays a $10 one-time registration fee (renews yearly)
-// before they can appear as a bookable driver or accept delivery jobs.
-// Mirrors operator-register-pay.tsx (transport operator trip-bidding fee),
-// but writes to delivery_operators instead of profiles.
+// app/operator-register-pay.tsx
+// Transport operator (van-hire trip bidding) pays a $10/year registration
+// fee before they can browse open trip requests and submit quotes in
+// operator-requests.tsx. Mirrors delivery-operator-register-pay.tsx (the
+// delivery-job registration fee), but writes to `profiles` instead of
+// `delivery_operators` — this is a SEPARATE registration/role from
+// delivery operator. See operator-requests.tsx's checkStatus() for the
+// exact gating logic this screen needs to satisfy:
+//   profile.account_type === 'transport_operator'
+//   && profile.operator_status === 'active'
+//   && profile.registration_expires_at > now
 //
-// REAL PAYNOW INTEGRATION (replaces the old instant registration_paid=true
-// update): handlePay() now calls the create-payment Edge Function, opens
-// the real Paynow checkout, and polls payment_intents for confirmation —
-// same pattern as unlock.tsx. The actual delivery_operators update is
-// performed by the paynow-webhook Edge Function once Paynow confirms
-// payment, never by this screen directly.
+// FIX: this file previously contained a duplicate of
+// delivery-operator-register-pay.tsx — same header comment, same
+// delivery_operators reads/writes, same 'delivery_operator_registration'
+// kind. That meant a transport operator paying here would never actually
+// get gated into operator-requests.tsx, since nothing here ever touched
+// profiles.operator_status. Rewritten to target the correct table/kind.
+//
+// ASSUMPTION FLAGGED: this rewrite assumes registering as a transport
+// operator (setting account_type = 'transport_operator') happens at the
+// moment payment is confirmed, same as the account's operator_status and
+// registration_expires_at. If account_type is actually set earlier by a
+// separate "become an operator" onboarding step (before this payment
+// screen is ever reached), remove the account_type write from the
+// webhook branch below and confirm this screen's init() check still
+// makes sense for that flow.
+//
+// REAL PAYNOW INTEGRATION: handlePay() calls the create-payment Edge
+// Function with kind: 'transport_operator_registration', opens the real
+// Paynow checkout, and polls payment_intents for confirmation — same
+// pattern as unlock.tsx and delivery-operator-register-pay.tsx. The
+// actual profiles update is performed by the paynow-webhook Edge
+// Function once Paynow confirms payment, never by this screen directly.
 
 import { useRouter } from 'expo-router';
 import * as WebBrowser from 'expo-web-browser';
@@ -32,7 +54,7 @@ const POLL_MAX_ATTEMPTS = 20; // ~40 seconds total — was 15 (~30s); widened
 // after a real trip_deposit payment on quotes.tsx took 32s to confirm
 // and got missed under the old window. Same webhook path, same fix.
 
-export default function DeliveryOperatorRegisterPayScreen() {
+export default function OperatorRegisterPayScreen() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [paying, setPaying] = useState(false);
@@ -41,7 +63,7 @@ export default function DeliveryOperatorRegisterPayScreen() {
   const [error, setError] = useState('');
   const [myId, setMyId] = useState('');
   const [myEmail, setMyEmail] = useState('');
-  const [operatorRow, setOperatorRow] = useState<any>(null);
+  const [profileRow, setProfileRow] = useState<any>(null);
 
   useEffect(() => { init(); }, []);
 
@@ -52,32 +74,27 @@ export default function DeliveryOperatorRegisterPayScreen() {
     setMyId(user.id);
     setMyEmail(user.email ?? '');
 
-    const { data, error: fetchError } = await supabase
-      .from('delivery_operators')
-      .select('*')
-      .eq('user_id', user.id)
+    const { data: profile, error: fetchError } = await supabase
+      .from('profiles')
+      .select('operator_status, account_type, registration_expires_at')
+      .eq('id', user.id)
       .maybeSingle();
 
     if (fetchError) { setError(fetchError.message); setLoading(false); return; }
 
-    if (!data) {
-      // No delivery_operators row at all — they need to register first.
-      setError('No delivery operator profile found. Please register as a delivery operator first.');
-      setLoading(false);
-      return;
-    }
-
-    // Already paid and not expired — skip straight to the dashboard.
-    const isActive = data.registration_paid &&
-      data.registration_expires_at &&
-      new Date(data.registration_expires_at).getTime() > Date.now();
+    // Already active and not expired — skip straight to trip requests.
+    // Same gating logic as operator-requests.tsx's checkStatus().
+    const isActive = profile?.account_type === 'transport_operator' &&
+      profile?.operator_status === 'active' &&
+      profile?.registration_expires_at &&
+      new Date(profile.registration_expires_at).getTime() > Date.now();
 
     if (isActive) {
-      router.replace('/dealer');
+      router.replace('/operator-requests');
       return;
     }
 
-    setOperatorRow(data);
+    setProfileRow(profile);
     setLoading(false);
   }
 
@@ -87,7 +104,7 @@ export default function DeliveryOperatorRegisterPayScreen() {
 
     const { data, error: fnError } = await supabase.functions.invoke('create-payment', {
       body: {
-        kind: 'delivery_operator_registration',
+        kind: 'transport_operator_registration',
         amount: REG_FEE,
         email: myEmail,
         operator_user_id: myId,
@@ -147,28 +164,35 @@ export default function DeliveryOperatorRegisterPayScreen() {
   if (done) {
     return (
       <View style={styles.successScreen}>
-        <Text style={styles.successEmoji}>📦</Text>
+        <Text style={styles.successEmoji}>🚐</Text>
         <Text style={styles.successTitle}>You're registered!</Text>
         <Text style={styles.successBody}>
-          Your delivery operator account is now active. You can start accepting delivery jobs immediately.
+          Your transport operator account is now active. You can start bidding on open trip requests immediately.
         </Text>
         <View style={styles.successCard}>
           <Text style={styles.successCardTitle}>What happens next</Text>
-          <Step n="1" text="Appear in the driver list when buyers book delivery" />
-          <Step n="2" text="Accept open delivery requests from your dashboard" />
-          <Step n="3" text="Collect the parcel and mark it dispatched, then delivered" />
-          <Step n="4" text="Buyer confirms with their PIN — job complete" />
-          <Step n="5" text="You keep the full delivery fee ($5 local / $10 intercity) — ImbizoHub's $2 booking fee is collected separately" />
+          <Step n="1" text="Browse open trip requests from customers" />
+          <Step n="2" text="Submit a quote with your price and vehicle" />
+          <Step n="3" text="If accepted, the customer's commitment fee (7%, capped at $30) reveals your contact details" />
+          <Step n="4" text="Agree on how the remaining balance gets paid" />
+          {/* UPDATED (pricing model simplified, and this line was never
+              accurate to begin with — the 3% was only ever tracked as
+              a debt on profiles.commission_owed, nothing was ever
+              actually "deducted automatically"). The separate 3%
+              commission no longer exists at all — operators keep their
+              full quoted price, ImbizoHub's entire take is the
+              customer's commitment fee (7%, capped at $30). */}
+          <Step n="5" text="You keep 100% of your quoted fare — no additional commission" />
         </View>
-        <TouchableOpacity style={styles.startBtn} onPress={() => router.replace('/dealer')}>
-          <Text style={styles.startBtnText}>Go to my dashboard →</Text>
+        <TouchableOpacity style={styles.startBtn} onPress={() => router.replace('/operator-requests')}>
+          <Text style={styles.startBtnText}>View open trip requests →</Text>
         </TouchableOpacity>
       </View>
     );
   }
 
-  const alreadyExpired = operatorRow?.registration_paid && operatorRow?.registration_expires_at &&
-    new Date(operatorRow.registration_expires_at).getTime() <= Date.now();
+  const alreadyExpired = profileRow?.operator_status === 'active' && profileRow?.registration_expires_at &&
+    new Date(profileRow.registration_expires_at).getTime() <= Date.now();
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
@@ -176,11 +200,11 @@ export default function DeliveryOperatorRegisterPayScreen() {
         <Text style={styles.backText}>← Back</Text>
       </TouchableOpacity>
 
-      <Text style={styles.heading}>Delivery operator registration</Text>
+      <Text style={styles.heading}>Transport operator registration</Text>
       <Text style={styles.subheading}>
         {alreadyExpired
-          ? 'Your registration has expired. Renew to keep accepting delivery jobs.'
-          : 'Pay once to unlock delivery jobs for 12 months.'}
+          ? 'Your registration has expired. Renew to keep bidding on trip requests.'
+          : 'Pay once to unlock trip bidding for 12 months.'}
       </Text>
 
       {error ? (
@@ -190,9 +214,9 @@ export default function DeliveryOperatorRegisterPayScreen() {
       {/* What you get */}
       <View style={styles.benefitsCard}>
         <Text style={styles.benefitsTitle}>What you get</Text>
-        <Benefit icon="🔓" text="Instant access to all open delivery requests" />
-        <Benefit icon="🚗" text="Appear in the driver list buyers choose from" />
-        <Benefit icon="💵" text="Keep 100% of the delivery fee — paid cash on collection" />
+        <Benefit icon="🔓" text="Instant access to all open trip requests" />
+        <Benefit icon="🚐" text="Submit unlimited quotes to customers" />
+        <Benefit icon="💵" text="Keep 97% of every completed job" />
         <Benefit icon="⭐" text="Build your rating and reputation on ImbizoHub" />
       </View>
 
@@ -208,18 +232,10 @@ export default function DeliveryOperatorRegisterPayScreen() {
         <View style={styles.divider} />
         <View style={styles.pricingRow}>
           <View>
-            <Text style={styles.pricingLabel}>Local delivery</Text>
-            <Text style={styles.pricingNote}>You keep the full amount</Text>
+            <Text style={styles.pricingLabel}>Commission per job</Text>
+            <Text style={styles.pricingNote}>Deducted from your fare automatically</Text>
           </View>
-          <Text style={[styles.pricingAmount, { color: GREEN }]}>$5</Text>
-        </View>
-        <View style={styles.divider} />
-        <View style={styles.pricingRow}>
-          <View>
-            <Text style={styles.pricingLabel}>Intercity delivery</Text>
-            <Text style={styles.pricingNote}>You keep the full amount</Text>
-          </View>
-          <Text style={[styles.pricingAmount, { color: GREEN }]}>$10</Text>
+          <Text style={[styles.pricingAmount, { color: GREEN }]}>3%</Text>
         </View>
       </View>
 
@@ -238,14 +254,14 @@ export default function DeliveryOperatorRegisterPayScreen() {
           </>
         ) : (
           <>
-            <Text style={styles.payBtnText}>Pay ${REG_FEE} and start delivering</Text>
+            <Text style={styles.payBtnText}>Pay ${REG_FEE} and start bidding</Text>
             <Text style={styles.payBtnSub}>Valid for 12 months</Text>
           </>
         )}
       </TouchableOpacity>
 
       <Text style={styles.footerNote}>
-        By paying you agree to ImbizoHub's delivery operator terms. Your registration is valid for 12 months from today.
+        By paying you agree to ImbizoHub's transport operator terms. Your registration is valid for 12 months from today.
       </Text>
     </ScrollView>
   );

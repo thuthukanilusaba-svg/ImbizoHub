@@ -299,9 +299,33 @@ export async function confirmPaymentIntent(
       return { ok: false, error: 'Quote not found' };
     }
 
+    // UPDATED (pricing decision): was a flat 10% deposit, no cap, plus
+    // a SEPARATE 3% commission on top (removed entirely — see the
+    // comment block below). Now: 7% commitment fee, capped at $30,
+    // matching the pattern already used on the listing unlock fee (5%
+    // capped at $15) — quotes.tsx computes this exact same capped
+    // value client-side and it arrives here as intent.amount.
+    //
+    // FIX: balanceAmount used to be a hardcoded quote.price * 0.90 —
+    // only correct when the deposit is a pure, uncapped percentage.
+    // Once a cap can apply, that formula silently undercounts the
+    // balance on any trip expensive enough to hit it (e.g. a $1000
+    // trip: real deposit is $30, not $70, so balance should be $970,
+    // not $930). Deriving balance as price - depositAmount instead is
+    // correct in both the capped and uncapped case — matches the exact
+    // same fix already applied to quotes.tsx's own display
+    // calculation.
     const depositAmount = intent.amount;
-    const balanceAmount = parseFloat((quote.price * 0.90).toFixed(2));
-    const commissionAmount = parseFloat((quote.price * 0.03).toFixed(2));
+    const balanceAmount = parseFloat((quote.price - depositAmount).toFixed(2));
+
+    // UPDATED (pricing model simplified): ImbizoHub's entire take is
+    // now this single upfront commitment fee — no second commission
+    // layered on top. Used to also charge a SEPARATE 3% commission on
+    // the 90% cash balance, tracked as a debt (profiles.
+    // commission_owed) since there was no digital touchpoint for cash
+    // the operator collects in person — nothing ever actually
+    // collected it. Confusing to explain and easy for an operator to
+    // just never pay. Removed entirely.
 
     const { error: quoteUpdateError } = await supabase
       .from('quotes')
@@ -311,7 +335,10 @@ export async function confirmPaymentIntent(
         deposit_paid_at: new Date().toISOString(),
         deposit_amount: depositAmount,
         balance_amount: balanceAmount,
-        commission_amount: commissionAmount,
+        // commission_amount deliberately no longer set — the column
+        // stays in the schema (harmless, avoids a migration for
+        // something that's fine to just leave unused) but is never
+        // populated for new quotes going forward.
       })
       .eq('id', quote.id);
 
@@ -342,7 +369,7 @@ export async function confirmPaymentIntent(
       amount: depositAmount,
       reference_id: quote.id,
       status: 'completed',
-      notes: `10% deposit — trip request, paid via Paynow`,
+      notes: `Commitment fee (7%, capped at $30) — trip request, paid via Paynow`,
     });
 
     await notifyTripDepositPaid(supabase, intent.seller_id, quote.request_id);
