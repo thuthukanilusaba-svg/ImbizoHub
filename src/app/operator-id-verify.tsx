@@ -29,6 +29,7 @@ import {
   Text, TouchableOpacity, View,
 } from 'react-native';
 import { supabase } from '../../lib/supabase';
+import { prepareUpload } from '../../lib/uploadHelpers';
 
 const GOLD = '#B8860B';
 const BLACK = '#1A1A18';
@@ -160,21 +161,19 @@ export default function OperatorIdVerifyScreen() {
     setUploading(true);
 
     try {
-      const response = await fetch(pickedImageUri);
-      const blob = await response.blob();
-      const mimeToExt: Record<string, string> = {
-        'image/jpeg': 'jpg',
-        'image/jpg': 'jpg',
-        'image/png': 'png',
-        'image/webp': 'webp',
-        'image/heic': 'heic',
-      };
-      const extension = mimeToExt[blob.type] || 'jpg';
+      // FIX (real bug, not the earlier deprecation warning): this used
+      // to be fetch(pickedImageUri).then(r => r.blob()) — a well-known
+      // failure mode on React Native/Expo where the Blob polyfill can
+      // throw "Creating blobs from 'ArrayBuffer' and 'ArrayBufferView'
+      // are not supported". Replaced with the ArrayBuffer approach
+      // Supabase's own docs recommend — see lib/uploadHelpers.ts for
+      // the full reasoning.
+      const { data, contentType, extension } = await prepareUpload(pickedImageUri);
       const path = `${myId}/${Date.now()}.${extension}`;
 
       const { error: uploadError } = await supabase.storage
         .from('verification-documents')
-        .upload(path, blob, { contentType: blob.type || 'image/jpeg' });
+        .upload(path, data, { contentType });
 
       if (uploadError) {
         setError(uploadError.message);

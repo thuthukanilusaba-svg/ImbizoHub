@@ -55,6 +55,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { supabase } from '../../lib/supabase';
+import { prepareUpload } from '../../lib/uploadHelpers';
 
 const GOLD = '#B8860B';
 const BLACK = '#1A1A18';
@@ -184,14 +185,18 @@ export default function ProfileScreen() {
   async function uploadAvatarUri(uri: string) {
     setUploadingAvatar(true);
     try {
-      const response = await fetch(uri);
-      const blob = await response.blob();
-      const fileExt = uri.split('.').pop()?.split('?')[0] || 'jpg';
-      const fileName = `${userId}/avatar-${Date.now()}.${fileExt}`;
+      // FIX (real bug, not the earlier deprecation warning): this used
+      // to be fetch(uri).then(r => r.blob()) — a well-known failure
+      // mode on React Native/Expo where the Blob polyfill can throw
+      // "Creating blobs from 'ArrayBuffer' and 'ArrayBufferView' are
+      // not supported". Replaced with the approach Supabase's own docs
+      // recommend — see lib/uploadHelpers.ts.
+      const { data: uploadData, contentType, extension } = await prepareUpload(uri);
+      const fileName = `${userId}/avatar-${Date.now()}.${extension}`;
 
       const { error: uploadError } = await supabase.storage
         .from('avatars')
-        .upload(fileName, blob, { contentType: blob.type || 'image/jpeg', upsert: false });
+        .upload(fileName, uploadData, { contentType, upsert: false });
 
       if (uploadError) throw uploadError;
 
