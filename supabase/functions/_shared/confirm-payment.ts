@@ -131,7 +131,7 @@ async function notifyTripDepositPaid(supabase: SupabaseClient, operatorId: strin
     await sendExpoPushNotification(
       operatorProfile.push_token,
       'Your quote was accepted! 🚐',
-      `The customer paid their deposit for "${routeLabel}". Contact details are now visible in your dashboard.`,
+      `The customer paid their commitment fee for "${routeLabel}". Contact details are now visible in your dashboard.`,
       { type: 'trip_deposit', request_id: requestId }
     );
   } catch (err) {

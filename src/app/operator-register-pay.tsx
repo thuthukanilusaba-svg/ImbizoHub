@@ -229,14 +229,13 @@ export default function OperatorRegisterPayScreen() {
           </View>
           <Text style={styles.pricingAmount}>${REG_FEE}</Text>
         </View>
-        <View style={styles.divider} />
-        <View style={styles.pricingRow}>
-          <View>
-            <Text style={styles.pricingLabel}>Commission per job</Text>
-            <Text style={styles.pricingNote}>Deducted from your fare automatically</Text>
-          </View>
-          <Text style={[styles.pricingAmount, { color: GREEN }]}>3%</Text>
-        </View>
+        {/* REMOVED: the "Commission per job — 3%, deducted automatically"
+            row — I'd missed this third instance of the same claim
+            already fixed twice elsewhere in this file. That commission
+            no longer exists, and this line was never accurate anyway
+            (nothing was ever actually "deducted automatically" — it was
+            only tracked as an unpaid debt before being removed
+            entirely). Operators now keep 100% of their quoted fare. */}
       </View>
 
       <TouchableOpacity

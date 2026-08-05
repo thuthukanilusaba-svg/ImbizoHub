@@ -158,11 +158,11 @@ export default function MeetPayScreen() {
       return;
     }
     if (secondsLeft === 0) {
-      setError('This PIN has expired. Ask the buyer to refresh and generate a new one.');
+      setError('This PIN has expired. Ask your customer to refresh and generate a new one.');
       return;
     }
     if (enteredPin !== session.pin) {
-      setError('Incorrect PIN. Please check with the buyer and try again.');
+      setError('Incorrect PIN. Please check with your customer and try again.');
       return;
     }
 
@@ -200,11 +200,11 @@ export default function MeetPayScreen() {
     return (
       <View style={styles.confirmedScreen}>
         <Text style={styles.confirmedEmoji}>✅</Text>
-        <Text style={styles.confirmedTitle}>Transaction confirmed!</Text>
+        <Text style={styles.confirmedTitle}>Trip confirmed!</Text>
         <Text style={styles.confirmedBody}>
           {role === 'buyer'
-            ? 'The seller has confirmed receipt. Thank you for using ImbizoHub safely.'
-            : 'You have confirmed this transaction with the buyer.'}
+            ? 'Your driver has confirmed the trip. Thank you for using ImbizoHub safely.'
+            : 'You have confirmed this trip with your customer.'}
         </Text>
         {session?.amount ? (
           <View style={styles.confirmedAmountBox}>
@@ -227,9 +227,9 @@ export default function MeetPayScreen() {
           <Text style={styles.backText}>← Back</Text>
         </TouchableOpacity>
 
-        <Text style={styles.heading}>Meet & Pay</Text>
+        <Text style={styles.heading}>Confirm Trip Completed</Text>
         <Text style={styles.subheading}>
-          Show this PIN to the seller once you've inspected the item and you're ready to complete the deal.
+          Show this PIN to your driver once the trip is finished and you're ready to confirm it's complete.
         </Text>
 
         {error ? (
@@ -254,10 +254,10 @@ export default function MeetPayScreen() {
 
             <View style={styles.instructionsBox}>
               <Text style={styles.instructionsTitle}>How it works</Text>
-              <InstructionStep n="1" text="Meet the seller and inspect the item or confirm the trip is complete" />
+              <InstructionStep n="1" text="Once your trip is finished, you're ready to confirm it" />
               <InstructionStep n="2" text="Once you're satisfied, show them this 4-digit PIN" />
-              <InstructionStep n="3" text="They enter it on their phone to confirm the deal is done" />
-              <InstructionStep n="4" text="Never share this PIN before you've inspected the item" />
+              <InstructionStep n="3" text="Your driver enters it on their phone to confirm the trip is done" />
+              <InstructionStep n="4" text="Never share this PIN before your trip is actually finished" />
             </View>
           </>
         )}
@@ -272,9 +272,9 @@ export default function MeetPayScreen() {
         <Text style={styles.backText}>← Back</Text>
       </TouchableOpacity>
 
-      <Text style={styles.heading}>Meet & Pay</Text>
+      <Text style={styles.heading}>Confirm Trip Completed</Text>
       <Text style={styles.subheading}>
-        Ask the buyer for their 4-digit PIN to confirm this transaction is complete.
+        Ask your customer for their 4-digit PIN to confirm the trip is complete.
       </Text>
 
       {error ? (
@@ -284,12 +284,12 @@ export default function MeetPayScreen() {
       {!session ? (
         <View style={styles.waitingBox}>
           <ActivityIndicator color={GOLD} style={{ marginBottom: 12 }} />
-          <Text style={styles.waitingText}>Waiting for buyer to generate a PIN...</Text>
+          <Text style={styles.waitingText}>Waiting for your customer to generate a PIN...</Text>
         </View>
       ) : (
         <>
           <View style={styles.enterPinCard}>
-            <Text style={styles.label}>Enter buyer's PIN</Text>
+            <Text style={styles.label}>Enter customer's PIN</Text>
             <TextInput
               style={styles.pinInput}
               value={enteredPin}
@@ -315,7 +315,7 @@ export default function MeetPayScreen() {
           <View style={styles.instructionsBox}>
             <Text style={styles.instructionsTitle}>Important</Text>
             <Text style={styles.instructionsNote}>
-              Only enter this PIN once you've handed over the item or completed the trip and the buyer has confirmed they're satisfied. This action cannot be undone.
+              Only enter this PIN once the trip is actually finished and your customer has confirmed they're satisfied. This action cannot be undone.
             </Text>
           </View>
         </>

@@ -478,9 +478,22 @@ export default function QuotesScreen() {
                 </View>
 
                 <View style={styles.balanceReminder}>
+                  {/* FIX: previously said "ask your operator about paying
+                      through the app for added security" — this was
+                      never true. There's no in-app payment mechanism for
+                      the balance at all (no create-payment call
+                      anywhere in this flow), and even if there were,
+                      ImbizoHub has no payout/disbursement system to
+                      actually get that money to the operator — Paynow
+                      only moves money IN, never back out. A passenger
+                      acting on this claim and asking their operator to
+                      "pay through the app" would find nothing there.
+                      Same class of fix as the paymentOptionsBox comment
+                      above — an honest description instead of a
+                      selectable-sounding option that doesn't exist. */}
                   <Text style={styles.balanceReminderText}>
                     💡 Remaining balance: <Text style={{ fontWeight: '700' }}>${balance}</Text>{'\n'}
-                    Pay cash on the day or ask your operator about paying through the app for added security.
+                    Pay your driver directly — cash, EcoCash, or however you agree — once the trip is complete.
                   </Text>
                 </View>
 
