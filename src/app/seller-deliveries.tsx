@@ -56,11 +56,6 @@ function statusLabel(status: string) {
   return map[status] ?? status;
 }
 
-// Picks whichever origin is actually populated on this booking — a
-// listing title, a Wanted-request title, or a generic fallback if
-// neither join resolved (shouldn't happen given the DB's
-// single-origin CHECK constraint, but a booking mid-fetch before the
-// join resolves shouldn't crash the render either).
 function itemTitleFor(booking: any): string | null {
   return booking.listings?.title || booking.item_requests?.title || null;
 }
@@ -101,21 +96,9 @@ export default function SellerDeliveriesScreen() {
     setBookings(data ?? []);
   }
 
-  // NEW: extracted from what used to be inline inside uploadDispatchPhoto()
-  // only — both the gallery picker and the new camera capture share this
-  // exact upload logic. This is arguably the highest-value screen for
-  // camera capture in the whole app: a seller photographing the actual
-  // physical parcel right as they hand it to a driver is a very "take it
-  // now" moment, not a "pick an existing photo" one.
   async function uploadDispatchUri(bookingId: string, uri: string) {
     setUploadingId(bookingId);
     try {
-      // FIX (real bug, not the earlier deprecation warning): this used
-      // to be fetch(uri).then(r => r.blob()) — a well-known failure
-      // mode on React Native/Expo where the Blob polyfill can throw
-      // "Creating blobs from 'ArrayBuffer' and 'ArrayBufferView' are
-      // not supported". Replaced with the approach Supabase's own docs
-      // recommend — see lib/uploadHelpers.ts.
       const { data: uploadData, contentType, extension } = await prepareUpload(uri);
       const fileName = `${myId}/dispatch-${bookingId}-${Date.now()}.${extension}`;
 
@@ -161,8 +144,6 @@ export default function SellerDeliveriesScreen() {
     await uploadDispatchUri(bookingId, result.assets[0].uri);
   }
 
-  // NEW: camera capture — see top-of-file-style comment on
-  // uploadDispatchUri above for why this matters especially here.
   async function takeDispatchPhoto(bookingId: string) {
     setUploadErrors(prev => ({ ...prev, [bookingId]: '' }));
 
@@ -182,9 +163,6 @@ export default function SellerDeliveriesScreen() {
     await uploadDispatchUri(bookingId, result.assets[0].uri);
   }
 
-  // NEW: same reasoning as profile.tsx's chooseAvatarSource — a single
-  // per-booking button, so an Alert action sheet fits better than two
-  // separate buttons crowding an already busy per-booking card.
   function chooseDispatchPhotoSource(bookingId: string) {
     Alert.alert(
       'Add dispatch photo',
@@ -247,6 +225,30 @@ export default function SellerDeliveriesScreen() {
 
                 {itemTitle && (
                   <Text style={styles.itemText}>Item: {itemTitle}</Text>
+                )}
+
+                {/* NEW: item-size badge — closes a real gap found in a
+                    later review pass. dealer.tsx (the operator's job
+                    list) and buyer-deliveries.tsx both got this badge
+                    when the item-size pricing tier was added; this
+                    screen — the SELLER's own view of the same
+                    booking — never did. Relevant here specifically
+                    because it's the seller who's about to hand the
+                    parcel to a driver — knowing whether the driver is
+                    expecting something car-sized or van-sized matters
+                    before that handoff. */}
+                {booking.parcel_size && (
+                  <View style={[
+                    styles.sizeBadge,
+                    booking.parcel_size === 'large' && styles.sizeBadgeLarge,
+                  ]}>
+                    <Text style={[
+                      styles.sizeBadgeText,
+                      booking.parcel_size === 'large' && styles.sizeBadgeTextLarge,
+                    ]}>
+                      {booking.parcel_size === 'large' ? '🚚 Large item' : '🚗 Small item'}
+                    </Text>
+                  </View>
                 )}
 
                 {driver && (
@@ -329,6 +331,15 @@ const styles = StyleSheet.create({
   route: { color: '#fff', fontSize: 15, fontWeight: '700' },
   statusText: { fontSize: 11, fontWeight: '700' },
   itemText: { color: GREY, fontSize: 12, marginBottom: 4 },
+
+  // NEW: item-size badge styles — matching dealer.tsx and
+  // buyer-deliveries.tsx exactly, so the same visual language appears
+  // on all three sides of a booking.
+  sizeBadge: { alignSelf: 'flex-start', backgroundColor: '#1a2a1a', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 5, marginBottom: 8 },
+  sizeBadgeLarge: { backgroundColor: '#3a2800', borderWidth: 1, borderColor: GOLD },
+  sizeBadgeText: { color: '#4fc96e', fontSize: 11, fontWeight: '700' },
+  sizeBadgeTextLarge: { color: GOLD },
+
   driverText: { color: GREY, fontSize: 12, marginBottom: 10 },
 
   progressRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 14, marginTop: 4 },

@@ -49,7 +49,6 @@ export default function DeliveryTrackScreen() {
     init();
   }, [booking_id]);
 
-  // Poll every 5s so status updates (e.g. driver marking dispatched/delivered) show up
   useEffect(() => {
     const poll = setInterval(() => {
       if (booking?.id) loadBooking(booking.id, false);
@@ -57,7 +56,6 @@ export default function DeliveryTrackScreen() {
     return () => clearInterval(poll);
   }, [booking?.id]);
 
-  // Countdown for PIN expiry
   useEffect(() => {
     if (!booking?.pin_expires_at) { setSecondsLeft(0); return; }
     const tick = () => {
@@ -80,7 +78,6 @@ export default function DeliveryTrackScreen() {
     if (booking_id) {
       await loadBooking(booking_id, true);
     } else {
-      // No booking_id passed — fall back to buyer's most recent active delivery
       const { data, error: fetchError } = await supabase
         .from('delivery_bookings')
         .select('*, listings(title, price), item_requests(title), delivery_operators(full_name, vehicle_type, rating, rating_count)')
@@ -117,13 +114,13 @@ export default function DeliveryTrackScreen() {
     setError('');
 
     const pin = generatePin();
-    const expiresAt = new Date(Date.now() + 15 * 60 * 1000); // 15 min expiry
+    const expiresAt = new Date(Date.now() + 15 * 60 * 1000);
 
     const { data, error: updateError } = await supabase
       .from('delivery_bookings')
       .update({ pin, pin_expires_at: expiresAt.toISOString() })
       .eq('id', booking.id)
-      .eq('buyer_id', myId) // only the buyer can generate their own PIN
+      .eq('buyer_id', myId)
       .select('*, listings(title, price), item_requests(title), delivery_operators(full_name, vehicle_type, rating, rating_count)')
       .maybeSingle();
 
@@ -167,7 +164,7 @@ export default function DeliveryTrackScreen() {
   const stepIdx = currentStepIndex(booking.status);
   const driver = booking.delivery_operators;
   const isConfirmed = booking.status === 'confirmed';
-  const canShowPin = booking.status !== 'requested'; // only useful once a driver is involved
+  const canShowPin = booking.status !== 'requested';
   const pinIsFresh = booking.pin && secondsLeft > 0;
 
   return (
@@ -178,15 +175,32 @@ export default function DeliveryTrackScreen() {
         </TouchableOpacity>
 
         <Text style={styles.heading}>Track delivery</Text>
-        {/* FIX: was booking.listings?.title only — a delivery booked
-            against a matched Wanted item (item_requests, not listings)
-            would show a blank title here. Now falls back the same way
-            dealer.tsx, seller-deliveries.tsx, and buyer-deliveries.tsx
-            already do. */}
         {(booking.listings?.title || booking.item_requests?.title) ? (
           <Text style={styles.subheading}>{booking.listings?.title || booking.item_requests?.title} · {booking.pickup_city} → {booking.dropoff_city}</Text>
         ) : (
           <Text style={styles.subheading}>{booking.pickup_city} → {booking.dropoff_city}</Text>
+        )}
+
+        {/* NEW: item-size badge — closes a real gap found during a
+            broader review pass. dealer.tsx, buyer-deliveries.tsx, and
+            seller-deliveries.tsx all got this badge when the item-size
+            pricing tier was added; this screen — the richest
+            single-booking detail view, and the one a buyer actually
+            uses to generate their PIN — was missed. Placed prominently
+            near the top since this screen's whole purpose is tracking
+            this specific delivery closely. */}
+        {booking.parcel_size && (
+          <View style={[
+            styles.sizeBadge,
+            booking.parcel_size === 'large' && styles.sizeBadgeLarge,
+          ]}>
+            <Text style={[
+              styles.sizeBadgeText,
+              booking.parcel_size === 'large' && styles.sizeBadgeTextLarge,
+            ]}>
+              {booking.parcel_size === 'large' ? '🚚 Large item' : '🚗 Small item'}
+            </Text>
+          </View>
         )}
 
         {error ? (
@@ -234,11 +248,6 @@ export default function DeliveryTrackScreen() {
             <Text style={styles.confirmedEmoji}>✅</Text>
             <Text style={styles.confirmedTitle}>Delivery confirmed</Text>
             <Text style={styles.confirmedBody}>This delivery is complete. Thanks for using ImbizoHub safely.</Text>
-            {/* FIX: buyer-deliveries.tsx (the list screen this detail
-                view is now linked from) had a "Rate this delivery" link
-                on its confirmed state that this screen was missing —
-                added here to match, using the same session_id/reviewee
-                pattern already proven working with the rating.tsx RPC. */}
             {booking.seller_id && (
               <TouchableOpacity
                 style={styles.rateLinkBtn}
@@ -317,6 +326,14 @@ const styles = StyleSheet.create({
   backText: { color: GREY, fontSize: 14 },
   heading: { fontSize: 24, fontWeight: '800', color: '#fff', marginBottom: 6 },
   subheading: { fontSize: 13, color: GREY, marginBottom: 24 },
+
+  // NEW: item-size badge styles — matching dealer.tsx,
+  // buyer-deliveries.tsx, and seller-deliveries.tsx exactly, so the
+  // same visual language appears everywhere a booking is shown.
+  sizeBadge: { alignSelf: 'flex-start', backgroundColor: '#1a2a1a', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 5, marginBottom: 16 },
+  sizeBadgeLarge: { backgroundColor: '#3a2800', borderWidth: 1, borderColor: GOLD },
+  sizeBadgeText: { color: '#4fc96e', fontSize: 11, fontWeight: '700' },
+  sizeBadgeTextLarge: { color: GOLD },
 
   errorBox: { backgroundColor: '#3a1a1a', borderRadius: 10, padding: 12, marginBottom: 16 },
   errorText: { color: '#ff8a8a', fontSize: 13, textAlign: 'center' },

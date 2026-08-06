@@ -32,6 +32,14 @@
 // Modal) was being covered by the keyboard; wrapping the whole screen
 // instead would have shifted the absolutely-positioned bottom nav
 // around unexpectedly whenever that field was focused.
+//
+// NEW: item-size badge added to both job card sections (Open delivery
+// requests + My deliveries) — closes a real gap found during a final
+// review: the item-size pricing tier and driver-matching filter were
+// built, but nothing ever actually SHOWED the size to the operator
+// deciding whether to accept a job. An operator could see the fee
+// ($15) without any clear signal that meant "large item, bring a
+// van/truck" specifically.
 
 import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
@@ -50,18 +58,6 @@ export default function DealerScreen() {
   const insets = useSafeAreaInsets();
   const [myId, setMyId] = useState('');
   const [accountType, setAccountType] = useState('');
-  // NEW: real fix for a bug found during a final sweep — isSeller below
-  // was still checking accountType === 'seller', a value that can now
-  // never actually be reached through the new registration/upgrade
-  // flows (register.tsx's Buyer/Seller picker was removed; nobody's
-  // account_type ever becomes 'seller' anymore, only 'buyer' by
-  // default). This meant a brand new user who posts a listing would
-  // correctly see the Dashboard TAB (index.tsx/explore.tsx/messages.tsx
-  // were already fixed to trigger on "has posted a listing"), but once
-  // inside, THIS screen would still show them nothing — isSeller would
-  // stay false forever, hiding their own listings, the dual-role
-  // header, everything below that gates on it. Same fix as the other
-  // five: driven by whether they've actually posted a listing.
   const [myListingCount, setMyListingCount] = useState(0);
   const [myFullName, setMyFullName] = useState('');
   const [myEmail, setMyEmail] = useState('');
@@ -74,18 +70,8 @@ export default function DealerScreen() {
   const [pinInputs, setPinInputs] = useState<Record<string, string>>({});
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
   const [pinErrors, setPinErrors] = useState<Record<string, string>>({});
-  // NEW: real Dealer Pro subscription state, replacing what was
-  // previously hardcoded mock text ("Renews 1 Aug 2026 · $30/month")
-  // with zero actual subscription or payment behind it.
   const [dealerProActive, setDealerProActive] = useState(false);
   const [dealerProExpiresAt, setDealerProExpiresAt] = useState<string | null>(null);
-  // NEW: surfaces any Meet & Pay sessions where I'm the confirm-role
-  // party (seller/responder) and the buyer has already generated a PIN
-  // that's still waiting on me. Previously the only way to discover
-  // this was to already be sitting inside that specific chat — nothing
-  // on the dashboard indicated a deal was waiting on your action at
-  // all. See notify-meetpay-event for the push-notification half of
-  // this same gap; this is the in-app discoverability half.
   const [pendingConfirmations, setPendingConfirmations] = useState<any[]>([]);
 
   useEffect(() => {
@@ -107,8 +93,6 @@ export default function DealerScreen() {
     if (profile) {
       setAccountType(profile.account_type ?? '');
       setMyFullName(profile.full_name ?? '');
-      // Same "paid boolean + expires_at, checked against now()" pattern
-      // already used for delivery/transport operator status below.
       setDealerProActive(!!(
         profile.dealer_pro_active &&
         profile.dealer_pro_expires_at &&
@@ -123,7 +107,6 @@ export default function DealerScreen() {
       .eq('user_id', user.id);
     setMyListingCount(listingCount ?? 0);
 
-    // Check if this user is a registered delivery operator
     const { data: operator } = await supabase
       .from('delivery_operators')
       .select('*')
@@ -146,24 +129,6 @@ export default function DealerScreen() {
     loadPendingConfirmations(user.id);
   }
 
-  // NEW: pending Meet & Pay confirmations. status='pending' rows where
-  // I'm the seller_id are exactly the ones where the buyer already
-  // generated a PIN and it's sitting there waiting on me — same
-  // condition chat.tsx's own meetPayModal checks per-conversation, just
-  // aggregated here across every conversation at once.
-  //
-  // FIX: also excludes sessions whose PIN has already expired. Without
-  // this, a no-show (buyer generates a PIN, never actually shows up,
-  // never confirms, never regenerates) would sit in this list FOREVER —
-  // chat.tsx's own 15-minute countdown is purely a client-side display
-  // timer (setInterval in that file), it never updates status in the
-  // database when it hits zero, so `status` alone can't tell a genuine
-  // pending confirmation from a long-dead one. Checking pin_expires_at
-  // here instead is self-healing: regeneratePin() in chat.tsx updates
-  // THIS SAME row's pin_expires_at (not a new row), so a stale session
-  // correctly disappears from this list and reappears automatically the
-  // moment a buyer actually tries again — no cron job, no dismiss
-  // button, no extra state needed anywhere.
   async function loadPendingConfirmations(userId: string) {
     const { data: sessions } = await supabase
       .from('meetpay_sessions')
@@ -178,9 +143,6 @@ export default function DealerScreen() {
       return;
     }
 
-    // Resolve a display title for each session the same way
-    // itemLabelFor() does server-side in notify-meetpay-event — listing
-    // vs item_request branch.
     const withLabels = await Promise.all(
       sessions.map(async (s) => {
         if (s.type === 'item_request') {
@@ -206,12 +168,6 @@ export default function DealerScreen() {
   async function loadDeliveryJobs(operatorId: string, userId: string) {
     setLoadingJobs(true);
 
-    // UPDATED: joins item_requests(title) alongside listings(title, price)
-    // — a delivery job can now originate from either a marketplace
-    // listing or a matched Wanted-tab request (delivery-booking.tsx
-    // populates exactly one of listing_id / item_request_id). See
-    // itemTitleFor() usage below for how the two are reconciled for
-    // display.
     const { data: open } = await supabase
       .from('delivery_bookings')
       .select('*, listings(title, price), item_requests(title)')
@@ -352,26 +308,17 @@ export default function DealerScreen() {
 
   const isDeliveryOperator = !!deliveryOperator;
   const isSeller = myListingCount > 0;
-  // NEW: a user who is BOTH an active seller and an active paid delivery
-  // operator at the same time. This is the case the old header logic
-  // handled badly — it always rendered as if the user were ONLY a
-  // delivery operator.
   const isDualRole = isSeller && isDeliveryOperator;
   const headerIsDelivery = isDeliveryOperator;
   const nothingToShow = !isDeliveryOperator && !isSeller && !registrationRequired;
   const showRoleHeader = isSeller || registrationRequired || isDeliveryOperator;
 
-  // Header title: neutral "Dashboard" for dual-role users (since neither
-  // single-role label is accurate for them), otherwise unchanged from
-  // before.
   const headerTitleText = isDualRole
     ? 'Dashboard'
     : headerIsDelivery
       ? 'Delivery Dashboard'
       : 'Dealer dashboard';
 
-  // Header subtitle: for dual-role users, combine both identities instead
-  // of showing only one.
   const headerSubText = isDualRole
     ? `Moyo Motors · Harare · ${deliveryOperator.vehicle_type || 'Delivery Operator'}`
     : headerIsDelivery
@@ -396,8 +343,6 @@ export default function DealerScreen() {
                     <Text style={styles.headerTitleText}>{headerTitleText}</Text>
 
                     {isDualRole ? (
-                      // Both badges shown together for dual-role users —
-                      // neither role is hidden behind the other.
                       <View style={styles.badgeRow}>
                         <View style={styles.proBadge}>
                           <Text style={styles.proBadgeText}>PRO</Text>
@@ -548,6 +493,28 @@ export default function DealerScreen() {
                         </View>
                       </View>
 
+                      {/* NEW: closes a real gap — the size tier was
+                          built into pricing and driver-matching, but
+                          nothing ever actually SHOWED it to the
+                          operator deciding whether to accept a job.
+                          Only rendered when parcel_size is actually
+                          set — older bookings from before this column
+                          existed just won't show a badge at all,
+                          rather than a broken/blank one. */}
+                      {job.parcel_size && (
+                        <View style={[
+                          styles.jobSizeBadge,
+                          job.parcel_size === 'large' && styles.jobSizeBadgeLarge,
+                        ]}>
+                          <Text style={[
+                            styles.jobSizeBadgeText,
+                            job.parcel_size === 'large' && styles.jobSizeBadgeTextLarge,
+                          ]}>
+                            {job.parcel_size === 'large' ? '🚚 Large item — bring a van or truck' : '🚗 Small item — fits in a car'}
+                          </Text>
+                        </View>
+                      )}
+
                       {(job.listings || job.item_requests) && (
                         <Text style={styles.jobItem}>Item: {job.listings?.title || job.item_requests?.title}</Text>
                       )}
@@ -587,6 +554,24 @@ export default function DealerScreen() {
                           {statusLabel(job.status)}
                         </Text>
                       </View>
+
+                      {/* NEW: same size badge as the Open requests
+                          section above, so an operator can still see
+                          what they signed up for once a job's already
+                          accepted, not just before accepting. */}
+                      {job.parcel_size && (
+                        <View style={[
+                          styles.jobSizeBadge,
+                          job.parcel_size === 'large' && styles.jobSizeBadgeLarge,
+                        ]}>
+                          <Text style={[
+                            styles.jobSizeBadgeText,
+                            job.parcel_size === 'large' && styles.jobSizeBadgeTextLarge,
+                          ]}>
+                            {job.parcel_size === 'large' ? '🚚 Large item' : '🚗 Small item'}
+                          </Text>
+                        </View>
+                      )}
 
                       {(job.listings || job.item_requests) && (
                         <Text style={styles.jobItem}>Item: {job.listings?.title || job.item_requests?.title}</Text>
@@ -663,28 +648,30 @@ export default function DealerScreen() {
               )}
 
               <View style={styles.section}>
-                <View style={styles.statsGrid}>
-                  <View style={styles.statCard}>
-                    <Text style={styles.statLbl}>THIS MONTH</Text>
-                    <Text style={styles.statValGold}>$2,840</Text>
-                    <Text style={styles.statTrend}>↑ 18% vs last month</Text>
+                {/* FIX: this used to be a hardcoded, fake stats grid
+                    ($2,840, 23, 12, 4.9, "↑ 18% vs last month", etc.) —
+                    static text with zero real data behind it, shown to
+                    EVERY seller for free regardless of Dealer Pro
+                    status. Doubly misleading: it looked like real
+                    performance data, and it undercut the actual paid
+                    Dealer Pro analytics benefit by giving away a fake
+                    version of it for free. Replaced with a real,
+                    honest link to analytics.tsx — which already
+                    computes genuine numbers from the listings table
+                    and correctly gates them behind an active Dealer
+                    Pro subscription itself, so there's nothing to
+                    duplicate or get out of sync here. */}
+                <TouchableOpacity style={styles.analyticsTeaser} onPress={() => router.push('/analytics')}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.analyticsTeaserTitle}>📊 Listing performance</Text>
+                    <Text style={styles.analyticsTeaserSub}>
+                      {dealerProActive
+                        ? 'Real numbers from your listings'
+                        : 'Dealer Pro benefit — see what\'s included'}
+                    </Text>
                   </View>
-                  <View style={styles.statCard}>
-                    <Text style={styles.statLbl}>ACTIVE LISTINGS</Text>
-                    <Text style={styles.statValWhite}>23</Text>
-                    <Text style={styles.statTrendGrey}>4 sold this week</Text>
-                  </View>
-                  <View style={styles.statCard}>
-                    <Text style={styles.statLbl}>MESSAGES</Text>
-                    <Text style={styles.statValWhite}>12</Text>
-                    <Text style={styles.statTrendGold}>3 unread</Text>
-                  </View>
-                  <View style={[styles.statCard, styles.statCardHighlight]}>
-                    <Text style={styles.statLbl}>RATING</Text>
-                    <Text style={styles.statValGold}>4.9</Text>
-                    <Text style={styles.statTrendGrey}>68 reviews</Text>
-                  </View>
-                </View>
+                  <Text style={styles.analyticsTeaserArrow}>›</Text>
+                </TouchableOpacity>
               </View>
 
               <View style={styles.section}>
@@ -698,12 +685,6 @@ export default function DealerScreen() {
                     <Text style={styles.actionIcon}>📊</Text>
                     <Text style={styles.actionSecondaryText}>Analytics</Text>
                   </TouchableOpacity>
-                  {/* FIX: this button previously had no onPress at all —
-                      genuinely dead. Featuring a specific listing needs to
-                      know WHICH listing, and this screen has no listing
-                      picker built in, so this routes to My listings, where
-                      tapping into any listing now shows a real "Feature
-                      this listing" button (listing.tsx). */}
                   <TouchableOpacity style={styles.actionSecondary} onPress={() => router.push('/explore')}>
                     <Text style={styles.actionIcon}>⭐</Text>
                     <Text style={styles.actionSecondaryText}>Boost listing</Text>
@@ -714,31 +695,6 @@ export default function DealerScreen() {
               <View style={styles.divider} />
 
               <View style={styles.section}>
-                {/* FIX: this card previously showed hardcoded mock text
-                    ("Dealer Pro Plan · Renews 1 Aug 2026 · $30/month")
-                    regardless of whether the user had ever paid for
-                    anything — one of the outstanding items from the
-                    original project plan, never actually built. Now
-                    reflects real subscription state.
-                    PAUSED (product decision): new purchases are paused on
-                    dealer-pro-pay.tsx behind DEALER_PRO_PAUSED (that
-                    file's own internal guard — this card's conditional
-                    rendering below is a second, redundant layer, not
-                    the only one, unlike the old version of this
-                    comment implied) until the promised features
-                    (priority placement, real dashboard stats, a gated
-                    analytics) actually exist — see that file's top
-                    comment. An already-active subscriber still sees
-                    their real "Active · Renews ..." status and can tap
-                    through to Manage as before.
-                    FIX: the card was always tappable regardless of state,
-                    so a "Coming soon" label still navigated to a full
-                    screen when tapped — confusing, since "coming soon"
-                    reads as non-actionable. Now only wrapped in
-                    TouchableOpacity (and only links to dealer-pro-pay.tsx)
-                    when dealerProActive is true; otherwise it's a plain,
-                    non-interactive View — nothing to tap, nowhere to go,
-                    matching what "Coming soon" actually means. */}
                 {dealerProActive ? (
                   <TouchableOpacity
                     style={styles.subCard}
@@ -766,20 +722,10 @@ export default function DealerScreen() {
             </>
           )}
 
-          {/* FIX: same overlap bug already fixed on index.tsx, listing.tsx,
-              and explore.tsx — bottomNav below is position: 'absolute'
-              with real height = 10 (paddingTop) + content + 24 +
-              insets.bottom. A hardcoded height: 80 spacer only covers
-              devices with near-zero safe-area inset; on any phone with a
-              real bottom inset, bottomNav was taller than the 80px
-              reserved for it, letting it creep up over the last content
-              in this scroll view (the delivery dashboard sections). */}
           <View style={{ height: 80 + insets.bottom }} />
         </ScrollView>
       </KeyboardAvoidingView>
 
-      {/* Bottom nav — kept OUTSIDE the KeyboardAvoidingView above, see
-          top-of-file FIX comment for why. */}
       <View style={[styles.bottomNav, { paddingBottom: 24 + insets.bottom }]}>
         <TouchableOpacity style={styles.navItem} onPress={() => router.push('/')}>
           <Text style={styles.navIcon}>🏠</Text>
@@ -814,7 +760,6 @@ const styles = StyleSheet.create({
   header: { backgroundColor: BLACK, padding: 16, paddingTop: 50, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   headerTitle: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   headerTitleText: { color: '#fff', fontSize: 16, fontWeight: '800' },
-  // NEW: wraps the two badges side by side for dual-role users.
   badgeRow: { flexDirection: 'row', gap: 6 },
   proBadge: { backgroundColor: GOLD, borderRadius: 20, paddingHorizontal: 8, paddingVertical: 2 },
   proBadgeText: { color: BLACK, fontSize: 9, fontWeight: '800' },
@@ -861,6 +806,16 @@ const styles = StyleSheet.create({
   jobRoute: { color: '#fff', fontSize: 14, fontWeight: '700' },
   jobTypeBadge: { borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3 },
   jobTypeBadgeText: { fontSize: 10, fontWeight: '700' },
+
+  // NEW: item-size badge styles — small items get a subtle neutral
+  // treatment, large items get a visually louder gold/warning
+  // treatment since that's the one operators specifically need to
+  // notice before accepting.
+  jobSizeBadge: { alignSelf: 'flex-start', backgroundColor: '#1a2a1a', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 5, marginBottom: 8 },
+  jobSizeBadgeLarge: { backgroundColor: '#3a2800', borderWidth: 1, borderColor: GOLD },
+  jobSizeBadgeText: { color: '#4fc96e', fontSize: 11, fontWeight: '700' },
+  jobSizeBadgeTextLarge: { color: GOLD },
+
   jobItem: { color: GREY, fontSize: 12, marginBottom: 4 },
   jobDesc: { color: '#888', fontSize: 11, marginBottom: 8, fontStyle: 'italic' },
   jobFooter: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 8 },
@@ -895,6 +850,12 @@ const styles = StyleSheet.create({
   statTrend: { color: '#4A90D9', fontSize: 11, marginTop: 4 },
   statTrendGrey: { color: '#555', fontSize: 11, marginTop: 4 },
   statTrendGold: { color: GOLD, fontSize: 11, marginTop: 4 },
+  // NEW: real, honest teaser linking to the actual analytics.tsx
+  // screen, replacing the removed fake stats grid above.
+  analyticsTeaser: { backgroundColor: DARK, borderRadius: 12, padding: 16, flexDirection: 'row', alignItems: 'center', borderWidth: 0.5, borderColor: '#333' },
+  analyticsTeaserTitle: { color: '#fff', fontSize: 14, fontWeight: '700', marginBottom: 3 },
+  analyticsTeaserSub: { color: GREY, fontSize: 11 },
+  analyticsTeaserArrow: { color: GOLD, fontSize: 22, marginLeft: 8 },
   actionsGrid: { flexDirection: 'row', gap: 8 },
   actionPrimary: { flex: 1, backgroundColor: GOLD, borderRadius: 10, padding: 12, alignItems: 'center' },
   actionSecondary: { flex: 1, backgroundColor: DARK, borderRadius: 10, padding: 12, alignItems: 'center', borderWidth: 0.5, borderColor: '#333' },
@@ -902,8 +863,6 @@ const styles = StyleSheet.create({
   actionPrimaryText: { color: BLACK, fontSize: 11, fontWeight: '800' },
   actionSecondaryText: { color: '#fff', fontSize: 11, fontWeight: '700' },
   subCard: { backgroundColor: '#3a2800', borderRadius: 12, padding: 14, borderWidth: 1, borderColor: GOLD, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  // NEW: dimmed variant for the non-interactive "Coming soon" state —
-  // muted border/background so it visually reads as inert, not a button.
   subCardDisabled: { backgroundColor: DARK, borderColor: '#444', opacity: 0.7 },
   subName: { color: GOLD, fontSize: 12, fontWeight: '800' },
   subDetail: { color: GREY, fontSize: 11, marginTop: 3 },

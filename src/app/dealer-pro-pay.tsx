@@ -11,32 +11,34 @@
 // confirmed payment. No new payment architecture invented.
 //
 // $30 buys 6 months, matching the "paid boolean + expires_at" pattern
-// already proven correct for delivery/transport operator registrations
-// — UPDATED AGAIN: was 30 days for $30, then 1 year for $30; product
-// decision to keep the price but shorten to a 6-month period instead
-// (see confirm-payment.ts's dealer_pro_subscription branch —
-// setMonth(+6) instead of setFullYear(+1)), effectively doubling the
-// annualized price without changing what's shown at checkout. Still a
-// one-time checkout via Paynow's API, not automatic recurring billing —
-// renewal is just buying another 6-month period.
+// already proven correct for delivery/transport operator registrations.
 //
-// NEW: closes a real gap found while adding the same guard to
-// hirevan.tsx — this screen previously had NO internal pause check at
-// all. dealer.tsx's card correctly hides the "Pay" path from new
-// subscribers when paused, but anyone reaching this screen by any
-// OTHER route (a bookmark, a stale deep link, anything bypassing that
-// card) could still complete a real purchase regardless of the
-// supposedly-paused state. DEALER_PRO_PAUSED now guards this screen
-// directly, the same way VAN_HIRE_PAUSED guards hirevan.tsx — checked
-// both in handlePay() and in the render below. Already-active
-// subscribers are unaffected either way (see the `success ||
-// currentlyActive` branch below, unchanged) — this only blocks NEW
-// purchases while paused, never blocks managing/renewing an existing
-// one.
+// RE-PAUSED (found during a review pass): the feature list previously
+// claimed "Priority placement in search results" and "Full listing
+// performance analytics" — at the time, both looked unbuilt.
+// explore.tsx/index.tsx sort purely by created_at, no Pro-boost logic
+// exists anywhere, so "Priority placement" genuinely is still unbuilt.
+// "Full listing performance analytics" turned out to be a false
+// alarm on closer inspection — a real, properly Dealer-Pro-gated
+// screen (analytics.tsx) already exists, computing genuine numbers
+// from the listings table. The claim is restored below, linking to
+// that real screen. dealer.tsx's separate inline stats card
+// ($2,840, 23, 4.9, etc.) is still hardcoded mock text and still not
+// gated behind Pro at all — that's a different surface, fixed
+// separately, not the same thing as this real dedicated screen.
+//
+// DEALER_PRO_PAUSED stays true until "Priority placement" specifically
+// is genuinely built — that's the one remaining real gap. Same guard
+// mechanism as before (checked in both handlePay() and the render
+// branch below), so this is a clean toggle back to false once that
+// feature exists, not a rewrite. Already-active subscribers are
+// completely unaffected either way (see the `success || currentlyActive`
+// branch below) — this only blocks NEW purchases while paused, never
+// blocks managing/renewing an existing one.
 //
 // Usage: router.push('/dealer-pro-pay')
 
-const DEALER_PRO_PAUSED = false;
+const DEALER_PRO_PAUSED = true;
 
 import { useRouter } from 'expo-router';
 import * as WebBrowser from 'expo-web-browser';
@@ -55,9 +57,7 @@ const GREEN = '#4fc96e';
 
 const PRICE = 30;
 const POLL_INTERVAL_MS = 2000;
-const POLL_MAX_ATTEMPTS = 20; // ~40 seconds total — was 15 (~30s); widened
-// after a real trip_deposit payment on quotes.tsx took 32s to confirm
-// and got missed under the old window. Same webhook path, same fix.
+const POLL_MAX_ATTEMPTS = 20;
 
 export default function DealerProPayScreen() {
   const router = useRouter();
@@ -77,9 +77,6 @@ export default function DealerProPayScreen() {
     setLoading(true);
     const { data: { user } } = await supabase.auth.getUser();
 
-    // Same principle applied throughout the app today: this is a real
-    // payment, so it requires a real account — anonymous sessions are
-    // redirected to register rather than silently failing later.
     if (!user || user.is_anonymous) {
       router.push('/register');
       return;
@@ -106,8 +103,8 @@ export default function DealerProPayScreen() {
   }
 
   async function handlePay() {
-    // Guard lives here, not just in the render branch below — same
-    // defense-in-depth reasoning as hirevan.tsx's handleSubmit().
+    // Guard lives here, not just in the render branch below — defense
+    // in depth, same reasoning as hirevan.tsx's own pause guard.
     if (DEALER_PRO_PAUSED && !currentlyActive) return;
 
     setError('');
@@ -141,7 +138,7 @@ export default function DealerProPayScreen() {
 
     if (paid) {
       setSuccess(true);
-      await init(); // pick up the server-confirmed subscription state
+      await init();
     } else {
       setError(
         'We haven\'t received confirmation of your payment yet. If you completed an EcoCash prompt on your phone, it can take a moment — try again in a few seconds, or check your Paynow confirmation email.'
@@ -208,9 +205,8 @@ export default function DealerProPayScreen() {
             <Text style={styles.successEmoji}>⭐</Text>
             <Text style={styles.successTitle}>Coming soon</Text>
             <Text style={styles.successBody}>
-              Dealer Pro is on its way — priority placement, real
-              dashboard stats, and full listing analytics. Check back
-              soon.
+              Dealer Pro is on its way — priority placement in search
+              results is still being built. Check back soon.
             </Text>
             <TouchableOpacity style={styles.doneBtn} onPress={() => router.replace('/dealer')}>
               <Text style={styles.doneBtnText}>Back to Dashboard</Text>
@@ -232,17 +228,20 @@ export default function DealerProPayScreen() {
         <Text style={styles.subheading}>Everything you need to run a serious selling operation.</Text>
 
         <View style={styles.card}>
-          {/* REMOVED: "Unlimited active listings" — there's no listing
-              cap for anyone on the app right now, free or Pro, so this
-              was an empty promise (nothing to be exempt FROM). Product
-              decision: leave listings uncapped for everyone rather than
-              introduce a cap just to make this claim meaningful, and
-              drop the claim itself. Replaced with the Dealer badge
-              benefit, which IS real — see post.tsx's badge assignment. */}
+          {/* FIX: "Priority placement in search results" removed —
+              genuinely unbuilt, no Pro-boost logic exists anywhere in
+              explore.tsx/index.tsx's listing queries. "Full listing
+              performance analytics" restored after further review — a
+              real, properly-gated screen (analytics.tsx) backs this
+              claim; it was wrongly removed alongside the priority
+              placement claim on an assumption that turned out false
+              for this one specifically. Also added: buyers skip the
+              unlock fee entirely when messaging a Dealer Pro seller —
+              confirmed real in unlock.tsx's own Dealer Pro bypass,
+              genuinely real but was never listed here before. */}
           <Feature text="Dealer badge on all your listings" />
-          <Feature text="Priority placement in search results" />
+          <Feature text="Buyers message you for free — no unlock fee for them" />
           <Feature text="Full listing performance analytics" />
-          <Feature text="A dedicated Dashboard with monthly stats" />
         </View>
 
         <View style={styles.priceCard}>

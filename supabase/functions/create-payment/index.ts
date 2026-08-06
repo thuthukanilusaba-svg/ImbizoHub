@@ -16,20 +16,11 @@
 //      payment_intents 'paid' write + DB side effects only ever happen
 //      later, when Paynow calls paynow-webhook.
 //
-// TEST MODE (new): when PAYMENT_TEST_MODE=true, step 2/3 above are
-// skipped entirely. Instead, this function calls the exact same
-// confirmPaymentIntent() that paynow-webhook uses — synchronously, right
-// here — so a "test payment" produces byte-for-byte the same DB writes
-// and push notifications a real Paynow payment would (booking rows
-// inserted, subscriptions activated, etc.), not just a flipped status
-// column. The app is never touched: unlock.tsx and friends still call
-// WebBrowser.openBrowserAsync(checkoutUrl) and poll payment_intents
-// exactly as before — by the time they do, the payment_intents row is
-// already 'paid', so the very first poll succeeds. checkoutUrl in test
-// mode points at TEST_CHECKOUT_PAGE_URL, a static "test payment
-// complete, you can close this" page — nothing on that page needs to
-// call back into Supabase, since confirmation already happened before
-// the URL was even returned.
+// TEST MODE: when PAYMENT_TEST_MODE=true, step 2/3 above are skipped
+// entirely. Instead, this function calls the exact same
+// confirmPaymentIntent() that paynow-webhook uses — synchronously,
+// right here — so a "test payment" produces byte-for-byte the same DB
+// writes and push notifications a real Paynow payment would.
 //
 // To flip modes:
 //   supabase secrets set PAYMENT_TEST_MODE=true
@@ -72,8 +63,10 @@
 //   pickup_city: string,
 //   dropoff_city: string,
 //   delivery_type: 'local' | 'intercity',
-//   delivery_fee: number,         // $5 or $8, cash-on-collection — informational only, not charged here
+//   delivery_fee: number,         // cash-on-collection — informational only, not charged here
+//   parcel_size: 'small' | 'large',  // NEW — drives the $8/$12/$15 rate delivery-booking.tsx computed
 //   parcel_description?: string,
+//   scheduled_date?: string,
 // }
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
@@ -88,9 +81,6 @@ const FUNCTIONS_BASE_URL = Deno.env.get('FUNCTIONS_BASE_URL')!;
 const PAYNOW_PROXY_URL = Deno.env.get('PAYNOW_PROXY_URL')!;
 const PAYNOW_PROXY_SECRET = Deno.env.get('PAYNOW_PROXY_SECRET')!;
 
-// Test mode toggle — see comment block above. Only 'true' (lowercase,
-// exact) turns it on, so an unset/misspelled secret always fails safe
-// into the real Paynow path rather than silently faking payments.
 const PAYMENT_TEST_MODE = Deno.env.get('PAYMENT_TEST_MODE') === 'true';
 const TEST_CHECKOUT_PAGE_URL = Deno.env.get('TEST_CHECKOUT_PAGE_URL') ?? '';
 
@@ -136,9 +126,9 @@ function additionalInfoFor(kind: PaymentKind): string {
     case 'wanted_request_match':
       return 'ImbizoHub wanted-post match fee';
     case 'trip_deposit':
-      return 'ImbizoHub trip deposit (10%)';
+      return 'ImbizoHub trip deposit';
     case 'dealer_pro_subscription':
-      return 'ImbizoHub Dealer Pro subscription (30 days)';
+      return 'ImbizoHub Dealer Pro subscription';
     case 'featured_listing':
       return 'ImbizoHub Featured listing (7 days)';
     case 'verified_seller':
@@ -259,7 +249,7 @@ Deno.serve(async (req) => {
       const {
         listing_id, item_request_id, buyer_id, seller_id,
         operator_user_id, pickup_city, dropoff_city, delivery_type,
-        delivery_fee, parcel_description, scheduled_date,
+        delivery_fee, parcel_size, parcel_description, scheduled_date,
       } = body;
 
       const hasListing = !!listing_id;
@@ -286,11 +276,13 @@ Deno.serve(async (req) => {
       intentRow.dropoff_city = dropoff_city;
       intentRow.delivery_type = delivery_type;
       intentRow.delivery_fee = delivery_fee;
+      // NEW: item size tier ('small' | 'large') — drives the
+      // $8/$12/$15 rate delivery-booking.tsx already computed
+      // client-side; stored here purely so confirm-payment.ts can
+      // carry it through to the real delivery_bookings row once
+      // payment confirms, same pattern as scheduled_date below.
+      intentRow.parcel_size = parcel_size ?? null;
       intentRow.parcel_description = parcel_description ?? null;
-      // NEW: optional — NULL means ASAP, matching the only behavior
-      // that existed before this field was added. delivery-booking.tsx
-      // only sends this when the buyer actually picked a scheduled
-      // date via the new calendar option.
       intentRow.scheduled_date = scheduled_date ?? null;
     }
 
@@ -318,8 +310,6 @@ Deno.serve(async (req) => {
       }
 
       const result = await confirmPaymentIntent(supabase, intentRow, {
-        // Clearly marked as synthetic so real vs. test payments stay
-        // easy to tell apart later in payment_intents / transactions.
         paynowReference: `TEST-${ourReference}`,
         pollUrl: null,
       });
@@ -332,10 +322,6 @@ Deno.serve(async (req) => {
         });
       }
 
-      // payment_intents is already 'paid' by the time this returns, so
-      // the app's very first poll succeeds. The URL below just needs to
-      // be something WebBrowser.openBrowserAsync can open — no callback
-      // to Supabase needed since confirmation already happened above.
       return new Response(
         JSON.stringify({ checkoutUrl: `${TEST_CHECKOUT_PAGE_URL}?ref=${ourReference}`, reference: ourReference }),
         { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }

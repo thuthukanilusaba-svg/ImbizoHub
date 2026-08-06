@@ -1,21 +1,16 @@
 // app/delivery-operator-register-pay.tsx
 // Delivery operator pays a $10 one-time registration fee (renews yearly)
 // before they can appear as a bookable driver or accept delivery jobs.
-// Mirrors operator-register-pay.tsx (transport operator trip-bidding fee),
-// but writes to delivery_operators instead of profiles.
 //
-// REAL PAYNOW INTEGRATION (replaces the old instant registration_paid=true
-// update): handlePay() now calls the create-payment Edge Function, opens
-// the real Paynow checkout, and polls payment_intents for confirmation —
-// same pattern as unlock.tsx. The actual delivery_operators update is
-// performed by the paynow-webhook Edge Function once Paynow confirms
-// payment, never by this screen directly.
+// NEW: real Operator Terms link + required checkbox before paying —
+// previously "terms" were only ever mentioned in plain, non-clickable
+// footer text with no actual document behind them.
 
 import { useRouter } from 'expo-router';
 import * as WebBrowser from 'expo-web-browser';
 import { useEffect, useState } from 'react';
 import {
-  ActivityIndicator, Platform, ScrollView, StyleSheet,
+  ActivityIndicator, Linking, Platform, ScrollView, StyleSheet,
   Text, TouchableOpacity, View,
 } from 'react-native';
 import { supabase } from '../../lib/supabase';
@@ -27,10 +22,10 @@ const GREY = '#AAAAAA';
 const GREEN = '#4fc96e';
 const REG_FEE = 10;
 
+const OPERATOR_TERMS_URL = 'https://thuthukanilusaba-svg.github.io/imbizohub-legal/operator-terms.html';
+
 const POLL_INTERVAL_MS = 2000;
-const POLL_MAX_ATTEMPTS = 20; // ~40 seconds total — was 15 (~30s); widened
-// after a real trip_deposit payment on quotes.tsx took 32s to confirm
-// and got missed under the old window. Same webhook path, same fix.
+const POLL_MAX_ATTEMPTS = 20;
 
 export default function DeliveryOperatorRegisterPayScreen() {
   const router = useRouter();
@@ -42,6 +37,8 @@ export default function DeliveryOperatorRegisterPayScreen() {
   const [myId, setMyId] = useState('');
   const [myEmail, setMyEmail] = useState('');
   const [operatorRow, setOperatorRow] = useState<any>(null);
+  // NEW: real, required Operator Terms acceptance.
+  const [agreedToTerms, setAgreedToTerms] = useState(false);
 
   useEffect(() => { init(); }, []);
 
@@ -61,22 +58,11 @@ export default function DeliveryOperatorRegisterPayScreen() {
     if (fetchError) { setError(fetchError.message); setLoading(false); return; }
 
     if (!data) {
-      // No delivery_operators row at all — they need to register first.
       setError('No delivery operator profile found. Please register as a delivery operator first.');
       setLoading(false);
       return;
     }
 
-    // Already paid and not expired — skip straight to the dashboard.
-    //
-    // FIX (edge case found during a final sweep, same as
-    // operator-register-pay.tsx): confirm-payment.ts's
-    // delivery_operator_registration branch sets registration_paid and
-    // registration_expires_at the moment payment confirms — before the
-    // person has necessarily tapped through to become-operator.tsx to
-    // fill in their vehicle details. Without the vehicle_type check
-    // below, anyone who exited right after paying would find isActive
-    // already true next time, permanently skipping that step.
     const isActive = data.registration_paid &&
       data.registration_expires_at &&
       new Date(data.registration_expires_at).getTime() > Date.now() &&
@@ -87,9 +73,6 @@ export default function DeliveryOperatorRegisterPayScreen() {
       return;
     }
 
-    // NEW: paid and active, but vehicle_type was never actually saved —
-    // send them to finish that specific step instead of showing the
-    // full payment screen again.
     const paidButIncomplete = data.registration_paid &&
       data.registration_expires_at &&
       new Date(data.registration_expires_at).getTime() > Date.now() &&
@@ -105,6 +88,13 @@ export default function DeliveryOperatorRegisterPayScreen() {
   }
 
   async function handlePay() {
+    // NEW: genuinely blocks payment — same validation tier as any
+    // other required check.
+    if (!agreedToTerms) {
+      setError('Please agree to the Operator Terms to continue.');
+      return;
+    }
+
     setPaying(true);
     setError('');
 
@@ -210,7 +200,6 @@ export default function DeliveryOperatorRegisterPayScreen() {
         <View style={styles.errorBox}><Text style={styles.errorText}>⚠️ {error}</Text></View>
       ) : null}
 
-      {/* What you get */}
       <View style={styles.benefitsCard}>
         <Text style={styles.benefitsTitle}>What you get</Text>
         <Benefit icon="🔓" text="Instant access to all open delivery requests" />
@@ -219,7 +208,6 @@ export default function DeliveryOperatorRegisterPayScreen() {
         <Benefit icon="⭐" text="Build your rating and reputation on ImbizoHub" />
       </View>
 
-      {/* Pricing */}
       <View style={styles.pricingCard}>
         <View style={styles.pricingRow}>
           <View>
@@ -246,6 +234,23 @@ export default function DeliveryOperatorRegisterPayScreen() {
         </View>
       </View>
 
+      {/* NEW: real Operator Terms acceptance */}
+      <TouchableOpacity
+        style={styles.termsRow}
+        onPress={() => setAgreedToTerms((prev) => !prev)}
+        activeOpacity={0.7}
+      >
+        <View style={[styles.checkbox, agreedToTerms && styles.checkboxChecked]}>
+          {agreedToTerms && <Text style={styles.checkmark}>✓</Text>}
+        </View>
+        <Text style={styles.termsText}>
+          I agree to ImbizoHub's{' '}
+          <Text style={styles.termsLink} onPress={() => Linking.openURL(OPERATOR_TERMS_URL)}>
+            Operator Terms
+          </Text>
+        </Text>
+      </TouchableOpacity>
+
       <TouchableOpacity
         style={[styles.payBtn, (paying || verifying) && { opacity: 0.6 }]}
         onPress={handlePay}
@@ -266,10 +271,6 @@ export default function DeliveryOperatorRegisterPayScreen() {
           </>
         )}
       </TouchableOpacity>
-
-      <Text style={styles.footerNote}>
-        By paying you agree to ImbizoHub's delivery operator terms. Your registration is valid for 12 months from today.
-      </Text>
     </ScrollView>
   );
 }
@@ -320,11 +321,20 @@ const styles = StyleSheet.create({
   pricingAmount: { fontSize: 20, fontWeight: '800', color: '#fff' },
   divider: { height: 0.5, backgroundColor: '#2a2a2a', marginVertical: 12 },
 
+  // NEW: terms checkbox row styles
+  termsRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 16, gap: 10 },
+  checkbox: {
+    width: 20, height: 20, borderRadius: 5, borderWidth: 1.5, borderColor: '#666',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  checkboxChecked: { backgroundColor: GOLD, borderColor: GOLD },
+  checkmark: { color: BLACK, fontSize: 13, fontWeight: '900' },
+  termsText: { color: '#ccc', fontSize: 13, flex: 1 },
+  termsLink: { color: GOLD, textDecorationLine: 'underline' },
+
   payBtn: { backgroundColor: GOLD, borderRadius: 14, paddingVertical: 18, alignItems: 'center', marginBottom: 16, flexDirection: 'row', justifyContent: 'center', gap: 10 },
   payBtnText: { color: BLACK, fontSize: 16, fontWeight: '800' },
   payBtnSub: { color: '#5a4400', fontSize: 12, marginTop: 4 },
-
-  footerNote: { fontSize: 11, color: '#666', textAlign: 'center', lineHeight: 16 },
 
   successScreen: { flex: 1, backgroundColor: '#111', padding: 28, paddingTop: 60 },
   successEmoji: { fontSize: 56, marginBottom: 16 },

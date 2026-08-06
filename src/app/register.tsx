@@ -1,11 +1,19 @@
 import { useRouter } from 'expo-router';
 import { useRef, useState } from 'react';
-import { ActivityIndicator, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, KeyboardAvoidingView, Linking, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { supabase } from '../../lib/supabase';
 
 const GOLD = '#B8860B';
 const BLACK = '#1A1A18';
 const DARK = '#2a2a2a';
+
+// NEW: real Terms of Service link + required checkbox — previously
+// "terms" were only ever mentioned in plain, non-clickable footer text
+// on the operator payment screens, with no actual document behind
+// them and nothing requiring agreement anywhere in the app. This is
+// the first, most foundational point that needs one, since it applies
+// to every account regardless of role.
+const TERMS_URL = 'https://thuthukanilusaba-svg.github.io/imbizohub-legal/terms-of-service.html';
 
 // NOTE: 'operator' here is the internal UI/state value used for the
 // Transport Operator picker card and the conditional extra-fields below
@@ -15,52 +23,26 @@ const DARK = '#2a2a2a';
 // avoids touching every other `accountType === 'operator'` check in this
 // file just to rename the local state value.
 //
-// UPDATED (product decision revision): van-hire moves from fully HIDDEN
-// to VISIBLE-BUT-PAUSED, matching the same "Coming soon" treatment
-// dealer.tsx already uses for Dealer Pro — shown so people know it's
-// coming, but not selectable yet. `disabled: true` below is a new field
-// (only Transport Operator has it) checked in the card-rendering block
-// further down: a disabled card shows a "Coming soon" badge, ignores
-// taps, and never becomes the selected accountType. Nothing downstream
-// (toStoredAccountType, operator-register-pay.tsx, the
-// transport_operator_registration payment kind) changes — those stay
-// fully functional for when this is un-paused, same as before.
 // UPDATED (product decision): "Buyer" and "Seller" removed from this
 // picker entirely — a full codebase check confirmed neither one ever
-// gated any real functionality (post.tsx never checked account_type at
-// all; the only consequence anywhere was whether the Dashboard tab
-// showed by default in the bottom nav, now driven by "have you posted
-// a listing" instead — see index.tsx/explore.tsx/messages.tsx). Asking
-// new users to pre-declare a role that never actually restricted
-// anything was a fake decision at exactly the moment (signup) where
-// friction matters most. Every account can already buy, sell, and
-// message regardless of what used to be picked here.
+// gated any real functionality. Every account can already buy, sell,
+// and message regardless of what used to be picked here.
 //
 // What remains are the two GENUINELY optional add-ons — Delivery and
 // Transport Operator — which really do gate real functionality (a paid
-// registration, specific screens). These are no longer part of a
-// forced single-select "I am a" grid; they're an optional toggle
-// section further down the form (see the JSX below), matching their
-// actual nature: something extra you can add, not a required identity
-// choice.
+// registration, specific screens). These are an optional toggle
+// section further down the form, matching their actual nature.
 const accountTypes = [
   { type: 'delivery', icon: '📦', label: 'Delivery Operator', desc: 'Deliver parcels locally & intercity' },
   { type: 'operator', icon: '🚐', label: 'Transport Operator', desc: 'Offer van & minibus hire' },
 ];
 
 // FIX: profiles.account_type must store 'transport_operator' — that's
-// the exact string operator-requests.tsx's checkStatus() checks for
-// (`profile?.account_type !== 'transport_operator'`), and the same
-// string the paynow-webhook Edge Function writes once a transport
-// operator's registration fee is confirmed paid. The old code inserted
-// the raw local `accountType` value directly, which stored 'operator'
-// for this role — a string that NEVER matches 'transport_operator',
-// meaning every transport operator signup was permanently blocked from
-// operator-requests.tsx regardless of payment status. This maps the
-// local UI value to the correct stored value; 'buyer', 'seller', and
-// 'delivery' pass through unchanged, since nothing else in the app
-// checks profiles.account_type === 'delivery' (delivery operator status
-// is tracked entirely via the separate delivery_operators table).
+// the exact string operator-requests.tsx's checkStatus() checks for.
+// The old code inserted the raw local `accountType` value directly,
+// which stored 'operator' for this role — a string that NEVER matches
+// 'transport_operator'. This maps the local UI value to the correct
+// stored value; 'buyer' and 'delivery' pass through unchanged.
 function toStoredAccountType(uiValue: string): string {
   if (uiValue === 'operator') return 'transport_operator';
   return uiValue;
@@ -70,8 +52,6 @@ export default function RegisterScreen() {
   const router = useRouter();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  // NEW: confirm-password field + both fields' show/hide state — see
-  // the password section below for the matching-validation logic.
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
@@ -87,39 +67,16 @@ export default function RegisterScreen() {
   const [deliveryVehicleType, setDeliveryVehicleType] = useState('');
   const [deliveryArea, setDeliveryArea] = useState('');
 
+  // NEW: real, required Terms acceptance — see TERMS_URL above.
+  const [agreedToTerms, setAgreedToTerms] = useState(false);
+
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
 
-  // FIX: guards against handleRegister firing twice for a single tap/click.
-  // Live testing showed EVERY genuine Transport Operator signup landed in
-  // the database with account_type = 'buyer' (the useState default),
-  // despite the UI correctly showing "Transport Operator Details" and
-  // this same function's own redirect logic correctly branching on
-  // accountType === 'operator'. Since the insert and the redirect read
-  // the SAME local variable in the SAME synchronous function call, they
-  // cannot disagree unless handleRegister actually ran as two separate
-  // invocations: an early one (capturing a stale/default accountType
-  // before the picker's state update had committed) that performed the
-  // insert, and a later one (with the correct, updated accountType) that
-  // performed the redirect. React Native Web's touchable components can
-  // sometimes bind more than one underlying event listener for a single
-  // logical tap, and the existing `disabled={loading}` guard doesn't
-  // fully protect against this since React state updates are batched —
-  // if a second invocation fires before the first setLoading(true) has
-  // actually committed and re-rendered, the button isn't disabled yet.
-  //
-  // isSubmittingRef is checked and set synchronously, before any await —
-  // unlike React state, a ref update is immediate and not batched, so a
-  // second invocation arriving even a tick later will see it and bail
-  // out, regardless of whether `loading` has visually updated yet.
   const isSubmittingRef = useRef(false);
 
   async function handleRegister() {
-    if (isSubmittingRef.current) {
-      // A second invocation arrived while the first is still in flight —
-      // ignore it entirely rather than risk it reading stale state.
-      return;
-    }
+    if (isSubmittingRef.current) return;
     isSubmittingRef.current = true;
 
     if (!email || !password || !name) {
@@ -128,10 +85,17 @@ export default function RegisterScreen() {
       return;
     }
 
-    // NEW: confirm-password check — same validation tier as the required-
-    // fields check above, checked before anything hits the network.
     if (password !== confirmPassword) {
       setErrorMsg('Passwords don\'t match. Please check both fields.');
+      isSubmittingRef.current = false;
+      return;
+    }
+
+    // NEW: genuinely blocks submission — not just a visual checkbox
+    // that does nothing. Same validation tier as the other required
+    // fields above, checked before anything hits the network.
+    if (!agreedToTerms) {
+      setErrorMsg('Please agree to the Terms of Service to continue.');
       isSubmittingRef.current = false;
       return;
     }
@@ -139,28 +103,6 @@ export default function RegisterScreen() {
     setLoading(true);
     setErrorMsg('');
 
-    // FIX (found during a full-app review pass — a systemic gap, not
-    // specific to this screen): every "upgrade from anonymous to a real
-    // account" redirect built today (quotes.tsx, wanted-responses.tsx,
-    // post.tsx all push to /register when the current session is
-    // anonymous) used to land here and call supabase.auth.signUp()
-    // unconditionally. signUp() does NOT convert the current anonymous
-    // session into a permanent one — it creates a completely separate,
-    // brand-new identity, silently abandoning the anonymous one. Anyone
-    // who browsed anonymously, posted a want, responded to others, or
-    // chatted in several conversations, then hit a payment gate and
-    // registered, would get a DIFFERENT user id — every message, want,
-    // and response created while anonymous became permanently orphaned,
-    // invisible to their new real account, with no way to ever
-    // reconnect it. This directly undermined the whole point of
-    // building anonymous access in the first place.
-    //
-    // Fix: if the CURRENT session is anonymous, use
-    // supabase.auth.updateUser() instead — this converts that SAME user
-    // row into a permanent one (same id, same history), rather than
-    // replacing it with signUp(). Only falls back to signUp() when there
-    // is no anonymous session to convert (the normal "I've never used
-    // this app before" case).
     const { data: { session: currentSession } } = await supabase.auth.getSession();
     const isConvertingAnonymous = !!currentSession?.user?.is_anonymous;
 
@@ -184,37 +126,11 @@ export default function RegisterScreen() {
     }
 
     if (data.user) {
-      // FIX (root cause, found by reproducing the exact failing SQL
-      // directly): the previous .upsert({ id: data.user.id, ... },
-      // { onConflict: 'id' }) call put `id` in the UPDATE SET clause —
-      // PostgREST's upsert generates
-      // `ON CONFLICT (id) DO UPDATE SET id = excluded.id, full_name =
-      // excluded.full_name, ...` for every field in the payload,
-      // including the conflict column itself. `id` was never part of
-      // the safe-column allowlist from the profile-update lockdown
-      // migration (full_name, phone, location, avatar_url, account_type,
-      // vehicle_type, vehicle_capacity, licence_plate, push_token) —
-      // deliberately so, since granting UPDATE on `id` table-wide would
-      // let any authenticated user rewrite their own profile's primary
-      // key via a raw API call. That's a real hijack/collision risk, not
-      // just a technicality, so the fix is not to widen the grant.
-      //
-      // The on_auth_user_created Auth Hook (see handle_new_user()) always
-      // creates a stub profiles row the instant signUp() succeeds — so by
-      // the time this code runs, a row for this id is guaranteed to
-      // already exist. That means upsert was never actually needed here:
-      // a plain update() that never references `id` in its payload does
-      // the exact same job — overwrite the buyer-default stub with the
-      // real chosen details — without ever touching a locked column.
       const { error: profileError } = await supabase
         .from('profiles')
         .update({
           full_name: name,
           phone,
-          // FIX: was `account_type: accountType` — stored the raw local
-          // value ('operator') instead of the value the rest of the app
-          // actually checks for ('transport_operator'). See
-          // toStoredAccountType() above.
           account_type: toStoredAccountType(accountType),
           vehicle_type: accountType === 'operator' ? vehicleType :
                         accountType === 'delivery' ? deliveryVehicleType : null,
@@ -229,20 +145,7 @@ export default function RegisterScreen() {
         return;
       }
 
-      // If delivery operator — also insert into delivery_operators table.
-      // registration_paid defaults to false; they must pay the $10 fee
-      // (delivery-operator-register-pay.tsx) before appearing as a bookable
-      // driver or accepting jobs. status stays 'active' since that field is
-      // used separately for the strike system (warning/suspended/removed),
-      // not payment state.
       if (accountType === 'delivery') {
-        // Unlike profiles, delivery_operators has no equivalent auto-
-        // creation hook — there's no guaranteed existing row to update,
-        // so this one genuinely needs upsert (insert-if-new, update-if-
-        // renewing). user_id is the conflict target here rather than id,
-        // and — unlike profiles.id — updating delivery_operators.user_id
-        // to itself on conflict isn't a privilege-escalation path, so
-        // this is safe to leave as upsert.
         const { error: deliveryError } = await supabase.from('delivery_operators').upsert({
           user_id: data.user.id,
           full_name: name,
@@ -263,13 +166,6 @@ export default function RegisterScreen() {
     setLoading(false);
     isSubmittingRef.current = false;
 
-    // FIX: transport operators previously fell through to the plain `else`
-    // branch and were sent to '/' with no prompt to pay the $10
-    // registration fee — unlike delivery operators, who are taken
-    // straight to their payment screen. A transport operator would only
-    // discover the fee requirement by wandering into operator-requests.tsx
-    // and hitting its blocked screen. Now mirrors the delivery-operator
-    // flow: straight to the relevant payment screen after signup.
     if (accountType === 'delivery') {
       router.replace('/delivery-operator-register-pay');
     } else if (accountType === 'operator') {
@@ -280,11 +176,6 @@ export default function RegisterScreen() {
   }
 
   return (
-    // FIX: the keyboard covered form fields as they were being typed
-    // into, on every screen with text inputs app-wide — nothing
-    // previously accounted for the keyboard at all. KeyboardAvoidingView
-    // pushes the ScrollView's content up (iOS) or resizes it (Android)
-    // so whichever field is focused stays visible above the keyboard.
     <KeyboardAvoidingView
       style={{ flex: 1 }}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
@@ -305,11 +196,6 @@ export default function RegisterScreen() {
         <TextInput style={styles.input} placeholder="e.g. +263 77 123 4567" placeholderTextColor="#888"
           value={phone} onChangeText={setPhone} keyboardType="phone-pad" />
 
-        {/* NEW: show/hide toggle so a typo isn't invisible, plus a
-            separate confirm-password field checked in handleRegister
-            before the request ever hits the network. Both fields share
-            the same show/hide pattern, kept as independent toggles so
-            checking one doesn't force-reveal the other. */}
         <Text style={styles.label}>Password *</Text>
         <View style={styles.passwordRow}>
           <TextInput
@@ -349,20 +235,10 @@ export default function RegisterScreen() {
             <Text style={styles.eyeIcon}>{showConfirmPassword ? '🙈' : '👁️'}</Text>
           </TouchableOpacity>
         </View>
-        {/* Inline hint the moment the two fields visibly disagree — the
-            hard block still happens in handleRegister on submit, this is
-            just earlier feedback so nobody has to submit first to find out. */}
         {confirmPassword.length > 0 && password !== confirmPassword ? (
           <Text style={styles.passwordMismatch}>Passwords don't match yet.</Text>
         ) : null}
 
-        {/* NEW: optional add-on section, replacing what used to be a
-            required "I am a" choice at the top of the form. Tapping an
-            already-selected pill deselects it back to the plain base
-            account — this is a genuine toggle now, not a forced single
-            pick. Everything below (the extra-fields blocks, the
-            handleRegister insert/redirect logic) is UNCHANGED from
-            before; only how accountType gets set changed. */}
         <View style={styles.optionalSection}>
           <Text style={styles.optionalSectionTitle}>
             Also want to drive for ImbizoHub? <Text style={styles.optionalSectionHint}>(optional)</Text>
@@ -383,7 +259,6 @@ export default function RegisterScreen() {
           </View>
         </View>
 
-        {/* Transport Operator fields */}
         {accountType === 'operator' && (
           <View style={styles.extraFields}>
             <View style={styles.extraFieldsHeader}>
@@ -398,7 +273,6 @@ export default function RegisterScreen() {
           </View>
         )}
 
-        {/* Delivery Operator fields */}
         {accountType === 'delivery' && (
           <View style={styles.extraFields}>
             <View style={styles.extraFieldsHeader}>
@@ -424,6 +298,27 @@ export default function RegisterScreen() {
           </View>
         )}
 
+        {/* NEW: real Terms acceptance — a visible link to the actual
+            document, plus a checkbox that genuinely blocks submission
+            (see handleRegister's check above) rather than decorative
+            text. Placed right before the submit button, same
+            convention most apps use. */}
+        <TouchableOpacity
+          style={styles.termsRow}
+          onPress={() => setAgreedToTerms((prev) => !prev)}
+          activeOpacity={0.7}
+        >
+          <View style={[styles.checkbox, agreedToTerms && styles.checkboxChecked]}>
+            {agreedToTerms && <Text style={styles.checkmark}>✓</Text>}
+          </View>
+          <Text style={styles.termsText}>
+            I agree to ImbizoHub's{' '}
+            <Text style={styles.termsLink} onPress={() => Linking.openURL(TERMS_URL)}>
+              Terms of Service
+            </Text>
+          </Text>
+        </TouchableOpacity>
+
         {errorMsg ? <Text style={styles.error}>{errorMsg}</Text> : null}
 
         <TouchableOpacity style={styles.button} onPress={handleRegister} disabled={loading}>
@@ -448,9 +343,6 @@ const styles = StyleSheet.create({
   label: { color: '#ccc', fontSize: 14, marginBottom: 6, marginTop: 12 },
   input: { backgroundColor: DARK, color: '#fff', borderRadius: 8, padding: 12, fontSize: 16, borderWidth: 1, borderColor: '#444' },
 
-  // NEW: password row wraps the input + eye-toggle button together,
-  // same visual shell (background/border/radius) as the plain `input`
-  // style so it doesn't look out of place next to the other fields.
   passwordRow: {
     flexDirection: 'row', alignItems: 'center', backgroundColor: DARK,
     borderRadius: 8, borderWidth: 1, borderColor: '#444',
@@ -460,12 +352,6 @@ const styles = StyleSheet.create({
   eyeIcon: { fontSize: 18 },
   passwordMismatch: { color: '#ff6b6b', fontSize: 12, marginTop: 6 },
 
-  // NEW: optional add-on toggle section, replacing the old required
-  // account-type grid entirely (that grid's styles — accountTypeGrid,
-  // accountTypeCard, comingSoonBadge, etc. — are gone; nothing
-  // references them anymore, both Delivery and Transport Operator are
-  // fully live, so there's no more "disabled/coming soon" card state
-  // to style for).
   optionalSection: { marginTop: 20, paddingTop: 16, borderTopWidth: 0.5, borderTopColor: '#2a2a2a' },
   optionalSectionTitle: { color: '#aaa', fontSize: 12, marginBottom: 10 },
   optionalSectionHint: { color: '#666' },
@@ -486,6 +372,17 @@ const styles = StyleSheet.create({
 
   verificationNote: { backgroundColor: '#1a1a2e', borderRadius: 8, padding: 12, marginTop: 12, borderWidth: 0.5, borderColor: '#3a3a5e' },
   verificationNoteText: { color: '#8888aa', fontSize: 11, lineHeight: 16 },
+
+  // NEW: terms checkbox row styles
+  termsRow: { flexDirection: 'row', alignItems: 'center', marginTop: 20, gap: 10 },
+  checkbox: {
+    width: 20, height: 20, borderRadius: 5, borderWidth: 1.5, borderColor: '#666',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  checkboxChecked: { backgroundColor: GOLD, borderColor: GOLD },
+  checkmark: { color: BLACK, fontSize: 13, fontWeight: '900' },
+  termsText: { color: '#ccc', fontSize: 13, flex: 1 },
+  termsLink: { color: GOLD, textDecorationLine: 'underline' },
 
   error: { color: '#ff6b6b', marginTop: 12, textAlign: 'center' },
   button: { backgroundColor: GOLD, borderRadius: 10, padding: 16, alignItems: 'center', marginTop: 24 },

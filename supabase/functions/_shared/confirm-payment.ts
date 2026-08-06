@@ -139,6 +139,46 @@ async function notifyTripDepositPaid(supabase: SupabaseClient, operatorId: strin
   }
 }
 
+// NEW: notifies each operator whose quote was declined when a customer
+// accepted a DIFFERENT quote on the same trip request. Closes a real
+// gap — previously the only signal a losing operator got was the
+// request quietly vanishing from operator-requests.tsx's "Open trip
+// requests" list, with no explicit "you didn't get this one" moment.
+// Takes an array since multiple operators can lose on the same request
+// at once (everyone except the winner).
+async function notifyQuotesDeclined(supabase: SupabaseClient, operatorIds: string[], requestId: string) {
+  if (operatorIds.length === 0) return;
+  try {
+    let routeLabel = 'a trip';
+    const { data: request } = await supabase
+      .from('requests')
+      .select('pickup, destination')
+      .eq('id', requestId)
+      .maybeSingle();
+    if (request?.pickup && request?.destination) {
+      routeLabel = `${request.pickup} → ${request.destination}`;
+    }
+
+    const { data: profiles } = await supabase
+      .from('profiles')
+      .select('id, push_token')
+      .in('id', operatorIds);
+
+    await Promise.all(
+      (profiles ?? []).map((p) =>
+        sendExpoPushNotification(
+          p.push_token,
+          'Quote not selected',
+          `The customer chose a different operator for "${routeLabel}". Keep an eye out for new trip requests.`,
+          { type: 'quote_declined', request_id: requestId }
+        )
+      )
+    );
+  } catch (err) {
+    console.error('confirmPaymentIntent: notifyQuotesDeclined failed', err);
+  }
+}
+
 async function notifyDeliveryBooked(supabase: SupabaseClient, sellerId: string, itemTitle: string) {
   try {
     const { data: sellerProfile } = await supabase
@@ -352,11 +392,15 @@ export async function confirmPaymentIntent(
       return { ok: false, error: 'DB error' };
     }
 
-    await supabase
+    // NEW: .select('operator_id') on the update returns the affected
+    // rows directly — no separate query needed to find out who just
+    // lost this trip.
+    const { data: declinedQuotes } = await supabase
       .from('quotes')
       .update({ status: 'declined' })
       .eq('request_id', quote.request_id)
-      .neq('id', quote.id);
+      .neq('id', quote.id)
+      .select('operator_id');
 
     const { error: requestUpdateError } = await supabase
       .from('requests')
@@ -378,6 +422,10 @@ export async function confirmPaymentIntent(
     });
 
     await notifyTripDepositPaid(supabase, intent.seller_id, quote.request_id);
+
+    // NEW: notify every operator who lost this trip to the winner.
+    const declinedOperatorIds = (declinedQuotes ?? []).map((q) => q.operator_id);
+    await notifyQuotesDeclined(supabase, declinedOperatorIds, quote.request_id);
 
   } else if (intent.kind === 'dealer_pro_subscription') {
     // UPDATED: was 1 year for $30; product decision to keep the price
@@ -435,27 +483,26 @@ export async function confirmPaymentIntent(
     });
 
   } else if (intent.kind === 'verified_seller') {
-    const { data: profileRow, error: fetchProfileError } = await supabase
-      .from('profiles')
-      .select('verification_review_status, verification_document_url')
-      .eq('id', intent.buyer_id)
-      .maybeSingle();
-
-    if (fetchProfileError) {
-      console.error('confirmPaymentIntent: profiles (verified seller) fetch failed', fetchProfileError.message);
-      return { ok: false, error: 'DB error' };
-    }
-
-    const updatePayload: Record<string, unknown> = {
-      verified_paid_at: new Date().toISOString(),
-    };
-    if (profileRow?.verification_document_url && profileRow.verification_review_status !== 'approved') {
-      updatePayload.verification_review_status = 'pending_review';
-    }
-
+    // FIX (found during a full-app review pass, confirmed via both
+    // verified-seller-pay.tsx and admin-verification-review.tsx): this
+    // used to fetch profiles.verification_review_status /
+    // verification_document_url and conditionally set
+    // verification_review_status = 'pending_review' — leftover from
+    // before the "unified verification" refactor. Both the submission
+    // side (submit_verification(), writing to verification_requests)
+    // and the review side (admin_review_verification(), same table)
+    // now exclusively use that unified table — neither of these two
+    // profiles columns is read or written anywhere else in the app
+    // anymore. The old conditional was harmless dead code (it updated
+    // a column nothing downstream ever checked), not an active bug,
+    // but confusing and worth removing rather than leaving as
+    // misleading architecture. This payment step's only real job is
+    // recording that the fee was paid — the actual pending-review
+    // state is set by submit_verification() when the document is
+    // uploaded, which can happen before or after payment either way.
     const { error: verifiedError } = await supabase
       .from('profiles')
-      .update(updatePayload)
+      .update({ verified_paid_at: new Date().toISOString() })
       .eq('id', intent.buyer_id);
 
     if (verifiedError) {
@@ -468,7 +515,7 @@ export async function confirmPaymentIntent(
       type: 'verified_seller',
       amount: intent.amount,
       status: 'completed',
-      notes: `Verified Seller fee — paid via Paynow, pending document review`,
+      notes: `Verified Seller fee — paid via Paynow`,
     });
 
   } else if (intent.kind === 'delivery_booking_fee') {
@@ -486,11 +533,11 @@ export async function confirmPaymentIntent(
         delivery_fee: intent.delivery_fee,
         booking_fee: intent.amount,
         parcel_description: intent.parcel_description,
-        // NEW: carries through the buyer's chosen scheduled date, if
-        // any — NULL means ASAP, same as before this field existed at
-        // all. Set on the payment_intents row by create-payment when
-        // the client initiates checkout; just passed through here
-        // unchanged.
+        // NEW: item size tier (small/large) — see quotes.tsx... er,
+        // delivery-booking.tsx's own comment for the full pricing
+        // reasoning. NULL only for any pre-existing booking rows from
+        // before this column existed; every new booking sends it.
+        parcel_size: intent.parcel_size,
         scheduled_date: intent.scheduled_date,
         status: 'accepted',
         accepted_at: new Date().toISOString(),

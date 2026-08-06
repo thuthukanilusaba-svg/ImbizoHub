@@ -1,27 +1,29 @@
 // app/delivery-booking.tsx
 // Delivery booking screen — buyer requests delivery, available drivers avail themselves,
-// seller chooses a driver. Fixed rates: $5 local, $10 intercity. $2 booking fee to ImbizoHub.
+// seller chooses a driver.
+//
+// UPDATED (pricing decision): rates now depend on item size, not just
+// distance — a phone and a window frame shouldn't cost the same to
+// move. Two tiers:
+//   Small (fits in a normal car): $8 local / $12 intercity
+//   Large (needs a van or truck): $15 flat — intercity isn't offered
+//     at all for large items; large-item delivery is local-only by
+//     design, per product decision.
+// $2 booking fee to ImbizoHub either way, unchanged.
 //
 // UPDATED: can now originate from either a marketplace listing (as
 // before) OR a matched Wanted-tab request — chat.tsx's deal modal routes
 // here with either listing_id+listing_price OR item_request_id, never
 // both. confirmBooking() inserts whichever origin is present, leaving
-// the other column null — matches delivery_bookings' new mutually-
-// exclusive-origin CHECK constraint (see wanted-delivery-migration.sql).
-// Everything else about the booking flow itself (driver selection, fixed
-// $5/$10 + $2 rates, cash-on-collection) is unchanged and applies
-// identically to both origins.
+// the other column null.
 //
 // UPDATED: confirmBooking() no longer inserts directly into
 // delivery_bookings. The $2 ImbizoHub booking fee is a real Paynow
-// charge now — same create-payment -> Paynow checkout -> poll
-// payment_intents pattern unlock.tsx already uses for the arrange-deal
-// fee. The actual delivery_bookings row is created server-side by
-// paynow-webhook once payment is confirmed, not here — same reasoning
-// as unlock_fee: a returnurl visit just means the buyer came back to
-// the app, it doesn't mean Paynow actually confirmed the charge. The
-// $5/$10 driver fee is unchanged and stays cash-on-collection; only the
-// $2 platform fee goes through Paynow.
+// charge — create-payment -> Paynow checkout -> poll payment_intents
+// pattern unlock.tsx already uses. The actual delivery_bookings row is
+// created server-side by paynow-webhook once payment is confirmed, not
+// here. The driver fee itself is unchanged and stays cash-on-collection;
+// only the $2 platform fee goes through Paynow.
 
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -38,12 +40,24 @@ const BLACK = '#1A1A18';
 const DARK = '#2a2a2a';
 const GREY = '#AAAAAA';
 
-// Same poll budget unlock.tsx uses while waiting for paynow-webhook to
-// mark the payment_intents row 'paid'.
 const POLL_INTERVAL_MS = 2000;
-const POLL_MAX_ATTEMPTS = 20; // ~40 seconds total — was 15 (~30s); widened
-// after a real trip_deposit payment on quotes.tsx took 32s to confirm
-// and got missed under the old window. Same webhook path, same fix.
+const POLL_MAX_ATTEMPTS = 20;
+
+// NEW: driver-matching for large items. vehicle_type is free text
+// entered by the operator at registration (e.g. "Bakkie", "Toyota Hiace
+// van", "Motorbike") — there's no structured vehicle-category field to
+// filter on directly. This is a pragmatic keyword heuristic rather than
+// a hard guarantee: it checks for common large-vehicle words. It can
+// have false negatives (an operator who described their van in an
+// unusual way) but meaningfully avoids the worse problem — showing a
+// motorbike-only operator as a choosable option for a window frame.
+const LARGE_VEHICLE_KEYWORDS = ['van', 'truck', 'bakkie', 'pickup', 'pick-up', 'lorry', 'minibus'];
+
+function canCarryLargeItems(vehicleType: string | null | undefined): boolean {
+  if (!vehicleType) return false;
+  const lower = vehicleType.toLowerCase();
+  return LARGE_VEHICLE_KEYWORDS.some((kw) => lower.includes(kw));
+}
 
 export default function DeliveryBookingScreen() {
   const router = useRouter();
@@ -54,9 +68,6 @@ export default function DeliveryBookingScreen() {
     item_request_id?: string;
   }>();
 
-  // Exactly one of these should be present per navigation — mirrors the
-  // listing_id vs request_id vs item_request_id branching already used
-  // in chat.tsx.
   const isFromWantedMatch = !listing_id && !!item_request_id;
 
   const [myId, setMyId] = useState('');
@@ -64,10 +75,9 @@ export default function DeliveryBookingScreen() {
   const [pickupCity, setPickupCity] = useState('');
   const [dropoffCity, setDropoffCity] = useState('');
   const [parcelDescription, setParcelDescription] = useState('');
-  // NEW: previously deliveries had no date concept at all — implicitly
-  // always "as soon as possible." This adds a genuine, optional
-  // scheduling choice; ASAP stays the default, matching existing
-  // behavior exactly when nothing's changed here.
+  // NEW: item size tier — see top-of-file comment for the pricing
+  // reasoning. Defaults to 'small' since most listed items are.
+  const [parcelSize, setParcelSize] = useState<'small' | 'large'>('small');
   const [deliveryTiming, setDeliveryTiming] = useState<'asap' | 'scheduled'>('asap');
   const [scheduledDate, setScheduledDate] = useState('');
   const [showDatePicker, setShowDatePicker] = useState(false);
@@ -116,11 +126,21 @@ export default function DeliveryBookingScreen() {
     });
   }, []);
 
-  // Determine delivery type and fee based on cities
-  const isIntercity = pickupCity.trim().toLowerCase() !== dropoffCity.trim().toLowerCase()
+  // NEW: isIntercity is only ever MEANINGFUL for small items — large
+  // items are always local-only regardless of what cities are typed
+  // (per product decision: "just don't offer intercity as an option
+  // when Large is selected", not a hard block/error). The city
+  // comparison itself still runs the same way underneath; it's just
+  // ignored for fee/type purposes once parcelSize is 'large'.
+  const citiesDiffer = pickupCity.trim().toLowerCase() !== dropoffCity.trim().toLowerCase()
     && pickupCity.trim() !== '' && dropoffCity.trim() !== '';
-  const deliveryFee = isIntercity ? 10 : 5;
-  const deliveryType = isIntercity ? 'intercity' : 'local';
+  const isIntercity = parcelSize === 'small' && citiesDiffer;
+
+  const deliveryFee = parcelSize === 'large' ? 15 : (isIntercity ? 12 : 8);
+  // Large is always recorded as 'local' — there's no 'large_intercity'
+  // concept anywhere in this app; large-item delivery is local-only by
+  // design.
+  const deliveryType = parcelSize === 'large' ? 'local' : (isIntercity ? 'intercity' : 'local');
   const BOOKING_FEE = 2;
 
   async function findDrivers() {
@@ -131,10 +151,6 @@ export default function DeliveryBookingScreen() {
     setError('');
     setDriversLoading(true);
 
-    // Load all active, verified, PAID delivery operators.
-    // registration_paid gates out operators who haven't paid the $10
-    // registration fee (or whose 12-month registration has lapsed) — they
-    // must not appear as choosable drivers until they pay/renew.
     const { data, error: fetchError } = await supabase
       .from('delivery_operators')
       .select('*')
@@ -151,15 +167,18 @@ export default function DeliveryBookingScreen() {
       return;
     }
 
-    setAvailableDrivers(data ?? []);
+    // NEW: for large items, only show operators whose vehicle_type
+    // looks like it can actually carry something bulky — see
+    // canCarryLargeItems() above. Small items keep the full,
+    // unfiltered list, exactly as before this existed.
+    const filtered = parcelSize === 'large'
+      ? (data ?? []).filter((d) => canCarryLargeItems(d.vehicle_type))
+      : (data ?? []);
+
+    setAvailableDrivers(filtered);
     setStep('choose-driver');
   }
 
-  // Polls payment_intents for this reference until it's marked 'paid'
-  // (paynow-webhook does that once Paynow confirms the charge and
-  // creates the real delivery_bookings row) — same shape as unlock.tsx's
-  // pollForPaid: bounded attempts, short-circuits immediately on
-  // 'error'/'cancelled' rather than waiting out the full poll window.
   async function pollForPaid(reference: string): Promise<'paid' | 'failed' | 'timeout'> {
     for (let attempt = 0; attempt < POLL_MAX_ATTEMPTS; attempt++) {
       const { data } = await supabase
@@ -182,17 +201,11 @@ export default function DeliveryBookingScreen() {
     setError('');
     setBookingStage('starting');
 
-    // The person on this screen is always the buyer requesting delivery.
-    // seller_id comes in as a route param identifying either the
-    // listing's seller or the Wanted match's accepted responder — same
-    // meaning either way ("the person providing the item").
     const { data: createResult, error: createError } = await supabase.functions.invoke('create-payment', {
       body: {
         kind: 'delivery_booking_fee',
         amount: BOOKING_FEE,
         email: myEmail || undefined,
-        // Exactly one of these two, matching delivery_bookings' own
-        // mutually-exclusive-origin CHECK constraint.
         listing_id: isFromWantedMatch ? undefined : parseInt(listing_id!),
         item_request_id: isFromWantedMatch ? item_request_id : undefined,
         buyer_id: myId,
@@ -202,10 +215,12 @@ export default function DeliveryBookingScreen() {
         dropoff_city: dropoffCity.trim(),
         delivery_type: deliveryType,
         delivery_fee: deliveryFee,
+        // NEW: sent through to create-payment, stored on payment_intents,
+        // then carried into the real delivery_bookings row by
+        // confirm-payment.ts once payment confirms — same pattern
+        // already proven for scheduled_date.
+        parcel_size: parcelSize,
         parcel_description: parcelDescription.trim() || undefined,
-        // NEW: NULL/undefined means ASAP, matching today's existing
-        // (only) behavior — only sent when the buyer actually picked a
-        // scheduled date via the new calendar option.
         scheduled_date: scheduledDate || undefined,
       },
     });
@@ -221,11 +236,6 @@ export default function DeliveryBookingScreen() {
 
     setBookingStage('awaiting_payment');
 
-    // Open Paynow's real checkout page — same in-app browser unlock.tsx
-    // uses. The buyer completes payment there (EcoCash prompt, card
-    // entry, etc.); this screen has no visibility into that step and
-    // must not assume it succeeded just because the browser closed —
-    // only the webhook, polled below, confirms that.
     await WebBrowser.openBrowserAsync(checkoutUrl);
 
     setBookingStage('confirming');
@@ -235,8 +245,6 @@ export default function DeliveryBookingScreen() {
     setBookingStage('idle');
 
     if (result === 'paid') {
-      // The real delivery_bookings row was created server-side by
-      // paynow-webhook — nothing left to insert from here.
       setBooked(true);
     } else if (result === 'failed') {
       setError('Your payment could not be completed. Please try again.');
@@ -299,17 +307,54 @@ export default function DeliveryBookingScreen() {
               You pay the driver <Text style={{ color: GOLD }}>cash on collection</Text>.
             </Text>
 
-            {/* Fee preview */}
+            {/* NEW: item size tier — the actual price driver. Placed
+                first, before cities, since it changes what's even
+                offered below (large items never show an intercity
+                option, regardless of what cities get typed). */}
+            <Text style={styles.label}>Item size</Text>
+            <View style={styles.sizeRow}>
+              <TouchableOpacity
+                style={[styles.sizeChip, parcelSize === 'small' && styles.sizeChipActive]}
+                onPress={() => setParcelSize('small')}
+              >
+                <Text style={styles.sizeChipIcon}>🚗</Text>
+                <Text style={[styles.sizeChipText, parcelSize === 'small' && styles.sizeChipTextActive]}>
+                  Small — fits in a car
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.sizeChip, parcelSize === 'large' && styles.sizeChipActive]}
+                onPress={() => setParcelSize('large')}
+              >
+                <Text style={styles.sizeChipIcon}>🚚</Text>
+                <Text style={[styles.sizeChipText, parcelSize === 'large' && styles.sizeChipTextActive]}>
+                  Large — needs a van/truck
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* Fee preview — reflects whichever size is currently
+                selected, so it's never showing pricing for the option
+                that isn't chosen. */}
             <View style={styles.feeCard}>
-              <View style={styles.feeRow}>
-                <Text style={styles.feeLabel}>Within same city</Text>
-                <Text style={styles.feeValue}>$5 to driver + $2 booking fee</Text>
-              </View>
-              <View style={styles.feeDivider} />
-              <View style={styles.feeRow}>
-                <Text style={styles.feeLabel}>Different cities</Text>
-                <Text style={styles.feeValue}>$10 to driver + $2 booking fee</Text>
-              </View>
+              {parcelSize === 'small' ? (
+                <>
+                  <View style={styles.feeRow}>
+                    <Text style={styles.feeLabel}>Within same city</Text>
+                    <Text style={styles.feeValue}>$8 to driver + $2 booking fee</Text>
+                  </View>
+                  <View style={styles.feeDivider} />
+                  <View style={styles.feeRow}>
+                    <Text style={styles.feeLabel}>Different cities</Text>
+                    <Text style={styles.feeValue}>$12 to driver + $2 booking fee</Text>
+                  </View>
+                </>
+              ) : (
+                <View style={styles.feeRow}>
+                  <Text style={styles.feeLabel}>Large item (local only)</Text>
+                  <Text style={styles.feeValue}>$15 to driver + $2 booking fee</Text>
+                </View>
+              )}
             </View>
 
             <Text style={styles.label}>Pickup city (their location)</Text>
@@ -330,10 +375,27 @@ export default function DeliveryBookingScreen() {
               placeholderTextColor="#555"
             />
 
+            {parcelSize === 'large' && citiesDiffer && (
+              // NEW: informational only, not a blocking error — per
+              // product decision, large items just quietly stay local-
+              // only regardless of what's typed here; this simply
+              // explains why the badge below won't say "intercity"
+              // even though the two cities differ.
+              <View style={styles.largeIntercityNote}>
+                <Text style={styles.largeIntercityNoteText}>
+                  ℹ️ Large-item delivery is local only. This booking will be treated as local pickup and dropoff.
+                </Text>
+              </View>
+            )}
+
             {pickupCity.trim() !== '' && dropoffCity.trim() !== '' && (
               <View style={styles.deliveryTypeBadge}>
                 <Text style={styles.deliveryTypeBadgeText}>
-                  {isIntercity ? '🚌 Intercity delivery — $10' : '🛵 Local delivery — $5'}
+                  {parcelSize === 'large'
+                    ? `🚚 Large item — $15`
+                    : isIntercity
+                      ? '🚌 Intercity delivery — $12'
+                      : '🛵 Local delivery — $8'}
                 </Text>
               </View>
             )}
@@ -348,10 +410,6 @@ export default function DeliveryBookingScreen() {
               multiline
             />
 
-            {/* NEW: previously deliveries had no scheduling concept at
-                all — always implicitly ASAP. This is a genuinely
-                optional addition; leaving it on ASAP keeps behavior
-                identical to before this existed. */}
             <Text style={styles.label}>When do you need this delivered?</Text>
             <View style={styles.timingRow}>
               <TouchableOpacity
@@ -443,8 +501,21 @@ export default function DeliveryBookingScreen() {
             <Text style={styles.subheading}>
               {availableDrivers.length > 0
                 ? `${availableDrivers.length} driver${availableDrivers.length === 1 ? '' : 's'} available. Choose one to deliver your item.`
-                : 'No drivers available right now. Try again later or choose Meet & Collect instead.'}
+                : parcelSize === 'large'
+                  ? 'No van/truck drivers available right now. Try again later or choose Meet & Collect instead.'
+                  : 'No drivers available right now. Try again later or choose Meet & Collect instead.'}
             </Text>
+
+            {/* NEW: explains why the list is narrower than usual, since
+                a buyer who's used to seeing more drivers for small
+                items might otherwise wonder why fewer show up here. */}
+            {parcelSize === 'large' && availableDrivers.length > 0 && (
+              <View style={styles.largeIntercityNote}>
+                <Text style={styles.largeIntercityNoteText}>
+                  ℹ️ Showing only drivers with a van, truck, or similar vehicle — suitable for large items.
+                </Text>
+              </View>
+            )}
 
             {availableDrivers.length === 0 && (
               <TouchableOpacity style={styles.primaryBtn} onPress={() => router.back()}>
@@ -502,8 +573,12 @@ export default function DeliveryBookingScreen() {
               <Text style={styles.confirmValue}>{pickupCity} → {dropoffCity}</Text>
 
               <View style={styles.confirmDivider} />
+              <Text style={styles.confirmLabel}>Item size</Text>
+              <Text style={styles.confirmValue}>{parcelSize === 'large' ? 'Large (van/truck)' : 'Small (car)'}</Text>
+
+              <View style={styles.confirmDivider} />
               <Text style={styles.confirmLabel}>Delivery type</Text>
-              <Text style={styles.confirmValue}>{isIntercity ? 'Intercity' : 'Local'}</Text>
+              <Text style={styles.confirmValue}>{parcelSize === 'large' ? 'Local only' : (isIntercity ? 'Intercity' : 'Local')}</Text>
 
               <View style={styles.confirmDivider} />
               <Text style={styles.confirmLabel}>Pay driver (cash on collection)</Text>
@@ -554,6 +629,20 @@ const styles = StyleSheet.create({
   backText: { color: GREY, fontSize: 13 },
   heading: { fontSize: 24, fontWeight: '800', color: '#fff', marginBottom: 8 },
   subheading: { fontSize: 13, color: GREY, lineHeight: 19, marginBottom: 20 },
+
+  // NEW: item size toggle styles
+  sizeRow: { flexDirection: 'row', gap: 8, marginBottom: 16 },
+  sizeChip: {
+    flex: 1, backgroundColor: DARK, borderRadius: 12, paddingVertical: 14, paddingHorizontal: 8,
+    alignItems: 'center', borderWidth: 1, borderColor: '#333',
+  },
+  sizeChipActive: { borderColor: GOLD, backgroundColor: '#2a2200' },
+  sizeChipIcon: { fontSize: 22, marginBottom: 6 },
+  sizeChipText: { color: '#ccc', fontSize: 12, fontWeight: '600', textAlign: 'center' },
+  sizeChipTextActive: { color: GOLD, fontWeight: '700' },
+
+  largeIntercityNote: { backgroundColor: '#1a1a2e', borderRadius: 8, padding: 10, marginTop: 8, borderWidth: 0.5, borderColor: '#3a3a5e' },
+  largeIntercityNoteText: { color: '#8888ff', fontSize: 11, lineHeight: 16 },
 
   feeCard: { backgroundColor: BLACK, borderRadius: 12, padding: 14, marginBottom: 20, borderWidth: 0.5, borderColor: '#333' },
   feeRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 6 },

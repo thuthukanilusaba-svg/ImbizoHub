@@ -212,8 +212,15 @@ export default function OperatorRequestsScreen() {
           <Text style={styles.backText}>← Back</Text>
         </TouchableOpacity>
         <Text style={styles.heading}>Open trip requests</Text>
+        {/* FIX: was "you keep 97% per job" — a stale claim from before
+            the separate 3% commission was removed entirely (see
+            confirm-payment.ts's trip_deposit branch). Same fix already
+            applied to operator-register-pay.tsx's success screen, but
+            missed here — this header is the one operators actually
+            see every time they open this screen to browse trips, so
+            it's arguably the more visible instance of the two. */}
         <Text style={styles.subheading}>
-          {requests.length} trip{requests.length !== 1 ? 's' : ''} · you keep 97% per job
+          {requests.length} trip{requests.length !== 1 ? 's' : ''} · you keep 100% of your quoted price
         </Text>
       </View>
 
@@ -449,4 +456,3 @@ const styles = StyleSheet.create({
   successTitle: { fontSize: 20, fontWeight: '800', color: '#fff', marginBottom: 8 },
   successBody: { fontSize: 14, color: GREY, textAlign: 'center', lineHeight: 20, marginBottom: 24 },
 });
-
