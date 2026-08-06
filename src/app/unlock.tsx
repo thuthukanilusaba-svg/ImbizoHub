@@ -2,6 +2,13 @@
 // (renamed from deposit.tsx) Buyer pays a 5% fee, capped at $15, before
 // arranging a deal (Meet & Pay or delivery booking) with the seller.
 //
+// UPDATED: added a $1.50 MINIMUM fee, alongside the existing $15 cap —
+// previously a cheap listing (e.g. a $10 item) could produce an
+// arrange-deal fee well under a dollar, which doesn't meaningfully
+// cover the actual cost/value of facilitating a deal. Mirrors the cap's
+// own shape exactly: a hard floor regardless of listed price, same as
+// the cap is a hard ceiling regardless of listed price.
+//
 // NOTE ON THE MODEL (updated): this fee used to gate CHAT itself. It now
 // gates only the "Arrange deal" moment — chat.tsx allows unlimited free
 // messaging for everyone. This reflects actual buying intent (wanting to
@@ -64,6 +71,9 @@ const GREY = '#AAAAAA';
 const GREEN = '#4fc96e';
 const UNLOCK_FEE_PCT = 0.05; // 5%, charged on the LISTED price — this is ImbizoHub's commission
 const UNLOCK_FEE_CAP = 15; // never charge more than this, regardless of listed price
+// NEW: never charge less than this either, regardless of listed price —
+// same reasoning as the cap, just the opposite direction.
+const UNLOCK_FEE_MIN = 1.50;
 
 // How long to poll payment_intents after the checkout browser closes,
 // waiting for the paynow-webhook to have marked it paid.
@@ -92,7 +102,11 @@ export default function DepositScreen() {
   const priceNum = parseFloat(price || '0');
   const rawFee = priceNum * UNLOCK_FEE_PCT;
   const isCapped = rawFee > UNLOCK_FEE_CAP;
-  const unlockFeeAmount = Math.min(rawFee, UNLOCK_FEE_CAP).toFixed(2);
+  // NEW: mirrors isCapped exactly, just for the floor instead of the
+  // ceiling — true whenever the raw 5% calculation would land under the
+  // new minimum.
+  const isMinimum = rawFee < UNLOCK_FEE_MIN;
+  const unlockFeeAmount = Math.max(Math.min(rawFee, UNLOCK_FEE_CAP), UNLOCK_FEE_MIN).toFixed(2);
   const hasFreeUnlock = freeUnlocksRemaining > 0;
 
   useEffect(() => { checkExisting(); }, []);
@@ -286,7 +300,7 @@ export default function DepositScreen() {
         <View style={styles.divider} />
         <View style={styles.summaryRow}>
           <Text style={styles.summaryLabelBold}>
-            {isCapped ? 'Arrange-deal fee (capped)' : 'Arrange-deal fee (5%)'}
+            {isCapped ? 'Arrange-deal fee (capped)' : isMinimum ? 'Arrange-deal fee (minimum)' : 'Arrange-deal fee (5%)'}
           </Text>
           {hasFreeUnlock ? (
             <Text style={styles.summaryValueFree}>FREE</Text>
@@ -296,9 +310,11 @@ export default function DepositScreen() {
         </View>
         <Text style={styles.summaryNote}>
           {hasFreeUnlock
-            ? `Normally ${isCapped ? `capped at $${UNLOCK_FEE_CAP}` : `$${unlockFeeAmount}`} — this one's on us.`
+            ? `Normally ${isCapped ? `capped at $${UNLOCK_FEE_CAP}` : isMinimum ? `a minimum of $${UNLOCK_FEE_MIN.toFixed(2)}` : `$${unlockFeeAmount}`} — this one's on us.`
             : isCapped
             ? `Capped at $${UNLOCK_FEE_CAP} regardless of listed price. Non-refundable and not credited toward the final price.`
+            : isMinimum
+            ? `Minimum fee of $${UNLOCK_FEE_MIN.toFixed(2)} applies regardless of listed price. Non-refundable and not credited toward the final price.`
             : 'Non-refundable. This is not credited toward the final price.'}
         </Text>
         {!hasFreeUnlock && freeUnlocksRemaining === 0 && (

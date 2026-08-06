@@ -23,11 +23,12 @@
 // $5/$10 driver fee is unchanged and stays cash-on-collection; only the
 // $2 platform fee goes through Paynow.
 
+import DateTimePicker from '@react-native-community/datetimepicker';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import * as WebBrowser from 'expo-web-browser';
 import { useEffect, useState } from 'react';
 import {
-  ActivityIndicator, Platform, ScrollView, StyleSheet,
+  ActivityIndicator, Modal, Platform, ScrollView, StyleSheet,
   Text, TextInput, TouchableOpacity, View,
 } from 'react-native';
 import { supabase } from '../../lib/supabase';
@@ -63,6 +64,39 @@ export default function DeliveryBookingScreen() {
   const [pickupCity, setPickupCity] = useState('');
   const [dropoffCity, setDropoffCity] = useState('');
   const [parcelDescription, setParcelDescription] = useState('');
+  // NEW: previously deliveries had no date concept at all — implicitly
+  // always "as soon as possible." This adds a genuine, optional
+  // scheduling choice; ASAP stays the default, matching existing
+  // behavior exactly when nothing's changed here.
+  const [deliveryTiming, setDeliveryTiming] = useState<'asap' | 'scheduled'>('asap');
+  const [scheduledDate, setScheduledDate] = useState('');
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [dateObj, setDateObj] = useState<Date>(new Date());
+
+  function formatDateDisplay(iso: string): string {
+    if (!iso) return '';
+    const d = new Date(iso + 'T00:00:00');
+    return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
+  }
+
+  function toIsoDate(d: Date): string {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+  }
+
+  function handleDateChange(event: any, selected?: Date) {
+    if (Platform.OS === 'android') {
+      setShowDatePicker(false);
+      if (event.type === 'set' && selected) {
+        setDateObj(selected);
+        setScheduledDate(toIsoDate(selected));
+      }
+    } else if (selected) {
+      setDateObj(selected);
+    }
+  }
   const [availableDrivers, setAvailableDrivers] = useState<any[]>([]);
   const [selectedDriver, setSelectedDriver] = useState<any>(null);
   const [loading, setLoading] = useState(false);
@@ -169,6 +203,10 @@ export default function DeliveryBookingScreen() {
         delivery_type: deliveryType,
         delivery_fee: deliveryFee,
         parcel_description: parcelDescription.trim() || undefined,
+        // NEW: NULL/undefined means ASAP, matching today's existing
+        // (only) behavior — only sent when the buyer actually picked a
+        // scheduled date via the new calendar option.
+        scheduled_date: scheduledDate || undefined,
       },
     });
 
@@ -310,6 +348,81 @@ export default function DeliveryBookingScreen() {
               multiline
             />
 
+            {/* NEW: previously deliveries had no scheduling concept at
+                all — always implicitly ASAP. This is a genuinely
+                optional addition; leaving it on ASAP keeps behavior
+                identical to before this existed. */}
+            <Text style={styles.label}>When do you need this delivered?</Text>
+            <View style={styles.timingRow}>
+              <TouchableOpacity
+                style={[styles.timingChip, deliveryTiming === 'asap' && styles.timingChipActive]}
+                onPress={() => setDeliveryTiming('asap')}
+              >
+                <Text style={[styles.timingChipText, deliveryTiming === 'asap' && styles.timingChipTextActive]}>
+                  As soon as possible
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.timingChip, deliveryTiming === 'scheduled' && styles.timingChipActive]}
+                onPress={() => setDeliveryTiming('scheduled')}
+              >
+                <Text style={[styles.timingChipText, deliveryTiming === 'scheduled' && styles.timingChipTextActive]}>
+                  Schedule for later
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            {deliveryTiming === 'scheduled' && (
+              <TouchableOpacity
+                style={styles.dateField}
+                onPress={() => {
+                  setDateObj(scheduledDate ? new Date(scheduledDate + 'T00:00:00') : new Date());
+                  setShowDatePicker(true);
+                }}
+              >
+                <Text style={scheduledDate ? styles.dateFieldText : styles.dateFieldPlaceholder}>
+                  {scheduledDate ? formatDateDisplay(scheduledDate) : 'Select date'}
+                </Text>
+                <Text style={styles.dateFieldIcon}>📅</Text>
+              </TouchableOpacity>
+            )}
+
+            {showDatePicker && Platform.OS === 'android' && (
+              <DateTimePicker
+                value={dateObj}
+                mode="date"
+                display="calendar"
+                minimumDate={new Date()}
+                onChange={handleDateChange}
+              />
+            )}
+
+            {Platform.OS === 'ios' && (
+              <Modal visible={showDatePicker} transparent animationType="slide">
+                <View style={styles.pickerModalOverlay}>
+                  <View style={styles.pickerModalSheet}>
+                    <DateTimePicker
+                      value={dateObj}
+                      mode="date"
+                      display="inline"
+                      minimumDate={new Date()}
+                      onChange={handleDateChange}
+                      themeVariant="dark"
+                    />
+                    <TouchableOpacity
+                      style={styles.pickerDoneBtn}
+                      onPress={() => {
+                        setScheduledDate(toIsoDate(dateObj));
+                        setShowDatePicker(false);
+                      }}
+                    >
+                      <Text style={styles.pickerDoneBtnText}>Done</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              </Modal>
+            )}
+
             {error ? <Text style={styles.errorText}>⚠️ {error}</Text> : null}
 
             <TouchableOpacity
@@ -450,6 +563,24 @@ const styles = StyleSheet.create({
 
   label: { fontSize: 12, fontWeight: '600', color: GREY, marginBottom: 6, marginTop: 14 },
   input: { backgroundColor: DARK, borderRadius: 10, padding: 12, color: '#fff', fontSize: 13, borderWidth: 0.5, borderColor: '#333' },
+  timingRow: { flexDirection: 'row', gap: 8, marginBottom: 12 },
+  timingChip: { flex: 1, backgroundColor: DARK, borderRadius: 10, paddingVertical: 12, alignItems: 'center', borderWidth: 0.5, borderColor: '#333' },
+  timingChipActive: { borderColor: GOLD, borderWidth: 1 },
+  timingChipText: { color: '#ccc', fontSize: 12, fontWeight: '600' },
+  timingChipTextActive: { color: GOLD, fontWeight: '700' },
+  dateField: {
+    backgroundColor: DARK, borderRadius: 10, paddingHorizontal: 14,
+    paddingVertical: Platform.OS === 'ios' ? 13 : 12,
+    borderWidth: 0.5, borderColor: '#333', marginBottom: 12,
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+  },
+  dateFieldText: { fontSize: 14, color: '#fff' },
+  dateFieldPlaceholder: { fontSize: 14, color: '#666' },
+  dateFieldIcon: { fontSize: 16 },
+  pickerModalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },
+  pickerModalSheet: { backgroundColor: DARK, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 16, paddingBottom: 32 },
+  pickerDoneBtn: { backgroundColor: GOLD, borderRadius: 12, paddingVertical: 14, alignItems: 'center', marginTop: 12 },
+  pickerDoneBtnText: { color: BLACK, fontSize: 14, fontWeight: '700' },
 
   deliveryTypeBadge: { backgroundColor: '#1a2a1a', borderRadius: 8, padding: 10, marginTop: 10, alignItems: 'center' },
   deliveryTypeBadgeText: { color: '#4fc96e', fontSize: 13, fontWeight: '700' },

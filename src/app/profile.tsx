@@ -27,7 +27,7 @@
 // ALSO WORTH NOTING: "My trip requests" links to quotes.tsx, which only
 // ever shows the single most recent OPEN trip request
 // (.order(...).limit(1) in quotes.tsx's loadData()), not a list — so the
-// plural label is a little misleading for someone who's posted more thans
+// plural label is a little misleading for someone who's posted more than
 // one trip over time. Low priority, not fixed here.
 //
 // FIX: bottom nav now accounts for the device's own safe-area inset
@@ -274,6 +274,26 @@ export default function ProfileScreen() {
     setEditing(false);
   }
 
+  // NEW: creates the minimal delivery_operators row needed before
+  // payment can complete — confirm-payment.ts's
+  // delivery_operator_registration branch only UPDATES an existing
+  // row, it never creates one, so this has to happen first. Everything
+  // real (vehicle type, area, actually becoming bookable) still
+  // happens after payment via become-operator.tsx.
+  async function handleBecomeDeliveryOperator() {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    await supabase.from('delivery_operators').upsert({
+      user_id: user.id,
+      full_name: fullName || '',
+      verification_tier: 'unverified',
+      status: 'active',
+    }, { onConflict: 'user_id' });
+
+    router.push('/delivery-operator-register-pay');
+  }
+
   async function handleLogout() {
     await supabase.auth.signOut();
     router.replace('/login');
@@ -322,7 +342,11 @@ export default function ProfileScreen() {
     );
   }
 
-  const showDashboardTab = accountType === 'seller' || isActiveOperator;
+  // UPDATED (product decision): was accountType === 'seller' — same
+  // fix as index.tsx/explore.tsx/messages.tsx, found here too during a
+  // final check. Reuses listingCount, already fetched above for the
+  // stats display, so no extra query needed.
+  const showDashboardTab = listingCount > 0 || isActiveOperator;
 
   return (
     <View style={styles.screen}>
@@ -436,6 +460,39 @@ export default function ProfileScreen() {
             <MenuRow icon="💬" label="Messages" onPress={() => router.push('/messages')} />
             {accountType === 'transport_operator' && (
               <MenuRow icon="📋" label="Browse trip requests" onPress={() => router.push('/operator-requests')} />
+            )}
+          </View>
+
+          {/* NEW: closes the gap register.tsx's optional Delivery/
+              Transport toggles created — someone who registered without
+              selecting either had no way to become one later. Each row
+              only shows if not already that type, since there's nothing
+              to "become" once you already are.
+              UPDATED (product decision): goes straight to the $10
+              payment screen — no form first. Vehicle details are
+              collected AFTER paying instead (become-operator.tsx now
+              serves that purpose, reached from each payment screen's
+              own success button). Delivery needs one small setup step
+              first: confirm-payment.ts's delivery_operator_registration
+              branch only UPDATES an existing delivery_operators row, it
+              never creates one — so a minimal row has to exist before
+              payment can complete. Transport needs no such step, since
+              its own payment confirmation sets account_type directly. */}
+          <View style={styles.card}>
+            <Text style={styles.cardTitle}>Earn with ImbizoHub</Text>
+            {accountType !== 'delivery' && (
+              <MenuRow
+                icon="📦"
+                label="Become a Delivery Operator"
+                onPress={handleBecomeDeliveryOperator}
+              />
+            )}
+            {accountType !== 'transport_operator' && (
+              <MenuRow
+                icon="🚐"
+                label="Become a Transport Operator"
+                onPress={() => router.push('/operator-register-pay')}
+              />
             )}
           </View>
 

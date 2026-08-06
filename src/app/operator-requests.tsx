@@ -6,6 +6,7 @@ import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
+  KeyboardAvoidingView,
   Modal,
   Platform,
   RefreshControl,
@@ -68,7 +69,7 @@ export default function OperatorRequestsScreen() {
 
     const { data: profile } = await supabase
       .from('profiles')
-      .select('operator_status, account_type, registration_expires_at')
+      .select('operator_status, account_type, registration_expires_at, vehicle_type')
       .eq('id', user.id)
       .single();
 
@@ -82,6 +83,23 @@ export default function OperatorRequestsScreen() {
     const notExpired = profile?.registration_expires_at
       ? new Date(profile.registration_expires_at) > new Date()
       : false;
+
+    // FIX (found during a final sweep — same edge case already fixed in
+    // operator-register-pay.tsx and delivery-operator-register-pay.tsx):
+    // this screen previously let anyone with a paid, active,
+    // non-expired registration straight through to browsing and
+    // quoting on trips, with no check that they'd ever actually
+    // completed the vehicle-details step. Someone who paid but exited
+    // before tapping "Add your vehicle details" could reach this screen
+    // directly and start bidding with an empty vehicle_type — showing
+    // customers an incomplete profile. Redirects to finish that step
+    // instead of either silently allowing it or showing the confusing
+    // "registration required" blocked state to someone who's already
+    // genuinely paid.
+    if (isActive && notExpired && !profile?.vehicle_type) {
+      router.replace('/become-operator?type=operator');
+      return;
+    }
 
     setOperatorActive(isActive && notExpired);
   }
@@ -241,7 +259,11 @@ export default function OperatorRequestsScreen() {
 
       {/* Quote modal */}
       <Modal visible={modalVisible} animationType="slide" transparent onRequestClose={() => setModalVisible(false)}>
-        <View style={styles.modalOverlay}>
+        <KeyboardAvoidingView
+          style={{ flex: 1 }}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        >
+          <View style={styles.modalOverlay}>
           {/* FIX: modalSheet's paddingBottom was a hardcoded per-platform
               guess (40 iOS / 24 Android), never accounting for the real
               device safe-area inset — on any phone with a gesture-nav
@@ -330,7 +352,8 @@ export default function OperatorRequestsScreen() {
               </View>
             )}
           </View>
-        </View>
+          </View>
+        </KeyboardAvoidingView>
       </Modal>
     </View>
   );
@@ -426,3 +449,4 @@ const styles = StyleSheet.create({
   successTitle: { fontSize: 20, fontWeight: '800', color: '#fff', marginBottom: 8 },
   successBody: { fontSize: 14, color: GREY, textAlign: 'center', lineHeight: 20, marginBottom: 24 },
 });
+

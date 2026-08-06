@@ -1,6 +1,6 @@
 // app/quotes.tsx
 // Customer sees quotes, accepts one, pays a 7% commitment fee (capped
-// at $30) → contact revealed. Remaining balance paid cash or through
+// at $15) → contact revealed. Remaining balance paid cash or through
 // app (operator's choice), directly to the operator, at the actual
 // trip/handover.
 //
@@ -12,6 +12,11 @@
 // Confusing to explain and easy for an operator to just never pay.
 // Simplified: ImbizoHub's entire take is now one upfront commitment
 // fee, no second commission layered on top. See confirm-payment.ts's trip_deposit branch for the actual calculation.
+//
+// UPDATED (pricing decision): cap lowered from $30 to $15, matching the
+// same cap already used on the regular listing unlock fee — one
+// consistent "$15 maximum" story across both fee types in the app,
+// rather than two different numbers. Rate itself (7%) is unchanged.
 //
 // FIX: handlePayDeposit() previously did an instant client-side
 // `.update({ deposit_paid: true, ... })` — no real payment was ever
@@ -46,16 +51,16 @@ const DARK = '#2a2a2a';
 const GREY = '#AAAAAA';
 const GREEN = '#4fc96e';
 const BLUE = '#4A90D9';
-// UPDATED (pricing decision): was a flat 10%, no cap. Changed to 7%,
-// capped at $30 — same "percentage with a ceiling" shape already
-// proven on the regular listing unlock fee (5% capped at $15), so a
-// very expensive trip doesn't scale the commitment fee unboundedly.
-// This is genuinely the source of truth for what gets charged — the
-// amount computed here is what's sent to create-payment, and
-// confirm-payment.ts's trip_deposit branch trusts intent.amount as-is
+// UPDATED (pricing decision): was capped at $30. Lowered to $15 —
+// matches the cap already used on the regular listing unlock fee, so
+// there's one consistent "$15 maximum" story across the app instead of
+// two different cap numbers for two different fee types. Rate (7%)
+// unchanged. This is genuinely the source of truth for what gets
+// charged — the amount computed here is what's sent to create-payment,
+// and confirm-payment.ts's trip_deposit branch trusts intent.amount as-is
 // rather than recalculating server-side.
 const DEPOSIT_PCT = 0.07;
-const DEPOSIT_CAP = 30;
+const DEPOSIT_CAP = 15;
 
 function calculateDeposit(price: number): number {
   return Math.min(parseFloat((price * DEPOSIT_PCT).toFixed(2)), DEPOSIT_CAP);
@@ -285,11 +290,11 @@ export default function QuotesScreen() {
 
   // FIX: balance was computed as price * (1 - DEPOSIT_PCT), which is
   // only correct when the deposit is a pure percentage with no ceiling.
-  // Now that the deposit is capped at $30, that formula silently
-  // undercounts the balance on any trip expensive enough to hit the
-  // cap (e.g. a $1000 trip: real deposit is $30, not $70, so balance
-  // should be $970, not $930). Deriving balance as price - deposit
-  // instead is correct in both the capped and uncapped case.
+  // Now that the deposit is capped, that formula silently undercounts
+  // the balance on any trip expensive enough to hit the cap (e.g. a
+  // $1000 trip: real deposit is $15, not $70, so balance should be
+  // $985, not $930). Deriving balance as price - deposit instead is
+  // correct in both the capped and uncapped case.
   const depositAmount = chosenQuote ? calculateDeposit(chosenQuote.price) : 0;
   const deposit = depositAmount.toFixed(2);
   const balance = chosenQuote ? (chosenQuote.price - depositAmount).toFixed(2) : '0';
@@ -325,7 +330,7 @@ export default function QuotesScreen() {
             quotes.length > 0 ? (
               <View style={styles.infoBar}>
                 <Text style={styles.infoBarText}>
-                  {quotes.length} quote{quotes.length !== 1 ? 's' : ''} · sorted cheapest first · accept to pay 7% commitment fee (capped at $30)
+                  {quotes.length} quote{quotes.length !== 1 ? 's' : ''} · sorted cheapest first · accept to pay 7% commitment fee (capped at $15)
                 </Text>
               </View>
             ) : null
@@ -399,7 +404,7 @@ export default function QuotesScreen() {
             {(step === 'confirm' || step === 'paying') && chosenQuote && (
               <>
                 <Text style={styles.modalTitle}>Confirm booking</Text>
-                <Text style={styles.modalSub}>Pay a 7% commitment fee (capped at $30) to lock in this operator and reveal their contact details.</Text>
+                <Text style={styles.modalSub}>Pay a 7% commitment fee (capped at $15) to lock in this operator and reveal their contact details.</Text>
 
                 {/* Summary */}
                 <View style={styles.summaryBox}>
@@ -407,8 +412,8 @@ export default function QuotesScreen() {
                   <SummaryRow label="Vehicle" value={chosenQuote.vehicle} />
                   <SummaryRow label="Total fare" value={`$${chosenQuote.price}`} />
                   <View style={styles.divider} />
-                  <SummaryRow label="Commitment fee (7%, capped at $30)" value={`$${deposit}`} gold />
-                  <SummaryRow label="Balance remaining (90%)" value={`$${balance}`} />
+                  <SummaryRow label="Commitment fee (7%, capped at $15)" value={`$${deposit}`} gold />
+                  <SummaryRow label="Balance remaining" value={`$${balance}`} />
                 </View>
 
                 {/* Balance payment options */}

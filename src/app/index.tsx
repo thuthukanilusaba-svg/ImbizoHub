@@ -69,7 +69,7 @@ export default function HomeScreen() {
     if (!user) return;
     const { data: profile } = await supabase
       .from('profiles')
-      .select('full_name, account_type, is_admin')
+      .select('full_name, is_admin')
       .eq('id', user.id)
       .maybeSingle();
 
@@ -79,7 +79,18 @@ export default function HomeScreen() {
 
     setIsAdmin(!!profile?.is_admin);
 
-    const isSeller = profile?.account_type === 'seller';
+    // UPDATED (product decision): was account_type === 'seller' — a
+    // self-declared label from registration that never actually gated
+    // anything (post.tsx never checked it; anyone could post
+    // regardless). Now driven by something real: has this person
+    // actually posted at least one listing. head:true + count:'exact'
+    // gets just the count without pulling any row data — cheap check.
+    const { count: listingCount } = await supabase
+      .from('listings')
+      .select('id', { count: 'exact', head: true })
+      .eq('user_id', user.id);
+
+    const hasPostedListing = (listingCount ?? 0) > 0;
 
     const { data: operator } = await supabase
       .from('delivery_operators')
@@ -93,7 +104,7 @@ export default function HomeScreen() {
       new Date(operator.registration_expires_at).getTime() > Date.now()
     );
 
-    setShowDashboardTab(isSeller || isActiveOperator);
+    setShowDashboardTab(hasPostedListing || isActiveOperator);
   }
 
   const fetchListings = async (page: number, append: boolean) => {
@@ -201,6 +212,29 @@ export default function HomeScreen() {
             <View>
               <Text style={styles.vanBannerTitle}>Looking for something specific?</Text>
               <Text style={styles.vanBannerSub}>Post it — sellers respond with a price</Text>
+            </View>
+          </View>
+          <Text style={styles.vanBannerArrow}>›</Text>
+        </TouchableOpacity>
+
+        {/* NEW: closes a real navigation gap — there was previously NO
+            link anywhere in the app to browse-wanted.tsx (the screen
+            where sellers see and respond to everyone's posted wants).
+            The banner above only ever linked to POSTING a want; nothing
+            linked to BROWSING them. browse-wanted.tsx itself was
+            completely fine — it just had zero discoverable entry point,
+            which is exactly why posted wants seemed to "not show up
+            anywhere": there was nowhere to go look for them. */}
+        <TouchableOpacity
+          style={styles.browseWantedBanner}
+          onPress={() => router.push('/browse-wanted')}
+          activeOpacity={0.85}
+        >
+          <View style={styles.vanBannerLeft}>
+            <Text style={styles.vanBannerEmoji}>🛍️</Text>
+            <View>
+              <Text style={styles.vanBannerTitle}>See what people want</Text>
+              <Text style={styles.vanBannerSub}>Browse open wants — respond with your price, free</Text>
             </View>
           </View>
           <Text style={styles.vanBannerArrow}>›</Text>
@@ -403,6 +437,11 @@ const styles = StyleSheet.create({
   searchPlaceholder: { color: '#555', fontSize: 13 },
   vanBanner: { backgroundColor: '#1a1a2e', borderRadius: 14, marginHorizontal: 16, marginTop: 12, marginBottom: 4, paddingHorizontal: 18, paddingVertical: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderWidth: 0.5, borderColor: '#3a3a5e' },
   wantedBanner: { backgroundColor: '#1a2e1a', borderRadius: 14, marginHorizontal: 16, marginTop: 12, marginBottom: 4, paddingHorizontal: 18, paddingVertical: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderWidth: 0.5, borderColor: '#3a5e3a' },
+  // NEW: styled distinctly from wantedBanner (posting) so the two don't
+  // read as duplicates — same shape/spacing, different color family
+  // (gold-tinted, matching the app's primary accent) since this is the
+  // BROWSE counterpart, not another "post" action.
+  browseWantedBanner: { backgroundColor: '#2e2a1a', borderRadius: 14, marginHorizontal: 16, marginTop: 4, marginBottom: 4, paddingHorizontal: 18, paddingVertical: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderWidth: 0.5, borderColor: '#5e5a3a' },
   vanBannerLeft: { flexDirection: 'row', alignItems: 'center', gap: 14 },
   vanBannerEmoji: { fontSize: 28 },
   vanBannerTitle: { color: '#ffffff', fontSize: 15, fontWeight: '700' },

@@ -1,10 +1,21 @@
 // app/meetpay.tsx
-// Meet & Pay PIN confirmation system
-// Buyer generates a 4-digit PIN → shows it to seller in person → seller enters it to confirm
-// Works for both marketplace listings and Van Hire trips
+// Trip completion confirmation for van-hire — NOT PIN-based.
 //
-// Usage: router.push(`/meetpay?type=listing&reference_id=${listingId}&seller_id=${sellerId}&amount=${price}`)
-//     or router.push(`/meetpay?type=van_hire&reference_id=${quoteId}&seller_id=${operatorId}&amount=${balance}`)
+// UPDATED (product decision): previously used the same PIN mechanism
+// as listing handovers (buyer generates, seller enters). Removed for
+// van-hire specifically — both people are already together for the
+// entire ride, so a PIN's original purpose (proving a brief,
+// disputable handover moment actually happened) doesn't really apply
+// the way it does for a physical item changing hands. Replaced with
+// mutual confirmation: BOTH the customer and the driver independently
+// tap "Confirm Trip Complete" — status only flips to 'confirmed' once
+// BOTH have, so it still requires real agreement from both sides, just
+// without exchanging a code.
+//
+// This still gates ratings exactly the way the PIN used to — nothing
+// about that changed, only the mechanism for reaching "confirmed."
+//
+// Usage: router.push(`/meetpay?type=van_hire&reference_id=${quoteId}&seller_id=${operatorId}&amount=${balance}`)
 
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
@@ -12,7 +23,6 @@ import {
   ActivityIndicator, Platform,
   StyleSheet,
   Text,
-  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
@@ -24,28 +34,6 @@ const DARK = '#2a2a2a';
 const GREY = '#AAAAAA';
 const GREEN = '#4CAF50';
 
-function generatePin(): string {
-  return Math.floor(1000 + Math.random() * 9000).toString();
-}
-
-// FIX: same bug already found and fixed in chat.tsx — Postgres's
-// default text rendering for timestamptz is "2026-07-29 19:59:01.885+00"
-// (a space instead of 'T', a 2-digit offset instead of "+00:00").
-// JavaScript's native Date constructor is only guaranteed to parse
-// strict ISO 8601; this variant is technically non-standard and gets
-// parsed inconsistently across engines — sometimes silently returning
-// an Invalid Date (NaN), which makes every remaining-time comparison
-// false and shows "Expired" regardless of the real time. This never
-// surfaced here specifically because van-hire has never been tested
-// through to an actual Meet & Pay confirmation yet — fixing it now
-// before it does.
-function parsePgTimestamp(value: string): number {
-  const normalized = value
-    .replace(' ', 'T')
-    .replace(/([+-]\d{2})$/, '$1:00');
-  return new Date(normalized).getTime();
-}
-
 export default function MeetPayScreen() {
   const router = useRouter();
   const { type, reference_id, seller_id, amount } = useLocalSearchParams<{
@@ -56,23 +44,10 @@ export default function MeetPayScreen() {
   const [role, setRole] = useState<'buyer' | 'seller' | null>(null);
   const [session, setSession] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const [enteredPin, setEnteredPin] = useState('');
   const [error, setError] = useState('');
   const [confirming, setConfirming] = useState(false);
-  const [confirmed, setConfirmed] = useState(false);
-  const [secondsLeft, setSecondsLeft] = useState(0);
 
   useEffect(() => { init(); }, []);
-
-  useEffect(() => {
-    if (!session?.pin_expires_at || session.status !== 'pending') return;
-    const interval = setInterval(() => {
-      const remaining = Math.max(0, Math.floor((parsePgTimestamp(session.pin_expires_at) - Date.now()) / 1000));
-      setSecondsLeft(remaining);
-      if (remaining === 0) clearInterval(interval);
-    }, 1000);
-    return () => clearInterval(interval);
-  }, [session]);
 
   async function init() {
     setLoading(true);
@@ -83,41 +58,34 @@ export default function MeetPayScreen() {
     const isSeller = user.id === seller_id;
     setRole(isSeller ? 'seller' : 'buyer');
 
-    // Check if a session already exists for this reference
     const { data: existing } = await supabase
       .from('meetpay_sessions')
       .select('*')
       .eq('reference_id', reference_id)
       .order('created_at', { ascending: false })
       .limit(1)
-      .single();
+      .maybeSingle();
 
-    if (existing && existing.status === 'pending') {
+    if (existing) {
       setSession(existing);
-    } else if (existing && existing.status === 'confirmed') {
-      setSession(existing);
-      setConfirmed(true);
-    } else if (!isSeller) {
-      // Buyer creates a new session
-      await createSession(user.id);
+    } else {
+      // NEW: either side can be the first to reach this screen now —
+      // no more "only the buyer creates it" restriction, since there's
+      // no PIN to generate that specifically needs a buyer-first order.
+      await createSession(user.id, isSeller);
     }
 
     setLoading(false);
   }
 
-  async function createSession(buyerId: string) {
-    const pin = generatePin();
-    const expiresAt = new Date(Date.now() + 15 * 60 * 1000); // 15 min expiry
-
+  async function createSession(userId: string, isSeller: boolean) {
     const { data, error: createError } = await supabase
       .from('meetpay_sessions')
       .insert({
-        type: type || 'listing',
+        type: type || 'van_hire',
         reference_id,
-        buyer_id: buyerId,
-        seller_id,
-        pin,
-        pin_expires_at: expiresAt.toISOString(),
+        buyer_id: isSeller ? null : userId,
+        seller_id: isSeller ? userId : seller_id,
         amount: amount ? parseFloat(amount) : null,
         status: 'pending',
       })
@@ -131,60 +99,54 @@ export default function MeetPayScreen() {
     setSession(data);
   }
 
-  async function regeneratePin() {
+  // NEW: replaces the old PIN entry/check entirely. Sets MY OWN
+  // confirmation timestamp only — the database, not this client,
+  // decides when both sides have confirmed (avoids a race condition
+  // where two clients both think they're "the second confirmer" at
+  // the same moment).
+  async function handleConfirmMyself() {
     if (!session) return;
-    const pin = generatePin();
-    const expiresAt = new Date(Date.now() + 15 * 60 * 1000);
+    setError('');
+    setConfirming(true);
+
+    const myColumn = role === 'buyer' ? 'buyer_confirmed_at' : 'operator_confirmed_at';
+    const now = new Date().toISOString();
 
     const { data, error: updateError } = await supabase
       .from('meetpay_sessions')
-      .update({ pin, pin_generated_at: new Date().toISOString(), pin_expires_at: expiresAt.toISOString() })
+      .update({ [myColumn]: now })
       .eq('id', session.id)
       .select()
       .single();
 
-    if (updateError) { setError(updateError.message); return; }
-    setSession(data);
-  }
-
-  async function handleConfirm() {
-    setError('');
-    if (enteredPin.length !== 4) {
-      setError('Enter the 4-digit PIN.');
-      return;
-    }
-    if (!session) {
-      setError('No active session found.');
-      return;
-    }
-    if (secondsLeft === 0) {
-      setError('This PIN has expired. Ask your customer to refresh and generate a new one.');
-      return;
-    }
-    if (enteredPin !== session.pin) {
-      setError('Incorrect PIN. Please check with your customer and try again.');
+    if (updateError) {
+      setConfirming(false);
+      setError(updateError.message);
       return;
     }
 
-    setConfirming(true);
-    const { error: updateError } = await supabase
-      .from('meetpay_sessions')
-      .update({
-        status: 'confirmed',
-        confirmed_at: new Date().toISOString(),
-        confirmed_by: myId,
-      })
-      .eq('id', session.id);
+    // Both sides confirmed — flip status now. Each client only ever
+    // writes its OWN column, so if both tap at nearly the same moment,
+    // whichever request completes second correctly sees both
+    // timestamps already set and performs this final update — no race.
+    if (data.buyer_confirmed_at && data.operator_confirmed_at && data.status !== 'confirmed') {
+      const { data: finalData, error: confirmError } = await supabase
+        .from('meetpay_sessions')
+        .update({ status: 'confirmed', confirmed_at: new Date().toISOString(), confirmed_by: myId })
+        .eq('id', session.id)
+        .select()
+        .single();
+
+      if (!confirmError && finalData) {
+        setSession(finalData);
+      } else {
+        setSession(data);
+      }
+    } else {
+      setSession(data);
+    }
 
     setConfirming(false);
-    if (updateError) { setError(updateError.message); return; }
-    setConfirmed(true);
-  }
-
-  function formatTime(s: number) {
-    const m = Math.floor(s / 60);
-    const sec = s % 60;
-    return `${m}:${sec.toString().padStart(2, '0')}`;
   }
 
   if (loading || !role) {
@@ -195,16 +157,19 @@ export default function MeetPayScreen() {
     );
   }
 
-  // ── Confirmed screen (both roles) ──
-  if (confirmed) {
+  const myConfirmedAt = role === 'buyer' ? session?.buyer_confirmed_at : session?.operator_confirmed_at;
+  const otherConfirmedAt = role === 'buyer' ? session?.operator_confirmed_at : session?.buyer_confirmed_at;
+  const otherRoleLabel = role === 'buyer' ? 'your driver' : 'your customer';
+  const isFullyConfirmed = session?.status === 'confirmed';
+
+  // ── Fully confirmed screen (both roles) ──
+  if (isFullyConfirmed) {
     return (
       <View style={styles.confirmedScreen}>
         <Text style={styles.confirmedEmoji}>✅</Text>
         <Text style={styles.confirmedTitle}>Trip confirmed!</Text>
         <Text style={styles.confirmedBody}>
-          {role === 'buyer'
-            ? 'Your driver has confirmed the trip. Thank you for using ImbizoHub safely.'
-            : 'You have confirmed this trip with your customer.'}
+          Both you and {otherRoleLabel} confirmed the trip is complete. Thank you for using ImbizoHub safely.
         </Text>
         {session?.amount ? (
           <View style={styles.confirmedAmountBox}>
@@ -212,123 +177,84 @@ export default function MeetPayScreen() {
             <Text style={styles.confirmedAmountValue}>${session.amount}</Text>
           </View>
         ) : null}
-        <TouchableOpacity style={styles.doneBtn} onPress={() => router.replace('/')}>
-          <Text style={styles.doneBtnText}>Back to home</Text>
+        <TouchableOpacity
+          style={styles.doneBtn}
+          onPress={() => router.push(
+            `/rating?session_id=${session.id}&reviewee_id=${role === 'buyer' ? session.seller_id : session.buyer_id}&role=${role}`
+          )}
+        >
+          <Text style={styles.doneBtnText}>⭐ Rate this trip</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.skipLink} onPress={() => router.replace('/')}>
+          <Text style={styles.skipLinkText}>Skip for now</Text>
         </TouchableOpacity>
       </View>
     );
   }
 
-  // ── Buyer view: show PIN to seller ──
-  if (role === 'buyer') {
+  // ── I've confirmed, waiting on the other person ──
+  if (myConfirmedAt && !otherConfirmedAt) {
     return (
       <View style={styles.container}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
           <Text style={styles.backText}>← Back</Text>
         </TouchableOpacity>
 
-        <Text style={styles.heading}>Confirm Trip Completed</Text>
-        <Text style={styles.subheading}>
-          Show this PIN to your driver once the trip is finished and you're ready to confirm it's complete.
-        </Text>
+        <Text style={styles.heading}>Confirm Trip Complete</Text>
 
-        {error ? (
-          <View style={styles.errorBox}><Text style={styles.errorText}>⚠️ {error}</Text></View>
-        ) : null}
-
-        {session && (
-          <>
-            <View style={styles.pinCard}>
-              <Text style={styles.pinLabel}>Your PIN</Text>
-              <Text style={styles.pinDisplay}>{session.pin}</Text>
-              <Text style={[styles.pinTimer, secondsLeft < 60 && { color: '#ff8a8a' }]}>
-                {secondsLeft > 0 ? `Expires in ${formatTime(secondsLeft)}` : 'Expired'}
-              </Text>
-            </View>
-
-            {secondsLeft === 0 && (
-              <TouchableOpacity style={styles.regenBtn} onPress={regeneratePin}>
-                <Text style={styles.regenBtnText}>Generate new PIN</Text>
-              </TouchableOpacity>
-            )}
-
-            <View style={styles.instructionsBox}>
-              <Text style={styles.instructionsTitle}>How it works</Text>
-              <InstructionStep n="1" text="Once your trip is finished, you're ready to confirm it" />
-              <InstructionStep n="2" text="Once you're satisfied, show them this 4-digit PIN" />
-              <InstructionStep n="3" text="Your driver enters it on their phone to confirm the trip is done" />
-              <InstructionStep n="4" text="Never share this PIN before your trip is actually finished" />
-            </View>
-          </>
-        )}
+        <View style={styles.waitingBox}>
+          <Text style={styles.waitingEmoji}>✅</Text>
+          <Text style={styles.waitingTitle}>You confirmed</Text>
+          <ActivityIndicator color={GOLD} style={{ marginVertical: 12 }} />
+          <Text style={styles.waitingText}>Waiting for {otherRoleLabel} to confirm too...</Text>
+        </View>
       </View>
     );
   }
 
-  // ── Seller view: enter PIN ──
+  // ── Not yet confirmed by me — the main action screen ──
   return (
     <View style={styles.container}>
       <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
         <Text style={styles.backText}>← Back</Text>
       </TouchableOpacity>
 
-      <Text style={styles.heading}>Confirm Trip Completed</Text>
+      <Text style={styles.heading}>Confirm Trip Complete</Text>
       <Text style={styles.subheading}>
-        Ask your customer for their 4-digit PIN to confirm the trip is complete.
+        Once your trip is actually finished, both you and {otherRoleLabel} need to confirm — tap below once you're ready.
       </Text>
 
       {error ? (
         <View style={styles.errorBox}><Text style={styles.errorText}>⚠️ {error}</Text></View>
       ) : null}
 
-      {!session ? (
-        <View style={styles.waitingBox}>
-          <ActivityIndicator color={GOLD} style={{ marginBottom: 12 }} />
-          <Text style={styles.waitingText}>Waiting for your customer to generate a PIN...</Text>
+      {otherConfirmedAt && (
+        <View style={styles.otherConfirmedBox}>
+          <Text style={styles.otherConfirmedText}>
+            ✅ {otherRoleLabel === 'your driver' ? 'Your driver has' : 'Your customer has'} already confirmed — you're the last step.
+          </Text>
         </View>
-      ) : (
-        <>
-          <View style={styles.enterPinCard}>
-            <Text style={styles.label}>Enter customer's PIN</Text>
-            <TextInput
-              style={styles.pinInput}
-              value={enteredPin}
-              onChangeText={(t) => setEnteredPin(t.replace(/[^0-9]/g, '').slice(0, 4))}
-              placeholder="0000"
-              placeholderTextColor="#555"
-              keyboardType="number-pad"
-              maxLength={4}
-            />
-            {session.amount ? (
-              <Text style={styles.amountHint}>Transaction amount: ${session.amount}</Text>
-            ) : null}
-          </View>
-
-          <TouchableOpacity
-            style={[styles.confirmBtn, (confirming || enteredPin.length !== 4) && { opacity: 0.5 }]}
-            onPress={handleConfirm}
-            disabled={confirming || enteredPin.length !== 4}
-          >
-            {confirming ? <ActivityIndicator color={BLACK} /> : <Text style={styles.confirmBtnText}>Confirm transaction</Text>}
-          </TouchableOpacity>
-
-          <View style={styles.instructionsBox}>
-            <Text style={styles.instructionsTitle}>Important</Text>
-            <Text style={styles.instructionsNote}>
-              Only enter this PIN once the trip is actually finished and your customer has confirmed they're satisfied. This action cannot be undone.
-            </Text>
-          </View>
-        </>
       )}
-    </View>
-  );
-}
 
-function InstructionStep({ n, text }: { n: string; text: string }) {
-  return (
-    <View style={styles.stepRow}>
-      <View style={styles.stepNum}><Text style={styles.stepNumText}>{n}</Text></View>
-      <Text style={styles.stepText}>{text}</Text>
+      {session?.amount ? (
+        <Text style={styles.amountHint}>Trip amount: ${session.amount}</Text>
+      ) : null}
+
+      <TouchableOpacity
+        style={[styles.confirmBtn, confirming && { opacity: 0.6 }]}
+        onPress={handleConfirmMyself}
+        disabled={confirming}
+      >
+        {confirming ? <ActivityIndicator color={BLACK} /> : <Text style={styles.confirmBtnText}>Confirm Trip Complete</Text>}
+      </TouchableOpacity>
+
+      <View style={styles.instructionsBox}>
+        <Text style={styles.instructionsTitle}>Important</Text>
+        <Text style={styles.instructionsNote}>
+          Only confirm once your trip has actually finished. This action can't be undone, and the trip is only
+          marked complete once both you and {otherRoleLabel} have confirmed.
+        </Text>
+      </View>
     </View>
   );
 }
@@ -345,36 +271,22 @@ const styles = StyleSheet.create({
   errorBox: { backgroundColor: '#3a1a1a', borderRadius: 10, padding: 12, marginBottom: 16 },
   errorText: { color: '#ff8a8a', fontSize: 13 },
 
-  pinCard: { backgroundColor: BLACK, borderRadius: 18, padding: 28, alignItems: 'center', marginBottom: 16, borderWidth: 1, borderColor: GOLD },
-  pinLabel: { fontSize: 12, color: GREY, marginBottom: 10, letterSpacing: 1 },
-  pinDisplay: { fontSize: 56, fontWeight: '800', color: GOLD, letterSpacing: 12 },
-  pinTimer: { fontSize: 12, color: GREY, marginTop: 12 },
+  otherConfirmedBox: { backgroundColor: '#1a3a1a', borderRadius: 10, padding: 14, marginBottom: 16, borderWidth: 0.5, borderColor: '#2a5a2a' },
+  otherConfirmedText: { color: GREEN, fontSize: 13, lineHeight: 18 },
 
-  regenBtn: { backgroundColor: DARK, borderRadius: 12, paddingVertical: 14, alignItems: 'center', marginBottom: 16 },
-  regenBtnText: { color: GOLD, fontWeight: '700', fontSize: 14 },
+  amountHint: { fontSize: 13, color: GREY, textAlign: 'center', marginBottom: 20 },
+
+  confirmBtn: { backgroundColor: GOLD, borderRadius: 14, paddingVertical: 18, alignItems: 'center', marginBottom: 24 },
+  confirmBtnText: { color: BLACK, fontSize: 16, fontWeight: '800' },
 
   instructionsBox: { backgroundColor: BLACK, borderRadius: 14, padding: 18, borderWidth: 0.5, borderColor: '#333' },
-  instructionsTitle: { fontSize: 13, fontWeight: '700', color: '#fff', marginBottom: 14 },
+  instructionsTitle: { fontSize: 13, fontWeight: '700', color: '#fff', marginBottom: 10 },
   instructionsNote: { fontSize: 13, color: GREY, lineHeight: 20 },
-  stepRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, marginBottom: 12 },
-  stepNum: { width: 22, height: 22, borderRadius: 11, backgroundColor: GOLD, alignItems: 'center', justifyContent: 'center' },
-  stepNumText: { color: BLACK, fontSize: 11, fontWeight: '800' },
-  stepText: { fontSize: 13, color: '#ccc', flex: 1, lineHeight: 18 },
 
-  waitingBox: { backgroundColor: BLACK, borderRadius: 14, padding: 32, alignItems: 'center', borderWidth: 0.5, borderColor: '#333' },
+  waitingBox: { backgroundColor: BLACK, borderRadius: 18, padding: 36, alignItems: 'center', borderWidth: 0.5, borderColor: '#333' },
+  waitingEmoji: { fontSize: 40, marginBottom: 8 },
+  waitingTitle: { fontSize: 16, fontWeight: '700', color: '#fff', marginBottom: 4 },
   waitingText: { fontSize: 13, color: GREY, textAlign: 'center' },
-
-  enterPinCard: { backgroundColor: BLACK, borderRadius: 18, padding: 24, marginBottom: 16, borderWidth: 0.5, borderColor: '#333' },
-  label: { fontSize: 13, fontWeight: '600', color: '#fff', marginBottom: 12 },
-  pinInput: {
-    backgroundColor: DARK, borderRadius: 12, fontSize: 36, fontWeight: '800',
-    color: '#fff', textAlign: 'center', letterSpacing: 16, paddingVertical: 18,
-    borderWidth: 1, borderColor: '#444',
-  },
-  amountHint: { fontSize: 12, color: GREY, textAlign: 'center', marginTop: 14 },
-
-  confirmBtn: { backgroundColor: GOLD, borderRadius: 14, paddingVertical: 16, alignItems: 'center', marginBottom: 20 },
-  confirmBtnText: { color: BLACK, fontSize: 16, fontWeight: '800' },
 
   // Confirmed screen
   confirmedScreen: { flex: 1, backgroundColor: '#111', alignItems: 'center', justifyContent: 'center', padding: 32 },
@@ -384,6 +296,8 @@ const styles = StyleSheet.create({
   confirmedAmountBox: { backgroundColor: BLACK, borderRadius: 14, padding: 18, alignItems: 'center', marginBottom: 28, borderWidth: 0.5, borderColor: '#333', minWidth: 160 },
   confirmedAmountLabel: { fontSize: 11, color: GREY, marginBottom: 4 },
   confirmedAmountValue: { fontSize: 28, fontWeight: '800', color: GREEN },
-  doneBtn: { backgroundColor: GOLD, borderRadius: 14, paddingVertical: 16, paddingHorizontal: 48 },
+  doneBtn: { backgroundColor: GOLD, borderRadius: 14, paddingVertical: 16, paddingHorizontal: 32 },
   doneBtnText: { color: BLACK, fontSize: 16, fontWeight: '800' },
+  skipLink: { marginTop: 16 },
+  skipLinkText: { color: GREY, fontSize: 13 },
 });

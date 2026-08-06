@@ -215,13 +215,15 @@ export default function MessagesScreen() {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
 
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('account_type')
-      .eq('id', user.id)
-      .maybeSingle();
+    // UPDATED (product decision): was account_type === 'seller' — see
+    // index.tsx's matching fix for the full reasoning. Now driven by
+    // whether this person has actually posted a listing.
+    const { count: listingCount } = await supabase
+      .from('listings')
+      .select('id', { count: 'exact', head: true })
+      .eq('user_id', user.id);
 
-    const isSeller = profile?.account_type === 'seller';
+    const hasPostedListing = (listingCount ?? 0) > 0;
 
     const { data: operator } = await supabase
       .from('delivery_operators')
@@ -235,7 +237,7 @@ export default function MessagesScreen() {
       new Date(operator.registration_expires_at).getTime() > Date.now()
     );
 
-    setShowDashboardTab(isSeller || isActiveOperator);
+    setShowDashboardTab(hasPostedListing || isActiveOperator);
   }
 
   function formatTime(dateStr: string) {

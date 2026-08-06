@@ -36,10 +36,23 @@ async function getNotificationsModule() {
 
   try {
     cachedModule = await import('expo-notifications');
-    // Set the foreground handler once the module is confirmed safe to use.
+    // FIX: shouldShowAlert is deprecated — Expo replaced it with
+    // shouldShowBanner (the visible on-screen banner while the app is
+    // open, which is the actual "on-screen alert" behavior we want)
+    // and shouldShowList (whether it also appears in the system
+    // notification center/tray). The old field alone risks silently
+    // NOT showing a visible banner on current SDK versions, even
+    // though the code looks correct at a glance — confirmed against
+    // Expo's own current documentation before making this change.
+    // shouldShowAlert is kept alongside for backward compatibility on
+    // any older client that hasn't picked up the newer field names yet
+    // — harmless to include both, and safer than assuming everyone's
+    // on the exact same expo-notifications patch version.
     cachedModule.setNotificationHandler({
       handleNotification: async () => ({
         shouldShowAlert: true,
+        shouldShowBanner: true,
+        shouldShowList: true,
         shouldPlaySound: true,
         shouldSetBadge: true,
       }),

@@ -22,10 +22,12 @@
 // registered — this pause only affects NEW trip requests being posted.
 const VAN_HIRE_PAUSED = false;
 
+import DateTimePicker from '@react-native-community/datetimepicker';
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
 import {
   ActivityIndicator,
+  Modal,
   Platform,
   ScrollView,
   StyleSheet,
@@ -47,6 +49,43 @@ export default function HireVanScreen() {
   const [pickup, setPickup] = useState('');
   const [destination, setDestination] = useState('');
   const [date, setDate] = useState('');
+  // NEW: calendar picker, replacing free-text date entry. `date` above
+  // stays a plain 'YYYY-MM-DD' string (same format the field already
+  // suggested via its old placeholder, "e.g. 2026-08-15") — only the
+  // INPUT METHOD changed, not the stored format, so requests.date
+  // doesn't need any schema change regardless of its exact column type.
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [dateObj, setDateObj] = useState<Date>(new Date());
+
+  function formatDateDisplay(iso: string): string {
+    if (!iso) return '';
+    const d = new Date(iso + 'T00:00:00');
+    return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
+  }
+
+  function toIsoDate(d: Date): string {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+  }
+
+  function handleDateChange(event: any, selected?: Date) {
+    if (Platform.OS === 'android') {
+      // Android's picker is a native dialog that dismisses itself —
+      // hide our own wrapper the moment it reports any outcome.
+      setShowDatePicker(false);
+      if (event.type === 'set' && selected) {
+        setDateObj(selected);
+        setDate(toIsoDate(selected));
+      }
+    } else {
+      // iOS: the picker stays open inline until the user taps our own
+      // "Done" button (see the Modal below) — just track the
+      // in-progress selection here.
+      if (selected) setDateObj(selected);
+    }
+  }
   const [passengers, setPassengers] = useState('');
   const [description, setDescription] = useState('');
   const [loading, setLoading] = useState(false);
@@ -198,13 +237,58 @@ export default function HireVanScreen() {
         />
 
         <Text style={styles.label}>Travel date *</Text>
-        <TextInput
-          style={styles.input}
-          placeholder="e.g. 2026-08-15"
-          placeholderTextColor="#666"
-          value={date}
-          onChangeText={setDate}
-        />
+        <TouchableOpacity
+          style={styles.dateField}
+          onPress={() => {
+            setDateObj(date ? new Date(date + 'T00:00:00') : new Date());
+            setShowDatePicker(true);
+          }}
+        >
+          <Text style={date ? styles.dateFieldText : styles.dateFieldPlaceholder}>
+            {date ? formatDateDisplay(date) : 'Select date'}
+          </Text>
+          <Text style={styles.dateFieldIcon}>📅</Text>
+        </TouchableOpacity>
+
+        {/* Android shows its own native dialog automatically the
+            moment this renders — no extra wrapper needed. iOS renders
+            inline, so it's wrapped in a Modal with our own "Done"
+            button, matching the confirmed design. */}
+        {showDatePicker && Platform.OS === 'android' && (
+          <DateTimePicker
+            value={dateObj}
+            mode="date"
+            display="calendar"
+            minimumDate={new Date()}
+            onChange={handleDateChange}
+          />
+        )}
+
+        {Platform.OS === 'ios' && (
+          <Modal visible={showDatePicker} transparent animationType="slide">
+            <View style={styles.pickerModalOverlay}>
+              <View style={styles.pickerModalSheet}>
+                <DateTimePicker
+                  value={dateObj}
+                  mode="date"
+                  display="inline"
+                  minimumDate={new Date()}
+                  onChange={handleDateChange}
+                  themeVariant="dark"
+                />
+                <TouchableOpacity
+                  style={styles.pickerDoneBtn}
+                  onPress={() => {
+                    setDate(toIsoDate(dateObj));
+                    setShowDatePicker(false);
+                  }}
+                >
+                  <Text style={styles.pickerDoneBtnText}>Done</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </Modal>
+        )}
 
         <Text style={styles.label}>Number of passengers *</Text>
         <TextInput
@@ -283,6 +367,21 @@ const styles = StyleSheet.create({
     borderColor: '#333',
   },
   textArea: { height: 90, textAlignVertical: 'top', paddingTop: 10 },
+
+  // NEW: calendar date field, replacing manual text entry
+  dateField: {
+    backgroundColor: DARK, borderRadius: 10, paddingHorizontal: 14,
+    paddingVertical: Platform.OS === 'ios' ? 13 : 12,
+    borderWidth: 0.5, borderColor: '#333',
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+  },
+  dateFieldText: { fontSize: 14, color: '#fff' },
+  dateFieldPlaceholder: { fontSize: 14, color: '#666' },
+  dateFieldIcon: { fontSize: 16 },
+  pickerModalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },
+  pickerModalSheet: { backgroundColor: DARK, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 16, paddingBottom: 32 },
+  pickerDoneBtn: { backgroundColor: GOLD, borderRadius: 12, paddingVertical: 14, alignItems: 'center', marginTop: 12 },
+  pickerDoneBtnText: { color: BLACK, fontSize: 14, fontWeight: '700' },
 
   infoBox: { backgroundColor: '#1a1a2e', borderRadius: 10, padding: 14, marginBottom: 20, borderWidth: 0.5, borderColor: '#3a3a5e' },
   infoText: { color: '#8888ff', fontSize: 12, lineHeight: 18 },

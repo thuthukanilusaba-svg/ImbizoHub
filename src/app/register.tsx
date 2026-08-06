@@ -25,16 +25,25 @@ const DARK = '#2a2a2a';
 // (toStoredAccountType, operator-register-pay.tsx, the
 // transport_operator_registration payment kind) changes — those stay
 // fully functional for when this is un-paused, same as before.
-// UPDATED (unpaused): van-hire is now fully live — this card is
-// selectable again, matching hirevan.tsx's VAN_HIRE_PAUSED now being
-// false. Everything downstream (the extra-fields block below,
-// operator-register-pay.tsx, the transport_operator_registration
-// payment kind, quotes.tsx, operator-requests.tsx, meetpay.tsx) was
-// already fully functional the whole time this card was disabled —
-// this was the last remaining gate.
+// UPDATED (product decision): "Buyer" and "Seller" removed from this
+// picker entirely — a full codebase check confirmed neither one ever
+// gated any real functionality (post.tsx never checked account_type at
+// all; the only consequence anywhere was whether the Dashboard tab
+// showed by default in the bottom nav, now driven by "have you posted
+// a listing" instead — see index.tsx/explore.tsx/messages.tsx). Asking
+// new users to pre-declare a role that never actually restricted
+// anything was a fake decision at exactly the moment (signup) where
+// friction matters most. Every account can already buy, sell, and
+// message regardless of what used to be picked here.
+//
+// What remains are the two GENUINELY optional add-ons — Delivery and
+// Transport Operator — which really do gate real functionality (a paid
+// registration, specific screens). These are no longer part of a
+// forced single-select "I am a" grid; they're an optional toggle
+// section further down the form (see the JSX below), matching their
+// actual nature: something extra you can add, not a required identity
+// choice.
 const accountTypes = [
-  { type: 'buyer', icon: '🛍️', label: 'Buyer', desc: 'Browse and buy items' },
-  { type: 'seller', icon: '🏪', label: 'Seller', desc: 'Post and sell items' },
   { type: 'delivery', icon: '📦', label: 'Delivery Operator', desc: 'Deliver parcels locally & intercity' },
   { type: 'operator', icon: '🚐', label: 'Transport Operator', desc: 'Offer van & minibus hire' },
 ];
@@ -281,40 +290,8 @@ export default function RegisterScreen() {
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
       <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-        <Text style={styles.title}>Create Account</Text>
-        <Text style={styles.subtitle}>Join ImbizoHub today</Text>
-
-        <Text style={styles.label}>I am a</Text>
-        <View style={styles.accountTypeGrid}>
-          {accountTypes.map((a) => (
-            <TouchableOpacity
-              key={a.type}
-              style={[
-                styles.accountTypeCard,
-                accountType === a.type && styles.accountTypeCardActive,
-                a.disabled && styles.accountTypeCardDisabled,
-              ]}
-              onPress={() => { if (!a.disabled) setAccountType(a.type); }}
-              disabled={a.disabled}
-              activeOpacity={a.disabled ? 1 : 0.7}
-            >
-              {a.disabled && (
-                <View style={styles.comingSoonBadge}>
-                  <Text style={styles.comingSoonBadgeText}>Coming soon</Text>
-                </View>
-              )}
-              <Text style={[styles.accountTypeIcon, a.disabled && styles.accountTypeIconDisabled]}>{a.icon}</Text>
-              <Text style={[
-                styles.accountTypeLabel,
-                accountType === a.type && styles.accountTypeLabelActive,
-                a.disabled && styles.accountTypeLabelDisabled,
-              ]}>
-                {a.label}
-              </Text>
-              <Text style={[styles.accountTypeDesc, a.disabled && styles.accountTypeDescDisabled]}>{a.desc}</Text>
-            </TouchableOpacity>
-          ))}
-        </View>
+        <Text style={styles.title}>Create your account</Text>
+        <Text style={styles.subtitle}>Buy, sell, and message sellers — all in one account.</Text>
 
         <Text style={styles.label}>Full Name *</Text>
         <TextInput style={styles.input} placeholder="Enter your full name" placeholderTextColor="#888"
@@ -378,6 +355,33 @@ export default function RegisterScreen() {
         {confirmPassword.length > 0 && password !== confirmPassword ? (
           <Text style={styles.passwordMismatch}>Passwords don't match yet.</Text>
         ) : null}
+
+        {/* NEW: optional add-on section, replacing what used to be a
+            required "I am a" choice at the top of the form. Tapping an
+            already-selected pill deselects it back to the plain base
+            account — this is a genuine toggle now, not a forced single
+            pick. Everything below (the extra-fields blocks, the
+            handleRegister insert/redirect logic) is UNCHANGED from
+            before; only how accountType gets set changed. */}
+        <View style={styles.optionalSection}>
+          <Text style={styles.optionalSectionTitle}>
+            Also want to drive for ImbizoHub? <Text style={styles.optionalSectionHint}>(optional)</Text>
+          </Text>
+          <View style={styles.optionalToggleRow}>
+            {accountTypes.map((a) => (
+              <TouchableOpacity
+                key={a.type}
+                style={[styles.optionalToggle, accountType === a.type && styles.optionalToggleActive]}
+                onPress={() => setAccountType((prev) => (prev === a.type ? 'buyer' : a.type))}
+              >
+                <Text style={styles.optionalToggleIcon}>{a.icon}</Text>
+                <Text style={[styles.optionalToggleLabel, accountType === a.type && styles.optionalToggleLabelActive]}>
+                  {a.label.replace(' Operator', '')}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </View>
 
         {/* Transport Operator fields */}
         {accountType === 'operator' && (
@@ -456,22 +460,24 @@ const styles = StyleSheet.create({
   eyeIcon: { fontSize: 18 },
   passwordMismatch: { color: '#ff6b6b', fontSize: 12, marginTop: 6 },
 
-  accountTypeGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 8 },
-  accountTypeCard: { width: '47%', backgroundColor: DARK, borderRadius: 10, padding: 10, alignItems: 'center', borderWidth: 2, borderColor: 'transparent' },
-  accountTypeCardActive: { borderColor: GOLD },
-  accountTypeCardDisabled: { opacity: 0.55, position: 'relative' },
-  accountTypeIcon: { fontSize: 24, marginBottom: 4 },
-  accountTypeIconDisabled: { opacity: 0.6 },
-  accountTypeLabel: { color: '#aaa', fontWeight: 'bold', fontSize: 12, textAlign: 'center' },
-  accountTypeLabelActive: { color: GOLD },
-  accountTypeLabelDisabled: { color: '#777' },
-  accountTypeDesc: { color: '#666', fontSize: 10, textAlign: 'center', marginTop: 2 },
-  accountTypeDescDisabled: { color: '#555' },
-  comingSoonBadge: {
-    position: 'absolute', top: 6, right: 6, backgroundColor: GOLD,
-    borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2,
+  // NEW: optional add-on toggle section, replacing the old required
+  // account-type grid entirely (that grid's styles — accountTypeGrid,
+  // accountTypeCard, comingSoonBadge, etc. — are gone; nothing
+  // references them anymore, both Delivery and Transport Operator are
+  // fully live, so there's no more "disabled/coming soon" card state
+  // to style for).
+  optionalSection: { marginTop: 20, paddingTop: 16, borderTopWidth: 0.5, borderTopColor: '#2a2a2a' },
+  optionalSectionTitle: { color: '#aaa', fontSize: 12, marginBottom: 10 },
+  optionalSectionHint: { color: '#666' },
+  optionalToggleRow: { flexDirection: 'row', gap: 8 },
+  optionalToggle: {
+    flex: 1, backgroundColor: DARK, borderRadius: 10, borderWidth: 0.5, borderColor: '#3a3a3a',
+    paddingVertical: 10, alignItems: 'center',
   },
-  comingSoonBadgeText: { color: BLACK, fontSize: 8, fontWeight: '800' },
+  optionalToggleActive: { borderColor: GOLD, borderWidth: 1 },
+  optionalToggleIcon: { fontSize: 18, marginBottom: 4 },
+  optionalToggleLabel: { color: '#ccc', fontSize: 11 },
+  optionalToggleLabelActive: { color: GOLD, fontWeight: '700' },
 
   extraFields: { backgroundColor: DARK, borderRadius: 12, padding: 16, marginTop: 16, borderWidth: 0.5, borderColor: '#444' },
   extraFieldsHeader: { marginBottom: 4 },

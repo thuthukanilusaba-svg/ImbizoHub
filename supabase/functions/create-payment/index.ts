@@ -259,7 +259,7 @@ Deno.serve(async (req) => {
       const {
         listing_id, item_request_id, buyer_id, seller_id,
         operator_user_id, pickup_city, dropoff_city, delivery_type,
-        delivery_fee, parcel_description,
+        delivery_fee, parcel_description, scheduled_date,
       } = body;
 
       const hasListing = !!listing_id;
@@ -287,6 +287,11 @@ Deno.serve(async (req) => {
       intentRow.delivery_type = delivery_type;
       intentRow.delivery_fee = delivery_fee;
       intentRow.parcel_description = parcel_description ?? null;
+      // NEW: optional — NULL means ASAP, matching the only behavior
+      // that existed before this field was added. delivery-booking.tsx
+      // only sends this when the buyer actually picked a scheduled
+      // date via the new calendar option.
+      intentRow.scheduled_date = scheduled_date ?? null;
     }
 
     const ourReference = `${kind}-${crypto.randomUUID()}`;

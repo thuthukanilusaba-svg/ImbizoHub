@@ -1,6 +1,15 @@
 // app/listing.tsx
 // Listing detail screen with swipeable photo carousel and mark as sold
 //
+// NEW: full-screen zoom on the photo carousel. Tapping any photo opens
+// it full-screen via react-native-image-viewing — pinch-to-zoom,
+// double-tap-to-zoom, and swipe-down-to-dismiss all come built in, no
+// custom gesture handling needed. Pure JS library, no native module, so
+// no rebuild is required to add this — an OTA update is enough. Opens
+// at whichever photo is currently active in the carousel (activeIndex),
+// not always the first one, so tapping photo 3 of 5 opens zoomed on
+// photo 3, not back at photo 1.
+//
 // FIX (found during a full-app review pass): when a listing was marked
 // sold, the bottom action bar disappeared entirely for the OWNER too —
 // not just buyers. The two action-bar blocks were `{!isSold && (...)}`
@@ -44,6 +53,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import ImageView from 'react-native-image-viewing';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { supabase } from '../../lib/supabase';
 
@@ -65,6 +75,8 @@ export default function ListingScreen() {
   const [statusError, setStatusError] = useState('');
   // NEW: the seller's real, paid verification status — see fetchListing()
   const [sellerVerified, setSellerVerified] = useState(false);
+  // NEW: full-screen photo zoom viewer visibility — see top-of-file comment.
+  const [zoomVisible, setZoomVisible] = useState(false);
   const scrollRef = useRef<ScrollView>(null);
 
   useEffect(() => { fetchListing(); fetchMe(); }, [id]);
@@ -203,7 +215,16 @@ export default function ListingScreen() {
                 scrollEventThrottle={16}
               >
                 {photos.map((url, i) => (
-                  <Image key={i} source={{ uri: url }} style={styles.carouselImage} resizeMode="cover" />
+                  // NEW: wrapped in TouchableOpacity to open the
+                  // full-screen zoom viewer — opens on whichever photo
+                  // was actually tapped, not always the first one.
+                  <TouchableOpacity
+                    key={i}
+                    activeOpacity={0.95}
+                    onPress={() => { setActiveIndex(i); setZoomVisible(true); }}
+                  >
+                    <Image source={{ uri: url }} style={styles.carouselImage} resizeMode="cover" />
+                  </TouchableOpacity>
                 ))}
               </ScrollView>
 
@@ -393,6 +414,18 @@ export default function ListingScreen() {
           </TouchableOpacity>
         </View>
       )}
+
+      {/* NEW: full-screen zoom viewer — see top-of-file comment.
+          Renders on top of everything else (including the action bar)
+          when visible=true, with its own built-in close (X) button,
+          swipe-down-to-dismiss, and pinch/double-tap zoom. imageIndex
+          controls which photo it opens on. */}
+      <ImageView
+        images={photos.map((uri) => ({ uri }))}
+        imageIndex={activeIndex}
+        visible={zoomVisible}
+        onRequestClose={() => setZoomVisible(false)}
+      />
     </View>
   );
 }

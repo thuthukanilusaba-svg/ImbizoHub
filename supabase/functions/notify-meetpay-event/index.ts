@@ -1,36 +1,32 @@
 // supabase/functions/notify-meetpay-event/index.ts
 //
-// Sends the cross-device push notification the two LOCAL notification
-// calls in chat.tsx (notifyMeetPayPinGenerated / notifyTransactionConfirmed,
-// in lib/notifications.ts) were never actually able to deliver: both are
-// showLocalNotification() calls, which only ever display on the device
-// that calls them. Since they fire on the ACTING party's own client
-// (the buyer's device when a PIN is generated, the confirmer's device
-// when a PIN is confirmed) — and chat.tsx has no realtime subscription
-// on meetpay_sessions the way it does on messages — the party who is
-// actually meant to see each notification (the seller for "PIN ready",
-// the buyer for "confirmed") never got it. This function fills that gap
-// the same way paynow-webhook already does for payment events: a real
-// server-side Expo push, sent to the OTHER party, triggered by a DB
-// trigger rather than the acting client.
+// UPDATED: van-hire trips no longer use a PIN (see meetpay.tsx's
+// rewrite) — replaced with mutual confirmation, both parties tap
+// "Confirm Trip Complete" independently. This adds the two new events
+// that flow needs:
+//   - 'trip_half_confirmed': one side confirmed, notify the OTHER side
+//     they're now the one being waited on. Closes a real gap — without
+//     it, nobody's told when they've become the last step.
+//   - 'confirmed' for van_hire specifically now notifies BOTH parties
+//     (unlike listings, where only the buyer needs telling — for a
+//     mutual flow, whoever completes the final confirmation could be
+//     either side, so both get the "trip confirmed" push).
+//
+// Everything below for 'pin_generated' and 'confirmed' on
+// listing/item_request sessions is UNCHANGED — those still use PINs,
+// still notify exactly the same party as before. Only van_hire's
+// behavior is new.
 //
 // Called only by DB triggers on meetpay_sessions (see
 // notify-meetpay-event-trigger.sql) — never by the client directly.
-// Authenticated via a shared secret (X-Notify-Secret header), same
-// pattern as notify-admin-verification, since these calls originate from
-// Postgres itself, not a logged-in session.
+// Authenticated via a shared secret (X-Notify-Secret header).
 //
 // Expected trigger payload:
 // {
-//   event: 'pin_generated' | 'confirmed',
-//   session_id: string,       // meetpay_sessions.id
+//   event: 'pin_generated' | 'confirmed' | 'trip_half_confirmed',
+//   session_id: string,
+//   confirmed_by_role?: 'buyer' | 'seller',  // only for trip_half_confirmed
 // }
-//
-// The row itself (type, reference_id, buyer_id, seller_id, ...) is
-// re-fetched here rather than trusted from the trigger payload, so a
-// stale/replayed call can't misattribute a notification — same
-// reasoning notify-admin-verification uses for re-fetching the
-// applicant's name instead of trusting it inline.
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
@@ -70,11 +66,10 @@ async function sendExpoPushNotification(
   }
 }
 
-// Resolves a human-readable label for the item this session is about —
-// same "listing vs item_request" branch chat.tsx itself already uses
-// (see the meetpay_sessions insert in openMeetPay()), so the title
-// shown here always matches what the two parties are actually chatting
-// about, not just a generic "your listing" for wanted-tab matches.
+// Resolves a human-readable label for the item/trip this session is
+// about. UPDATED: added a van_hire branch — pickup/destination is the
+// closest equivalent to a "title" for a trip request, same fallback
+// pattern already used for listing/item_request.
 async function itemLabelFor(type: string, referenceId: string): Promise<string> {
   if (type === 'item_request') {
     const { data } = await supabase
@@ -83,6 +78,27 @@ async function itemLabelFor(type: string, referenceId: string): Promise<string> 
       .eq('id', referenceId)
       .maybeSingle();
     return data?.title || 'this item';
+  }
+  if (type === 'van_hire') {
+    // reference_id for van_hire is the quote id, not the request id
+    // directly — resolve through quotes -> requests, same relationship
+    // quotes.tsx itself uses.
+    const { data: quote } = await supabase
+      .from('quotes')
+      .select('request_id')
+      .eq('id', referenceId)
+      .maybeSingle();
+    if (quote?.request_id) {
+      const { data: request } = await supabase
+        .from('requests')
+        .select('pickup, destination')
+        .eq('id', quote.request_id)
+        .maybeSingle();
+      if (request?.pickup && request?.destination) {
+        return `your trip (${request.pickup} → ${request.destination})`;
+      }
+    }
+    return 'your trip';
   }
   const { data } = await supabase
     .from('listings')
@@ -113,9 +129,9 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { event, session_id } = await req.json();
+    const { event, session_id, confirmed_by_role } = await req.json();
 
-    if (event !== 'pin_generated' && event !== 'confirmed') {
+    if (event !== 'pin_generated' && event !== 'confirmed' && event !== 'trip_half_confirmed') {
       return new Response('Unrecognized event', { status: 400 });
     }
     if (!session_id) {
@@ -130,18 +146,14 @@ Deno.serve(async (req) => {
 
     if (sessionError || !session) {
       console.error('notify-meetpay-event: no matching meetpay_sessions row', session_id);
-      // 200, not 500/404 — same reasoning as paynow-webhook's "no
-      // matching intent" case: the trigger fired correctly, there's just
-      // nothing more for this function to do, so don't make Postgres
-      // treat the trigger call itself as failed.
       return new Response('No matching session', { status: 200 });
     }
 
     const itemLabel = await itemLabelFor(session.type, session.reference_id);
 
     if (event === 'pin_generated') {
-      // The buyer generated the PIN — the seller (confirm-PIN role) is
-      // the one who needs to know it's ready.
+      // UNCHANGED — listing/item_request only, never fires for
+      // van_hire anymore (that flow has no PIN to generate).
       const sellerToken = await pushTokenFor(session.seller_id);
       await sendExpoPushNotification(
         sellerToken,
@@ -149,16 +161,57 @@ Deno.serve(async (req) => {
         `The buyer has generated a PIN for "${itemLabel}". Tap to confirm the transaction.`,
         { type: 'meetpay', session_id: session.id }
       );
-    } else {
-      // event === 'confirmed' — the seller/responder confirmed the PIN;
-      // the buyer is the one waiting to hear the deal is done.
-      const buyerToken = await pushTokenFor(session.buyer_id);
+    } else if (event === 'trip_half_confirmed') {
+      // NEW — van_hire only. One side confirmed; tell the OTHER side
+      // they're now the one being waited on.
+      const notifyBuyer = confirmed_by_role === 'seller';
+      const recipientId = notifyBuyer ? session.buyer_id : session.seller_id;
+      const recipientToken = recipientId ? await pushTokenFor(recipientId) : null;
+      const confirmerLabel = notifyBuyer ? 'Your driver' : 'Your customer';
+
       await sendExpoPushNotification(
-        buyerToken,
-        'Transaction confirmed! ✅',
-        `The deal for "${itemLabel}" has been confirmed. Please leave a rating.`,
-        { type: 'confirmed', session_id: session.id }
+        recipientToken,
+        'Waiting on your confirmation',
+        `${confirmerLabel} confirmed ${itemLabel} is complete — please confirm on your side too.`,
+        { type: 'trip_half_confirmed', session_id: session.id }
       );
+    } else {
+      // event === 'confirmed'
+      if (session.type === 'van_hire') {
+        // NEW behavior for van_hire: whoever completes the final
+        // confirmation could be either side (mutual flow, unlike a
+        // PIN's fixed buyer-generates/seller-confirms order), so both
+        // parties get the "trip confirmed" push rather than assuming
+        // it's always the buyer waiting.
+        const [buyerToken, sellerToken] = await Promise.all([
+          session.buyer_id ? pushTokenFor(session.buyer_id) : null,
+          session.seller_id ? pushTokenFor(session.seller_id) : null,
+        ]);
+        await Promise.all([
+          sendExpoPushNotification(
+            buyerToken,
+            'Trip confirmed! ✅',
+            `${itemLabel} has been confirmed complete by both sides. Please leave a rating.`,
+            { type: 'confirmed', session_id: session.id }
+          ),
+          sendExpoPushNotification(
+            sellerToken,
+            'Trip confirmed! ✅',
+            `${itemLabel} has been confirmed complete by both sides. Please leave a rating.`,
+            { type: 'confirmed', session_id: session.id }
+          ),
+        ]);
+      } else {
+        // UNCHANGED — listing/item_request: seller/responder confirmed
+        // the PIN, buyer is the one waiting to hear it's done.
+        const buyerToken = await pushTokenFor(session.buyer_id);
+        await sendExpoPushNotification(
+          buyerToken,
+          'Transaction confirmed! ✅',
+          `The deal for "${itemLabel}" has been confirmed. Please leave a rating.`,
+          { type: 'confirmed', session_id: session.id }
+        );
+      }
     }
 
     return new Response('OK', { status: 200 });

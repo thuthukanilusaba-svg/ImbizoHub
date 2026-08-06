@@ -184,8 +184,8 @@ export default function OperatorRegisterPayScreen() {
               customer's commitment fee (7%, capped at $30). */}
           <Step n="5" text="You keep 100% of your quoted fare — no additional commission" />
         </View>
-        <TouchableOpacity style={styles.startBtn} onPress={() => router.replace('/operator-requests')}>
-          <Text style={styles.startBtnText}>View open trip requests →</Text>
+        <TouchableOpacity style={styles.startBtn} onPress={() => router.replace('/become-operator?type=operator')}>
+          <Text style={styles.startBtnText}>Add your vehicle details →</Text>
         </TouchableOpacity>
       </View>
     );

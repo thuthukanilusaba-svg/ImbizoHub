@@ -301,16 +301,21 @@ export async function confirmPaymentIntent(
 
     // UPDATED (pricing decision): was a flat 10% deposit, no cap, plus
     // a SEPARATE 3% commission on top (removed entirely — see the
-    // comment block below). Now: 7% commitment fee, capped at $30,
-    // matching the pattern already used on the listing unlock fee (5%
-    // capped at $15) — quotes.tsx computes this exact same capped
-    // value client-side and it arrives here as intent.amount.
+    // comment block below). Now: 7% commitment fee, capped at $15
+    // (lowered from an initial $30 — same cap now used on the regular
+    // listing unlock fee, one consistent "$15 maximum" story instead
+    // of two different numbers) — quotes.tsx computes this exact same
+    // capped value client-side and it arrives here as intent.amount.
+    // Nothing in THIS file ever hardcoded the cap value itself — it
+    // just trusts intent.amount as-is, so lowering the cap needed no
+    // functional change here, only this comment and the transaction
+    // notes string below staying accurate.
     //
     // FIX: balanceAmount used to be a hardcoded quote.price * 0.90 —
     // only correct when the deposit is a pure, uncapped percentage.
     // Once a cap can apply, that formula silently undercounts the
     // balance on any trip expensive enough to hit it (e.g. a $1000
-    // trip: real deposit is $30, not $70, so balance should be $970,
+    // trip: real deposit is $15, not $70, so balance should be $985,
     // not $930). Deriving balance as price - depositAmount instead is
     // correct in both the capped and uncapped case — matches the exact
     // same fix already applied to quotes.tsx's own display
@@ -369,7 +374,7 @@ export async function confirmPaymentIntent(
       amount: depositAmount,
       reference_id: quote.id,
       status: 'completed',
-      notes: `Commitment fee (7%, capped at $30) — trip request, paid via Paynow`,
+      notes: `Commitment fee (7%, capped at $15) — trip request, paid via Paynow`,
     });
 
     await notifyTripDepositPaid(supabase, intent.seller_id, quote.request_id);
@@ -481,6 +486,12 @@ export async function confirmPaymentIntent(
         delivery_fee: intent.delivery_fee,
         booking_fee: intent.amount,
         parcel_description: intent.parcel_description,
+        // NEW: carries through the buyer's chosen scheduled date, if
+        // any — NULL means ASAP, same as before this field existed at
+        // all. Set on the payment_intents row by create-payment when
+        // the client initiates checkout; just passed through here
+        // unchanged.
+        scheduled_date: intent.scheduled_date,
         status: 'accepted',
         accepted_at: new Date().toISOString(),
       })

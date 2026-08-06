@@ -50,6 +50,19 @@ export default function DealerScreen() {
   const insets = useSafeAreaInsets();
   const [myId, setMyId] = useState('');
   const [accountType, setAccountType] = useState('');
+  // NEW: real fix for a bug found during a final sweep — isSeller below
+  // was still checking accountType === 'seller', a value that can now
+  // never actually be reached through the new registration/upgrade
+  // flows (register.tsx's Buyer/Seller picker was removed; nobody's
+  // account_type ever becomes 'seller' anymore, only 'buyer' by
+  // default). This meant a brand new user who posts a listing would
+  // correctly see the Dashboard TAB (index.tsx/explore.tsx/messages.tsx
+  // were already fixed to trigger on "has posted a listing"), but once
+  // inside, THIS screen would still show them nothing — isSeller would
+  // stay false forever, hiding their own listings, the dual-role
+  // header, everything below that gates on it. Same fix as the other
+  // five: driven by whether they've actually posted a listing.
+  const [myListingCount, setMyListingCount] = useState(0);
   const [myFullName, setMyFullName] = useState('');
   const [myEmail, setMyEmail] = useState('');
   const [deliveryOperator, setDeliveryOperator] = useState<any>(null);
@@ -103,6 +116,12 @@ export default function DealerScreen() {
       ));
       setDealerProExpiresAt(profile.dealer_pro_expires_at ?? null);
     }
+
+    const { count: listingCount } = await supabase
+      .from('listings')
+      .select('id', { count: 'exact', head: true })
+      .eq('user_id', user.id);
+    setMyListingCount(listingCount ?? 0);
 
     // Check if this user is a registered delivery operator
     const { data: operator } = await supabase
@@ -332,7 +351,7 @@ export default function DealerScreen() {
   }
 
   const isDeliveryOperator = !!deliveryOperator;
-  const isSeller = accountType === 'seller';
+  const isSeller = myListingCount > 0;
   // NEW: a user who is BOTH an active seller and an active paid delivery
   // operator at the same time. This is the case the old header logic
   // handled badly — it always rendered as if the user were ONLY a
