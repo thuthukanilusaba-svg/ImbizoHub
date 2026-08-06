@@ -53,8 +53,11 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import ImageView from 'react-native-image-viewing';
+// NEW: imports from the local wrapper, not react-native-image-viewing
+// directly — see components/PhotoZoomViewer.native.tsx and .web.tsx for
+// why. Metro picks the right file per platform automatically.
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import PhotoZoomViewer from '../../components/PhotoZoomViewer';
 import { supabase } from '../../lib/supabase';
 
 const GOLD = '#B8860B';
@@ -420,8 +423,8 @@ export default function ListingScreen() {
           when visible=true, with its own built-in close (X) button,
           swipe-down-to-dismiss, and pinch/double-tap zoom. imageIndex
           controls which photo it opens on. */}
-      <ImageView
-        images={photos.map((uri) => ({ uri }))}
+      <PhotoZoomViewer
+        photos={photos}
         imageIndex={activeIndex}
         visible={zoomVisible}
         onRequestClose={() => setZoomVisible(false)}
