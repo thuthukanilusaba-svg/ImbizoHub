@@ -33,8 +33,8 @@ const TERMS_URL = 'https://thuthukanilusaba-svg.github.io/imbizohub-legal/terms-
 // registration, specific screens). These are an optional toggle
 // section further down the form, matching their actual nature.
 const accountTypes = [
-  { type: 'delivery', icon: '📦', label: 'Delivery Operator', desc: 'Deliver parcels locally & intercity' },
-  { type: 'operator', icon: '🚐', label: 'Transport Operator', desc: 'Offer van & minibus hire' },
+  { type: 'delivery', icon: '📦', label: 'Delivery Operator', shortLabel: 'Delivery', desc: 'Deliver parcels locally & intercity' },
+  { type: 'operator', icon: '🚐', label: 'Transport Operator', shortLabel: 'Transport Hire', desc: 'Offer van & minibus hire' },
 ];
 
 // FIX: profiles.account_type must store 'transport_operator' — that's
@@ -58,14 +58,6 @@ export default function RegisterScreen() {
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   const [accountType, setAccountType] = useState('buyer');
-
-  // Transport operator fields
-  const [vehicleType, setVehicleType] = useState('');
-  const [vehicleCapacity, setVehicleCapacity] = useState('');
-
-  // Delivery operator fields
-  const [deliveryVehicleType, setDeliveryVehicleType] = useState('');
-  const [deliveryArea, setDeliveryArea] = useState('');
 
   // NEW: real, required Terms acceptance — see TERMS_URL above.
   const [agreedToTerms, setAgreedToTerms] = useState(false);
@@ -132,9 +124,16 @@ export default function RegisterScreen() {
           full_name: name,
           phone,
           account_type: toStoredAccountType(accountType),
-          vehicle_type: accountType === 'operator' ? vehicleType :
-                        accountType === 'delivery' ? deliveryVehicleType : null,
-          vehicle_capacity: accountType === 'operator' ? parseInt(vehicleCapacity) || null : null,
+          // FIX: was accountType === 'operator' ? vehicleType : ...,
+          // referencing input fields that no longer exist on this
+          // screen — see top-of-file comment. become-operator.tsx is
+          // now the single real place vehicle_type/vehicle_capacity
+          // get set, after payment; sending null here just means
+          // "not yet filled in," exactly the same state a brand-new
+          // signup was already in before become-operator.tsx runs its
+          // own update on this same row.
+          vehicle_type: null,
+          vehicle_capacity: null,
         })
         .eq('id', data.user.id);
 
@@ -150,7 +149,9 @@ export default function RegisterScreen() {
           user_id: data.user.id,
           full_name: name,
           phone,
-          vehicle_type: deliveryVehicleType,
+          // FIX: was deliveryVehicleType — same reasoning as the
+          // profiles update above.
+          vehicle_type: null,
           verification_tier: 'unverified',
           status: 'active',
         }, { onConflict: 'user_id' });
@@ -182,7 +183,7 @@ export default function RegisterScreen() {
     >
       <ScrollView style={styles.container} contentContainerStyle={styles.content}>
         <Text style={styles.title}>Create your account</Text>
-        <Text style={styles.subtitle}>Buy, sell, and message sellers — all in one account.</Text>
+        <Text style={styles.subtitle}>Buy, Sell and Deliver</Text>
 
         <Text style={styles.label}>Full Name *</Text>
         <TextInput style={styles.input} placeholder="Enter your full name" placeholderTextColor="#888"
@@ -239,10 +240,23 @@ export default function RegisterScreen() {
           <Text style={styles.passwordMismatch}>Passwords don't match yet.</Text>
         ) : null}
 
-        <View style={styles.optionalSection}>
-          <Text style={styles.optionalSectionTitle}>
-            Also want to drive for ImbizoHub? <Text style={styles.optionalSectionHint}>(optional)</Text>
-          </Text>
+        {/* NEW: highlighted with the same gold border + tag treatment
+            already used for profile.tsx's "Earn with ImbizoHub" card —
+            reusing the app's existing accent color for "this is worth
+            noticing" rather than introducing a new one, and keeping
+            the visual language consistent for anything earn-related
+            across the app. Text updated to "logistics" — covers both
+            Delivery and Transport Operator roles more accurately than
+            "drive," since delivery doesn't always mean driving. */}
+        <View style={styles.optionalSectionHighlighted}>
+          <View style={styles.optionalSectionHeader}>
+            <Text style={styles.optionalSectionTitle}>
+              Also want to do logistics for ImbizoHub? <Text style={styles.optionalSectionHint}>(optional)</Text>
+            </Text>
+            <View style={styles.optionalSectionBadge}>
+              <Text style={styles.optionalSectionBadgeText}>💰 Earn money</Text>
+            </View>
+          </View>
           <View style={styles.optionalToggleRow}>
             {accountTypes.map((a) => (
               <TouchableOpacity
@@ -252,47 +266,49 @@ export default function RegisterScreen() {
               >
                 <Text style={styles.optionalToggleIcon}>{a.icon}</Text>
                 <Text style={[styles.optionalToggleLabel, accountType === a.type && styles.optionalToggleLabelActive]}>
-                  {a.label.replace(' Operator', '')}
+                  {a.shortLabel}
                 </Text>
               </TouchableOpacity>
             ))}
           </View>
         </View>
 
+        {/* FIX (real UX bug, directly reported): this used to ask for
+            Vehicle Type / Passenger Capacity here, at registration —
+            the EXACT same fields become-operator.tsx asks for again,
+            after payment. become-operator.tsx's own top-of-file
+            comment makes clear it was always meant to be the one real
+            place this data gets collected (a deliberate "pay first,
+            fill in details once committed" decision) — register.tsx's
+            own fields were apparently just never removed when that
+            screen was introduced. Removed here; this section is now
+            purely informational, matching what actually happens next. */}
         {accountType === 'operator' && (
           <View style={styles.extraFields}>
             <View style={styles.extraFieldsHeader}>
-              <Text style={styles.extraFieldsTitle}>🚐 Transport Operator Details</Text>
+              <Text style={styles.extraFieldsTitle}>🚐 Transport Hire</Text>
+              <Text style={styles.extraFieldsSubtitle}>
+                You'll add your vehicle type and passenger capacity after paying the $10 registration fee.
+              </Text>
             </View>
-            <Text style={styles.label}>Vehicle Type</Text>
-            <TextInput style={styles.input} placeholder="e.g. Van, Minibus, Bus" placeholderTextColor="#888"
-              value={vehicleType} onChangeText={setVehicleType} />
-            <Text style={styles.label}>Passenger Capacity</Text>
-            <TextInput style={styles.input} placeholder="e.g. 8" placeholderTextColor="#888"
-              value={vehicleCapacity} onChangeText={setVehicleCapacity} keyboardType="numeric" />
           </View>
         )}
 
         {accountType === 'delivery' && (
           <View style={styles.extraFields}>
             <View style={styles.extraFieldsHeader}>
-              <Text style={styles.extraFieldsTitle}>📦 Delivery Operator Details</Text>
+              <Text style={styles.extraFieldsTitle}>📦 Delivery Operator</Text>
               <Text style={styles.extraFieldsSubtitle}>
-                You can deliver anywhere in Zimbabwe — local ($5) or intercity ($10). Sellers post delivery
-                requests and choose from available drivers. You earn money on routes you already travel.
+                You can deliver anywhere in Zimbabwe — small items local ($8) or intercity ($12), large
+                items ($15, local only). Sellers post delivery requests and choose from available
+                drivers. You earn money on routes you already travel.
               </Text>
             </View>
-            <Text style={styles.label}>Vehicle Type</Text>
-            <TextInput style={styles.input} placeholder="e.g. Motorbike, Car, Taxi, Bus, Bakkie"
-              placeholderTextColor="#888" value={deliveryVehicleType} onChangeText={setDeliveryVehicleType} />
-            <Text style={styles.label}>General area / city</Text>
-            <TextInput style={styles.input} placeholder="e.g. Harare, Bulawayo, or both"
-              placeholderTextColor="#888" value={deliveryArea} onChangeText={setDeliveryArea} />
             <View style={styles.verificationNote}>
               <Text style={styles.verificationNoteText}>
-                💳 After registering you'll pay a one-time $10 registration fee (valid 12 months) to
-                unlock delivery jobs. After that, submit your national ID to become a verified operator
-                and appear higher in delivery requests.
+                💳 After registering you'll pay a one-time $10 registration fee (valid 12 months), add your
+                vehicle type and area, then submit your national ID to become a verified operator and
+                appear higher in delivery requests.
               </Text>
             </View>
           </View>
@@ -353,6 +369,25 @@ const styles = StyleSheet.create({
   passwordMismatch: { color: '#ff6b6b', fontSize: 12, marginTop: 6 },
 
   optionalSection: { marginTop: 20, paddingTop: 16, borderTopWidth: 0.5, borderTopColor: '#2a2a2a' },
+  // FIX (real bug, directly reported): this used to be combined with
+  // optionalSection via a style ARRAY — [styles.optionalSection,
+  // styles.optionalSectionHighlighted]. React Native merges style
+  // arrays by individual property KEY, not CSS shorthand logic:
+  // optionalSection's paddingTop: 16 and this style's padding: 14 are
+  // DIFFERENT keys, so both ended up present simultaneously in the
+  // flattened result instead of the second cleanly overriding the
+  // first — 16 on top, 14 on every other side, an uneven mismatch
+  // that's exactly the kind of thing that makes a border/content fit
+  // look wrong. Now fully self-contained: every property this section
+  // needs is explicit here, applied alone (see the JSX above), so
+  // there's nothing left to merge or conflict with.
+  optionalSectionHighlighted: {
+    borderWidth: 1.5, borderColor: GOLD, borderRadius: 14,
+    padding: 14, marginTop: 24,
+  },
+  optionalSectionHeader: { marginBottom: 10 },
+  optionalSectionBadge: { backgroundColor: '#3a2800', borderRadius: 20, paddingHorizontal: 10, paddingVertical: 4, marginTop: 8, alignSelf: 'flex-start' },
+  optionalSectionBadgeText: { color: GOLD, fontSize: 10, fontWeight: '700' },
   optionalSectionTitle: { color: '#aaa', fontSize: 12, marginBottom: 10 },
   optionalSectionHint: { color: '#666' },
   optionalToggleRow: { flexDirection: 'row', gap: 8 },

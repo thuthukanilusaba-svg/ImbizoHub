@@ -1,8 +1,30 @@
 // app/wanted-responses.tsx
-// Buyer views responses to their "wanted" post and accepts one, paying
-// a small commission to unlock chat with that seller — same
+// Buyer views responses to their "wanted" post and can now chat with
+// any responder immediately (see chat.tsx's item-request handling), or
+// accept one — paying a small 5% commission to unlock contact info and
+// fulfillment (Meet & Collect / delivery) with that seller — same
 // unlock-fee-style pattern as unlock.tsx, just for the Wanted flow
 // instead of a regular listing.
+//
+// NEW: "💬 Chat" button added to each response card — closes a real
+// gap. chat.tsx was updated to allow chatting with any responder before
+// acceptance (contact info still protected until accepted+paid), but
+// nothing anywhere actually navigated a buyer INTO that chat before
+// this. This is that entry point.
+//
+// CORRECTED (my earlier pass here was wrong): handleAccept() computed
+// the commission at 5% (response.price * 0.05). I flagged that as a
+// bug because post-wanted.tsx's own note said 3% — but 5% was a
+// deliberate decision, and the note simply hadn't been updated to
+// match yet. I reverted the working number based on a text mismatch
+// without checking whether the mismatch pointed the other way.
+// Restored to 0.05; post-wanted.tsx's note corrected to say 5%
+// instead of reverting this again.
+//
+// FIX: "Confirm and unlock chat" button label updated — chat is no
+// longer what accepting unlocks (it's already reachable via the new
+// Chat button above). What accepting actually does now is unlock
+// contact info and fulfillment options, so the label says that instead.
 //
 // REAL PAYNOW INTEGRATION: handleAccept() calls the create-payment Edge
 // Function, opens the real Paynow checkout, and polls payment_intents
@@ -38,10 +60,7 @@ const GREY = '#AAAAAA';
 const GREEN = '#4fc96e';
 
 const POLL_INTERVAL_MS = 2000;
-const POLL_MAX_ATTEMPTS = 20; // ~40 seconds total — matches the same
-// widened window applied across every other payment screen today, after
-// a real trip_deposit payment on quotes.tsx took 32s to confirm and got
-// missed under the old 15-attempt (~30s) window.
+const POLL_MAX_ATTEMPTS = 20;
 
 export default function WantedResponsesScreen() {
   const router = useRouter();
@@ -52,8 +71,6 @@ export default function WantedResponsesScreen() {
   const [responses, setResponses] = useState<any[]>([]);
   const [myId, setMyId] = useState('');
   const [myEmail, setMyEmail] = useState('');
-  // NEW: distinguishes "still loading" from "loaded, but this isn't
-  // your request" — see the ownership check below.
   const [notYours, setNotYours] = useState(false);
 
   const [acceptingId, setAcceptingId] = useState<string | null>(null);
@@ -75,10 +92,6 @@ export default function WantedResponsesScreen() {
       .eq('id', request_id)
       .maybeSingle();
 
-    // FIX: ownership check — this screen shows seller names, prices,
-    // and messages, and lets the viewer trigger a real payment. Without
-    // this check, any logged-in user who knew or guessed a request_id
-    // could view and potentially act on someone else's want.
     if (!req || req.user_id !== user.id) {
       setNotYours(true);
       setLoading(false);
@@ -93,11 +106,6 @@ export default function WantedResponsesScreen() {
       .eq('item_request_id', request_id)
       .order('price', { ascending: true });
 
-    // Same class of bug already found and fixed elsewhere today
-    // (quotes.tsx, wanted-responses.tsx itself per the header comment
-    // above) — an embedded profiles select via a declared foreign key
-    // that doesn't actually exist between item_responses and profiles.
-    // Two separate queries instead.
     const responderIds = [...new Set((resps ?? []).map((r: any) => r.responder_id))];
     const profileMap: Record<string, { full_name: string }> = {};
     if (responderIds.length > 0) {
@@ -115,11 +123,11 @@ export default function WantedResponsesScreen() {
     setLoading(false);
   }
 
+  function handleChat(response: any) {
+    router.push(`/chat?item_request_id=${request_id}&receiver_id=${response.responder_id}`);
+  }
+
   async function handleAccept(response: any) {
-    // FIX: same ownership guard as loadData() — belt-and-braces in case
-    // this function is ever called from somewhere that skips loadData's
-    // check. myId is only ever set once loadData confirms ownership, so
-    // this is a cheap, safe no-op guard rather than a redundant query.
     if (!request || request.user_id !== myId) return;
 
     setError('');
@@ -157,7 +165,7 @@ export default function WantedResponsesScreen() {
     setVerifying(false);
 
     if (paid) {
-      router.replace(`/chat?item_request_id=${request_id}&receiver_id=${response.responder_id}`);
+      router.replace(`/chat?item_request_id=${request_id}&receiver_id=${response.responder_id}&openDeal=1`);
     } else {
       setError(
         'We haven\'t received confirmation of your payment yet. If you completed an EcoCash prompt on your phone, it can take a moment — try again in a few seconds, or check your Paynow confirmation email.'
@@ -189,8 +197,6 @@ export default function WantedResponsesScreen() {
     );
   }
 
-  // NEW: shown instead of any request/response data when the logged-in
-  // user isn't the one who posted this request — see FIX comment above.
   if (notYours) {
     return (
       <View style={styles.container}>
@@ -226,6 +232,7 @@ export default function WantedResponsesScreen() {
         }
         renderItem={({ item }) => {
           const isAccepting = acceptingId === item.id;
+          const isAccepted = item.status === 'accepted';
           return (
             <View style={styles.card}>
               <Text style={styles.sellerName}>{item.responder_name}</Text>
@@ -234,18 +241,31 @@ export default function WantedResponsesScreen() {
               {item.message ? <Text style={styles.messageText}>"{item.message}"</Text> : null}
 
               <TouchableOpacity
-                style={[styles.acceptBtn, (isAccepting || verifying) && { opacity: 0.6 }]}
-                onPress={() => handleAccept(item)}
-                disabled={isAccepting || verifying}
+                style={styles.chatBtn}
+                onPress={() => handleChat(item)}
               >
-                {isAccepting ? (
-                  <ActivityIndicator color={BLACK} />
-                ) : verifying && acceptingId === null ? (
-                  <ActivityIndicator color={BLACK} />
-                ) : (
-                  <Text style={styles.acceptBtnText}>Confirm and unlock chat</Text>
-                )}
+                <Text style={styles.chatBtnText}>💬 Chat with {item.responder_name}</Text>
               </TouchableOpacity>
+
+              {isAccepted ? (
+                <View style={styles.acceptedBadge}>
+                  <Text style={styles.acceptedBadgeText}>✓ Accepted</Text>
+                </View>
+              ) : (
+                <TouchableOpacity
+                  style={[styles.acceptBtn, (isAccepting || verifying) && { opacity: 0.6 }]}
+                  onPress={() => handleAccept(item)}
+                  disabled={isAccepting || verifying}
+                >
+                  {isAccepting ? (
+                    <ActivityIndicator color={BLACK} />
+                  ) : verifying && acceptingId === null ? (
+                    <ActivityIndicator color={BLACK} />
+                  ) : (
+                    <Text style={styles.acceptBtnText}>Accept — unlock contact info</Text>
+                  )}
+                </TouchableOpacity>
+              )}
             </View>
           );
         }}
@@ -275,6 +295,12 @@ const styles = StyleSheet.create({
   priceValue: { color: GOLD, fontSize: 22, fontWeight: '800', marginBottom: 8 },
   messageText: { color: '#ccc', fontSize: 13, fontStyle: 'italic', marginBottom: 12, lineHeight: 18 },
 
+  chatBtn: { borderRadius: 12, paddingVertical: 13, alignItems: 'center', marginBottom: 10, borderWidth: 1, borderColor: GOLD },
+  chatBtnText: { color: GOLD, fontSize: 13, fontWeight: '700' },
+
   acceptBtn: { backgroundColor: GOLD, borderRadius: 12, paddingVertical: 14, alignItems: 'center' },
   acceptBtnText: { color: BLACK, fontSize: 14, fontWeight: '800' },
+
+  acceptedBadge: { backgroundColor: '#1a2a1a', borderRadius: 12, paddingVertical: 14, alignItems: 'center', borderWidth: 0.5, borderColor: '#2a4a2a' },
+  acceptedBadgeText: { color: GREEN, fontSize: 14, fontWeight: '700' },
 });

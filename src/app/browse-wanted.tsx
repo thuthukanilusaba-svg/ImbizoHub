@@ -22,12 +22,21 @@
 // the modal were covered by the keyboard the same way every other
 // screen's fields were, and wrapping the screen alone wouldn't have
 // fixed it — the Modal's own content needs its own wrapper.
+//
+// FIX: modalSheet's paddingBottom was a hardcoded per-platform guess
+// (40 iOS / 24 Android), never accounting for the real device
+// safe-area inset — same root cause already fixed on
+// operator-requests.tsx and quotes.tsx's modal sheets. On any phone
+// with a real gesture-nav bar or home indicator, "Send response" sat
+// partially or fully under the phone's OWN system UI, not the app's.
 
+import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
+  Image,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -40,6 +49,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { supabase } from '../../lib/supabase';
+import { prepareUpload } from '../../lib/uploadHelpers';
 
 const GOLD = '#B8860B';
 const BLACK = '#1A1A18';
@@ -73,23 +83,19 @@ export default function BrowseWantedScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [myId, setMyId] = useState('');
 
-  // Which of MY OWN responses already exist, keyed by item_request_id —
-  // used to show "You've responded" instead of the respond button, so a
-  // seller doesn't accidentally submit two prices on the same want.
   const [myResponseIds, setMyResponseIds] = useState<Set<string>>(new Set());
 
   const [modalVisible, setModalVisible] = useState(false);
   const [selected, setSelected] = useState<ItemRequest | null>(null);
   const [price, setPrice] = useState('');
   const [message, setMessage] = useState('');
-  // NEW: whether this response is a physical item (deliverable via the
-  // Delivery tab) or a service (e.g. "I'm a builder, I can do this" —
-  // nothing to courier). Defaults to true since most current example
-  // wants are physical goods (car parts, scaffolding); a responder
-  // offering a service explicitly turns this off. chat.tsx reads this
-  // off the accepted response to decide whether to show a "Book
-  // delivery" option once the match happens.
   const [isPhysicalItem, setIsPhysicalItem] = useState(true);
+  // NEW: optional photo of what's being offered — lets a buyer actually
+  // see the item instead of relying purely on price + text. Genuinely
+  // optional: services and sellers without a handy photo can still
+  // respond with none at all.
+  const [pickedImageUri, setPickedImageUri] = useState<string | null>(null);
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [submitError, setSubmitError] = useState('');
@@ -138,9 +144,43 @@ export default function BrowseWantedScreen() {
     setPrice('');
     setMessage('');
     setIsPhysicalItem(true);
+    setPickedImageUri(null);
     setSubmitted(false);
     setSubmitError('');
     setModalVisible(true);
+  }
+
+  // NEW: same optional-photo pattern used elsewhere (seller-deliveries.tsx's
+  // dispatch photo, profile.tsx's avatar) — gallery and camera share the
+  // upload logic, only the picker call differs.
+  async function pickPhoto() {
+    setSubmitError('');
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) { setSubmitError('Permission to access photos is required.'); return; }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true, quality: 0.7,
+    });
+
+    if (!result.canceled && result.assets?.[0]) {
+      setPickedImageUri(result.assets[0].uri);
+    }
+  }
+
+  async function takePhoto() {
+    setSubmitError('');
+    const permission = await ImagePicker.requestCameraPermissionsAsync();
+    if (!permission.granted) { setSubmitError('Camera permission is required.'); return; }
+
+    const result = await ImagePicker.launchCameraAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true, quality: 0.7,
+    });
+
+    if (!result.canceled && result.assets?.[0]) {
+      setPickedImageUri(result.assets[0].uri);
+    }
   }
 
   async function submitResponse() {
@@ -156,12 +196,6 @@ export default function BrowseWantedScreen() {
       return;
     }
 
-    // FIX (consistent with chat.tsx): responding to a want reveals no
-    // contact info and commits to nothing — the buyer doesn't see who
-    // responded until they accept AND pay the 3% commission. Same trust
-    // tier as sending a chat message, so it gets the same treatment:
-    // free and anonymous, no login wall. A real account is only ever
-    // needed at the moment money or contact info actually changes hands.
     let { data: { user } } = await supabase.auth.getUser();
     if (!user) {
       const { data, error: signInError } = await supabase.auth.signInAnonymously();
@@ -178,6 +212,41 @@ export default function BrowseWantedScreen() {
 
     setSubmitting(true);
 
+    // NEW: upload the optional photo first, if one was picked — same
+    // ArrayBuffer-based prepareUpload() approach used throughout the
+    // app (avoids the React Native Blob-from-ArrayBuffer failure mode).
+    // Reuses the 'listing-photos' bucket, same as dispatch photos on
+    // seller-deliveries.tsx — no need for a dedicated bucket just for
+    // this.
+    let imageUrl: string | null = null;
+    if (pickedImageUri) {
+      setUploadingPhoto(true);
+      try {
+        const { data: uploadData, contentType, extension } = await prepareUpload(pickedImageUri);
+        const fileName = `${user.id}/wanted-response-${Date.now()}.${extension}`;
+
+        const { error: uploadError } = await supabase.storage
+          .from('listing-photos')
+          .upload(fileName, uploadData, { contentType, upsert: false });
+
+        if (uploadError) {
+          setUploadingPhoto(false);
+          setSubmitting(false);
+          setSubmitError(`Photo upload failed: ${uploadError.message}`);
+          return;
+        }
+
+        const { data: urlData } = supabase.storage.from('listing-photos').getPublicUrl(fileName);
+        imageUrl = urlData.publicUrl;
+      } catch (err: any) {
+        setUploadingPhoto(false);
+        setSubmitting(false);
+        setSubmitError(`Photo upload failed: ${err.message}`);
+        return;
+      }
+      setUploadingPhoto(false);
+    }
+
     const { error } = await supabase.from('item_responses').insert({
       item_request_id: selected!.id,
       responder_id: user.id,
@@ -185,6 +254,7 @@ export default function BrowseWantedScreen() {
       message: message.trim(),
       status: 'pending',
       is_physical_item: isPhysicalItem,
+      image_url: imageUrl,
     });
 
     setSubmitting(false);
@@ -217,13 +287,6 @@ export default function BrowseWantedScreen() {
       <FlatList
         data={requests}
         keyExtractor={(item) => item.id}
-        // FIX: "+ Post a want" sits at the bottom of this list as its
-        // footer. Without accounting for the device's own safe-area
-        // inset, it could end up overlapping the phone's system
-        // navigation bar on devices with a taller gesture bar/nav
-        // buttons — same root cause as the bottom-nav fix applied
-        // elsewhere in the app today, just here it's the list's content
-        // padding rather than an absolutely-positioned bar.
         contentContainerStyle={[styles.list, { paddingBottom: 16 + insets.bottom }]}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={GOLD} />}
         ListEmptyComponent={
@@ -266,11 +329,6 @@ export default function BrowseWantedScreen() {
             </View>
           );
         }}
-        // FIX: "+ Post a want" moved here, as the list's footer, instead
-        // of living in the header — it now appears after every open
-        // want in the list (or immediately, if the list is empty),
-        // rather than competing with the page title for attention the
-        // moment this screen opens.
         ListFooterComponent={
           <TouchableOpacity style={styles.postWantBtnBottom} onPress={() => router.push('/post-wanted')}>
             <Text style={styles.postWantBtnBottomText}>+ Post a want</Text>
@@ -279,15 +337,11 @@ export default function BrowseWantedScreen() {
       />
 
       <Modal visible={modalVisible} animationType="slide" transparent onRequestClose={() => setModalVisible(false)}>
-        {/* FIX: KeyboardAvoidingView wraps the modal's own content —
-            see top-of-file FIX comment. A KeyboardAvoidingView outside
-            this Modal (e.g. wrapping the screen) would have no effect,
-            since Modal content renders in its own native layer. */}
         <KeyboardAvoidingView
           style={styles.modalOverlay}
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         >
-          <View style={styles.modalSheet}>
+          <View style={[styles.modalSheet, { paddingBottom: (Platform.OS === 'ios' ? 40 : 24) + insets.bottom }]}>
             {!submitted ? (
               <>
                 <Text style={styles.modalTitle}>Your response</Text>
@@ -341,6 +395,30 @@ export default function BrowseWantedScreen() {
                     : 'Services (like a builder or mechanic) aren\'t deliverable — the buyer will arrange details with you directly in chat.'}
                 </Text>
 
+                {/* NEW: optional photo of the actual item being
+                    offered — closes a real gap where a buyer could
+                    only ever go on price + text, never actually see
+                    what's on offer before deciding who to chat with or
+                    accept. */}
+                <Text style={styles.modalLabel}>Photo of the item (optional)</Text>
+                {pickedImageUri ? (
+                  <>
+                    <Image source={{ uri: pickedImageUri }} style={styles.responsePhotoPreview} />
+                    <TouchableOpacity onPress={() => setPickedImageUri(null)}>
+                      <Text style={styles.removePhotoText}>Remove photo</Text>
+                    </TouchableOpacity>
+                  </>
+                ) : (
+                  <View style={styles.photoOptionsRow}>
+                    <TouchableOpacity style={styles.photoOptionBtn} onPress={takePhoto}>
+                      <Text style={styles.photoOptionBtnText}>📸 Take Photo</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={styles.photoOptionBtn} onPress={pickPhoto}>
+                      <Text style={styles.photoOptionBtnText}>🖼️ Choose from Gallery</Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
+
                 {submitError ? <Text style={styles.submitErrorText}>{submitError}</Text> : null}
 
                 <View style={styles.modalActions}>
@@ -348,11 +426,11 @@ export default function BrowseWantedScreen() {
                     <Text style={styles.cancelText}>Cancel</Text>
                   </TouchableOpacity>
                   <TouchableOpacity
-                    style={[styles.submitModalBtn, submitting && { opacity: 0.6 }]}
+                    style={[styles.submitModalBtn, (submitting || uploadingPhoto) && { opacity: 0.6 }]}
                     onPress={submitResponse}
-                    disabled={submitting}
+                    disabled={submitting || uploadingPhoto}
                   >
-                    {submitting
+                    {submitting || uploadingPhoto
                       ? <ActivityIndicator color={BLACK} />
                       : <Text style={styles.submitModalBtnText}>Send response</Text>
                     }
@@ -401,16 +479,24 @@ const styles = StyleSheet.create({
   heading: { color: '#fff', fontSize: 22, fontWeight: '800' },
   subheading: { color: GREY, fontSize: 13, marginTop: 4 },
 
-  // NEW: bottom "+ Post a want" button, replacing the old header
-  // version (postWantBtn/postWantBtnText kept below only if referenced
-  // elsewhere; safe to remove if unused).
   postWantBtnBottom: { backgroundColor: GOLD, borderRadius: 14, paddingVertical: 16, alignItems: 'center', marginTop: 4, marginBottom: 20 },
   postWantBtnBottomText: { color: BLACK, fontSize: 14, fontWeight: '800' },
 
-  list: { padding: 16, gap: 14 },
+  list: { padding: 16 },
   card: {
     backgroundColor: BLACK, borderRadius: 14, padding: 16,
     borderWidth: 0.5, borderColor: '#333',
+    // FIX (real bug, directly reported): spacing between cards used to
+    // come from `gap: 14` on the FlatList's contentContainerStyle
+    // instead — a known cross-platform quirk where gap doesn't always
+    // apply reliably right at the boundary between the LAST real list
+    // item and whatever renders after it (here, the "+ Post a want"
+    // footer). That's exactly why only the last card's "You've
+    // responded" badge was getting visually overlapped, from below,
+    // while every other card in the list was fine. marginBottom here
+    // is well-supported everywhere and doesn't depend on FlatList's
+    // gap-handling behavior at all.
+    marginBottom: 14,
   },
   cardTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10, marginBottom: 6 },
   cardTitle: { color: '#fff', fontSize: 15, fontWeight: '700', flex: 1 },
@@ -452,6 +538,12 @@ const styles = StyleSheet.create({
   itemTypeChipText: { color: GREY, fontSize: 12, fontWeight: '600' },
   itemTypeChipTextActive: { color: GOLD, fontWeight: '700' },
   itemTypeHint: { color: '#888', fontSize: 11, marginTop: 8, lineHeight: 15 },
+  // NEW: optional response-photo styles
+  photoOptionsRow: { flexDirection: 'row', gap: 8 },
+  photoOptionBtn: { flex: 1, backgroundColor: DARK, borderRadius: 10, paddingVertical: 14, alignItems: 'center', borderWidth: 1, borderColor: '#444', borderStyle: 'dashed' },
+  photoOptionBtnText: { color: '#fff', fontSize: 12, fontWeight: '700', textAlign: 'center' },
+  responsePhotoPreview: { width: '100%', height: 160, borderRadius: 10, backgroundColor: DARK, marginBottom: 8 },
+  removePhotoText: { color: GREY, fontSize: 12, textAlign: 'center', marginBottom: 4 },
   submitErrorText: { color: '#ff8a8a', fontSize: 13, marginTop: 10 },
   modalActions: { flexDirection: 'row', gap: 12, marginTop: 20 },
   cancelBtn: { flex: 1, borderRadius: 10, paddingVertical: 13, alignItems: 'center', backgroundColor: DARK },

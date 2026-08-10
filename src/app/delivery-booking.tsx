@@ -30,7 +30,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import * as WebBrowser from 'expo-web-browser';
 import { useEffect, useState } from 'react';
 import {
-  ActivityIndicator, Modal, Platform, ScrollView, StyleSheet,
+  ActivityIndicator, KeyboardAvoidingView, Modal, Platform, ScrollView, StyleSheet,
   Text, TextInput, TouchableOpacity, View,
 } from 'react-native';
 import { supabase } from '../../lib/supabase';
@@ -292,7 +292,18 @@ export default function DeliveryBookingScreen() {
   }
 
   return (
-    <View style={styles.container}>
+    // FIX (real bug, directly reported): this screen had no
+    // KeyboardAvoidingView at all — the pickup/dropoff city fields and
+    // parcel description had nothing protecting them from the
+    // keyboard, unlike most other screens in the app with text inputs.
+    // Same fix pattern used everywhere else: 'padding' on iOS (pushes
+    // layout up), 'height' on Android (resizes it), so the focused
+    // field stays visible above the keyboard instead of hidden
+    // underneath it.
+    <KeyboardAvoidingView
+      style={styles.container}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+    >
       <ScrollView contentContainerStyle={styles.content}>
         <TouchableOpacity onPress={() => step === 'details' ? router.back() : setStep('details')} style={styles.backBtn}>
           <Text style={styles.backText}>← {step === 'details' ? 'Back' : 'Change details'}</Text>
@@ -617,7 +628,7 @@ export default function DeliveryBookingScreen() {
 
         <View style={{ height: 40 }} />
       </ScrollView>
-    </View>
+    </KeyboardAvoidingView>
   );
 }
 

@@ -20,14 +20,23 @@
 // payment confirmation never touches profiles.account_type at all, so
 // this is the only place that actually happens for delivery operators.
 //
+// FIX (real bug, confirmed by direct report): "Finish setup" always
+// routed to /dealer regardless of type, even though the delivery-side
+// note below explicitly promises ID verification as the immediate next
+// step. The text and the actual navigation were simply disconnected —
+// a user following the promised flow would land on the dashboard with
+// no upload screen anywhere in sight, having to discover
+// dealer.tsx's verification card on their own to ever find it. Now
+// genuinely routes there for delivery operators. See handleSubmit().
+//
 // Usage: router.push('/become-operator?type=delivery')
 //     or router.push('/become-operator?type=operator')
 
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useState } from 'react';
 import {
-    ActivityIndicator, KeyboardAvoidingView, Platform, ScrollView,
-    StyleSheet, Text, TextInput, TouchableOpacity, View,
+  ActivityIndicator, KeyboardAvoidingView, Platform, ScrollView,
+  StyleSheet, Text, TextInput, TouchableOpacity, View,
 } from 'react-native';
 import { supabase } from '../../lib/supabase';
 
@@ -70,9 +79,6 @@ export default function BecomeOperatorScreen() {
       return;
     }
 
-    // account_type is set here (not before payment) — see top-of-file
-    // comment for why this still matters even though transport's own
-    // payment confirmation also sets it.
     const storedType = isDelivery ? 'delivery' : 'transport_operator';
 
     const { error: profileError } = await supabase
@@ -91,9 +97,6 @@ export default function BecomeOperatorScreen() {
     }
 
     if (isDelivery) {
-      // The row already exists — profile.tsx's handleBecomeDeliveryOperator
-      // created it before payment. This just fills in the real vehicle
-      // type now that they've actually committed.
       const { error: deliveryError } = await supabase
         .from('delivery_operators')
         .update({ vehicle_type: deliveryVehicleType })
@@ -107,7 +110,16 @@ export default function BecomeOperatorScreen() {
     }
 
     setLoading(false);
-    router.replace('/dealer');
+
+    // FIX: see top-of-file comment. Delivery operators now genuinely
+    // land on ID verification, matching what the note below promises.
+    // Transport operators have no such promise made on this screen, so
+    // their flow is unchanged.
+    if (isDelivery) {
+      router.replace('/operator-id-verify?type=delivery_operator');
+    } else {
+      router.replace('/dealer');
+    }
   }
 
   return (

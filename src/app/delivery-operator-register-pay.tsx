@@ -171,7 +171,7 @@ export default function DeliveryOperatorRegisterPayScreen() {
           <Step n="2" text="Accept open delivery requests from your dashboard" />
           <Step n="3" text="Collect the parcel and mark it dispatched, then delivered" />
           <Step n="4" text="Buyer confirms with their PIN — job complete" />
-          <Step n="5" text="You keep the full delivery fee ($5 local / $10 intercity) — ImbizoHub's $2 booking fee is collected separately" />
+          <Step n="5" text="You keep the full delivery fee ($8 local / $12 intercity for small items, $15 flat for large)" />
         </View>
         <TouchableOpacity style={styles.startBtn} onPress={() => router.replace('/become-operator?type=delivery')}>
           <Text style={styles.startBtnText}>Add your vehicle details →</Text>
@@ -219,18 +219,26 @@ export default function DeliveryOperatorRegisterPayScreen() {
         <View style={styles.divider} />
         <View style={styles.pricingRow}>
           <View>
-            <Text style={styles.pricingLabel}>Local delivery</Text>
-            <Text style={styles.pricingNote}>You keep the full amount</Text>
+            <Text style={styles.pricingLabel}>Small item, local</Text>
+            <Text style={styles.pricingNote}>Fits in a car — you keep the full amount</Text>
           </View>
-          <Text style={[styles.pricingAmount, { color: GREEN }]}>$5</Text>
+          <Text style={[styles.pricingAmount, { color: GREEN }]}>$8</Text>
         </View>
         <View style={styles.divider} />
         <View style={styles.pricingRow}>
           <View>
-            <Text style={styles.pricingLabel}>Intercity delivery</Text>
+            <Text style={styles.pricingLabel}>Small item, intercity</Text>
             <Text style={styles.pricingNote}>You keep the full amount</Text>
           </View>
-          <Text style={[styles.pricingAmount, { color: GREEN }]}>$10</Text>
+          <Text style={[styles.pricingAmount, { color: GREEN }]}>$12</Text>
+        </View>
+        <View style={styles.divider} />
+        <View style={styles.pricingRow}>
+          <View>
+            <Text style={styles.pricingLabel}>Large item</Text>
+            <Text style={styles.pricingNote}>Needs a van/truck, local only — you keep the full amount</Text>
+          </View>
+          <Text style={[styles.pricingAmount, { color: GREEN }]}>$15</Text>
         </View>
       </View>
 

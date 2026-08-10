@@ -2,9 +2,10 @@
 // "Wanted" tab — buyer posts what they're looking for. Free to post, no
 // fee, no gate — mirrors hirevan.tsx's trip-request posting exactly.
 // Sellers browse open wants in browse-wanted.tsx and respond with a
-// price; the buyer reviews responses in wanted-responses.tsx and pays a
-// small commission to unlock chat with whichever seller they pick. See
-// the ImbizoHub_Wanted_Tab_Spec.md document for the full design.
+// price; the buyer can now chat with any responder immediately (see
+// chat.tsx's item-request handling), and pays a small commission to
+// accept one, unlocking contact info and fulfillment options. See the
+// ImbizoHub_Wanted_Tab_Spec.md document for the full design.
 //
 // FIX (real bug): category defaulted to 'Phones' with nothing requiring
 // an active selection before submitting — three real posts all landed
@@ -26,6 +27,19 @@
 // FIX: wrapped the whole screen in KeyboardAvoidingView — the keyboard
 // was covering whichever field was focused, on this screen and every
 // other screen with text inputs app-wide.
+//
+// FIX (product decision, chat.tsx updated to match): the info note
+// below used to describe a chat model that no longer exists — chat used
+// to be entirely unreachable until AFTER accepting a response, so
+// "sellers who respond won't see your contact details" was really
+// describing "you can't talk to them at all yet," not a genuine
+// contact-info protection. Now chat opens immediately with any
+// responder — buyer and seller can discuss details, ask questions,
+// before any money changes hands. Contact info specifically (phone
+// numbers, emails) is what stays protected in that chat until a
+// response is accepted and the 5% commission is paid, exactly mirroring
+// how a regular listing's unlock fee protects contact info the same
+// way. The note now describes that accurately.
 
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
@@ -47,8 +61,6 @@ const BLACK = '#1A1A18';
 const DARK = '#2a2a2a';
 const GREY = '#AAAAAA';
 
-// Same category set used in explore.tsx / whatsapp-import.tsx, for
-// consistency across the app.
 const categories = ['Phones', 'Vehicles', 'Furniture', 'Clothing', 'Appliances', 'Building', 'Baby', 'Other'];
 
 export default function PostWantedScreen() {
@@ -56,8 +68,6 @@ export default function PostWantedScreen() {
 
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
-  // FIX: no longer defaults to 'Phones' — starts unselected so a real,
-  // deliberate choice is required (see handleSubmit's validation below).
   const [category, setCategory] = useState('');
   const [budgetMin, setBudgetMin] = useState('');
   const [budgetMax, setBudgetMax] = useState('');
@@ -66,8 +76,6 @@ export default function PostWantedScreen() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
-  // NEW: the real id of the request just created, so "View responses"
-  // can link to the correct place — see FIX comment above.
   const [newRequestId, setNewRequestId] = useState<string | null>(null);
 
   async function handleSubmit() {
@@ -78,10 +86,6 @@ export default function PostWantedScreen() {
       return;
     }
 
-    // FIX: category is now a required field, same tier as title/location
-    // — previously nothing stopped a submit with the untouched 'Phones'
-    // default, which is exactly how multiple real posts ended up
-    // miscategorized.
     if (!category) {
       setError('Please choose a category.');
       return;
@@ -95,12 +99,6 @@ export default function PostWantedScreen() {
 
     setLoading(true);
 
-    // FIX (consistent with chat.tsx and browse-wanted.tsx): posting a
-    // want reveals no contact info and isn't a financial commitment —
-    // same free/anonymous treatment as the rest of the browse-and-engage
-    // surface. A real account is only needed once money or contact info
-    // is actually on the line (accepting a response and paying the 3%
-    // commission).
     let { data: { user } } = await supabase.auth.getUser();
     if (!user) {
       const { data, error: signInError } = await supabase.auth.signInAnonymously();
@@ -117,8 +115,6 @@ export default function PostWantedScreen() {
       return;
     }
 
-    // FIX: .select('id').single() added so we get the real new row's id
-    // back — needed to link "View responses" correctly (see top comment).
     const { data: inserted, error: insertError } = await supabase
       .from('item_requests')
       .insert({
@@ -156,8 +152,6 @@ export default function PostWantedScreen() {
         <TouchableOpacity
           style={styles.successBtn}
           onPress={() => {
-            // FIX: now passes the real request_id — previously linked
-            // to /wanted-responses with no id at all.
             if (newRequestId) {
               router.push(`/wanted-responses?request_id=${newRequestId}`);
             } else {
@@ -192,14 +186,6 @@ export default function PostWantedScreen() {
           Tell sellers what you want — they'll respond with a price. Posting is always free.
         </Text>
 
-        {/* Reciprocal link to browse-wanted.tsx — whichever of the two
-            Wanted-tab screens someone lands on first, the other is one tap
-            away. Mirrors the "+ Post a want" link already on
-            browse-wanted.tsx (now at the bottom of that screen, not the
-            header).
-            FIX: text simplified to just "Have something to sell?" — the
-            previous longer wording ("...instead? Browse wants →") has
-            been removed. */}
         <TouchableOpacity onPress={() => router.push('/browse-wanted')} style={styles.browseLinkRow}>
           <Text style={styles.browseLinkText}>Have something to sell?</Text>
         </TouchableOpacity>
@@ -280,9 +266,11 @@ export default function PostWantedScreen() {
         </View>
 
         <View style={styles.infoBox}>
+          {/* FIX: see top-of-file comment. Previous text described a
+              chat model that no longer exists. */}
           <Text style={styles.infoText}>
-            🔒 Sellers who respond won't see your contact details. When you pick a response, a small
-            3% commission unlocks a private chat with that seller.
+            💬 You can chat with anyone who responds, right away — ask questions, discuss details.
+            Contact details stay hidden until you accept a response and pay the small 5% commission.
           </Text>
         </View>
 
@@ -343,7 +331,6 @@ const styles = StyleSheet.create({
   categoryChipActive: { backgroundColor: GOLD, borderColor: GOLD },
   categoryChipText: { color: GREY, fontSize: 12 },
   categoryChipTextActive: { color: BLACK, fontWeight: '700' },
-  // NEW: small reminder shown only while no category is selected yet.
   categoryHint: { color: '#ff8a8a', fontSize: 11, marginTop: 2, marginBottom: 4 },
 
   budgetRow: { flexDirection: 'row', gap: 10 },

@@ -42,6 +42,17 @@
 // sibling outside the KeyboardAvoidingView means it stays fixed at the
 // real screen bottom regardless of keyboard state, while the scrollable
 // form content above it still shifts to keep the focused field visible.
+//
+// NEW: "Earn with ImbizoHub" card given a genuine highlight treatment —
+// a gold border on the card itself plus a small "💰 Earn" tag on each
+// row — rather than introducing a new accent hue. Reuses the exact
+// gold (#B8860B) already used throughout the app for anything meant to
+// stand out (dealer.tsx's PRO/DRIVER badges, listing.tsx's promo
+// buttons, register.tsx's active-toggle state), so this reads as "the
+// same app being consistent," not a different visual language bolted
+// onto one card. MenuRow gained an optional `highlighted` prop so only
+// these two rows opt into the treatment — every other MenuRow usage on
+// this screen (My activity, etc.) is completely unaffected.
 
 import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
@@ -84,12 +95,7 @@ export default function ProfileScreen() {
   const [rating, setRating] = useState(0);
   const [ratingCount, setRatingCount] = useState(0);
   const [recentReviews, setRecentReviews] = useState<any[]>([]);
-  // NEW: whether this user is an active paid delivery operator, so the
-  // Dashboard tab can show for delivery operators even if account_type
-  // isn't 'seller' (mirrors the same check in home.tsx/explore.tsx/dealer.tsx).
   const [isActiveOperator, setIsActiveOperator] = useState(false);
-  // NEW: total responses across all of this user's open wanted posts —
-  // drives the badge on "My wanted posts" in the My activity card.
   const [wantedResponseCount, setWantedResponseCount] = useState(0);
 
   const [draftName, setDraftName] = useState('');
@@ -132,7 +138,6 @@ export default function ProfileScreen() {
       .eq('user_id', user.id);
     setListingCount(count ?? 0);
 
-    // Load recent reviews left for this user
     const { data: reviews } = await supabase
       .from('ratings')
       .select('stars, review, role, created_at')
@@ -141,8 +146,6 @@ export default function ProfileScreen() {
       .limit(5);
     setRecentReviews(reviews ?? []);
 
-    // Same "paid and not expired" check used elsewhere to decide whether
-    // this user is an active delivery operator, for the Dashboard tab.
     const { data: operator } = await supabase
       .from('delivery_operators')
       .select('registration_paid, registration_expires_at')
@@ -155,11 +158,6 @@ export default function ProfileScreen() {
       new Date(operator.registration_expires_at).getTime() > Date.now()
     ));
 
-    // NEW: total responses across all of this user's OPEN wanted posts —
-    // "open" specifically, since a matched request's responses aren't
-    // something new to review, they're already resolved. Two-step query
-    // for the same reason used throughout the Wanted feature today: no
-    // real foreign key to embed a count through safely.
     const { data: myOpenRequests } = await supabase
       .from('item_requests')
       .select('id')
@@ -179,18 +177,9 @@ export default function ProfileScreen() {
     setLoading(false);
   }
 
-  // NEW: extracted from what used to be inline inside pickAvatar() only
-  // — both the gallery picker and the new camera capture need this
-  // exact same upload logic, so it's shared rather than duplicated.
   async function uploadAvatarUri(uri: string) {
     setUploadingAvatar(true);
     try {
-      // FIX (real bug, not the earlier deprecation warning): this used
-      // to be fetch(uri).then(r => r.blob()) — a well-known failure
-      // mode on React Native/Expo where the Blob polyfill can throw
-      // "Creating blobs from 'ArrayBuffer' and 'ArrayBufferView' are
-      // not supported". Replaced with the approach Supabase's own docs
-      // recommend — see lib/uploadHelpers.ts.
       const { data: uploadData, contentType, extension } = await prepareUpload(uri);
       const fileName = `${userId}/avatar-${Date.now()}.${extension}`;
 
@@ -209,11 +198,6 @@ export default function ProfileScreen() {
     setUploadingAvatar(false);
   }
 
-  // NEW: single tap target (the circular avatar itself) now offers both
-  // camera and gallery — a native Alert action sheet fits this UX
-  // better than adding two separate buttons next to a circular photo,
-  // which the button-row pattern used on the ID-verification screens
-  // wouldn't look right for here.
   function chooseAvatarSource() {
     Alert.alert(
       'Update profile photo',
@@ -240,9 +224,6 @@ export default function ProfileScreen() {
     await uploadAvatarUri(result.assets[0].uri);
   }
 
-  // NEW: camera capture, alongside the existing gallery picker. Camera
-  // and photo-library permissions are separate on both iOS and
-  // Android, so this needs its own permission request.
   async function takeAvatarPhoto() {
     setError('');
     const permission = await ImagePicker.requestCameraPermissionsAsync();
@@ -274,12 +255,6 @@ export default function ProfileScreen() {
     setEditing(false);
   }
 
-  // NEW: creates the minimal delivery_operators row needed before
-  // payment can complete — confirm-payment.ts's
-  // delivery_operator_registration branch only UPDATES an existing
-  // row, it never creates one, so this has to happen first. Everything
-  // real (vehicle type, area, actually becoming bookable) still
-  // happens after payment via become-operator.tsx.
   async function handleBecomeDeliveryOperator() {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
@@ -310,12 +285,6 @@ export default function ProfileScreen() {
   }
 
   function accountTypeLabel() {
-    // FIX: was missing 'delivery' — register.tsx stores a delivery
-    // operator's account_type as the raw string 'delivery' (unlike
-    // transport operators, which get mapped to 'transport_operator').
-    // Without this entry, the fallback (map[accountType] || accountType)
-    // displayed the raw unformatted word "delivery" instead of a proper
-    // label like every other role gets.
     const map: Record<string, string> = {
       buyer: 'Buyer', seller: 'Seller', transport_operator: 'Transport Operator',
       delivery: 'Delivery Operator',
@@ -323,7 +292,6 @@ export default function ProfileScreen() {
     return map[accountType] || accountType;
   }
 
-  // Render filled/empty stars
   function renderStars(count: number, size = 16) {
     return (
       <View style={{ flexDirection: 'row', gap: 2 }}>
@@ -342,10 +310,6 @@ export default function ProfileScreen() {
     );
   }
 
-  // UPDATED (product decision): was accountType === 'seller' — same
-  // fix as index.tsx/explore.tsx/messages.tsx, found here too during a
-  // final check. Reuses listingCount, already fetched above for the
-  // stats display, so no extra query needed.
   const showDashboardTab = listingCount > 0 || isActiveOperator;
 
   return (
@@ -386,7 +350,6 @@ export default function ProfileScreen() {
             <Text style={styles.name}>{fullName || 'Add your name'}</Text>
             <Text style={styles.email}>{email}</Text>
 
-            {/* Star rating display under name */}
             {ratingCount > 0 && (
               <View style={styles.ratingRow}>
                 {renderStars(rating)}
@@ -427,30 +390,12 @@ export default function ProfileScreen() {
             </View>
           ) : null}
 
-          {/* FIX: "My activity" moved up here, right after the top stats —
-              it previously sat at the very bottom of the screen, below
-              Personal info and Recent reviews, meaning "My wanted posts"
-              (and everything else in this card) was easy to miss without
-              scrolling past unrelated content first. */}
           <View style={styles.card}>
             <Text style={styles.cardTitle}>My activity</Text>
             <MenuRow icon="🏷️" label="My listings" onPress={() => router.push('/my-listings')} />
-            {/* FIX: this used to be one ambiguous "My deliveries" link that
-                always pointed to seller-deliveries.tsx — meaning a buyer
-                waiting to receive something had no way to track it at all.
-                Split into two clear, correctly-scoped directions, matching
-                the new buyer-deliveries.tsx screen built to close that gap. */}
             <MenuRow icon="📥" label="Deliveries to me" onPress={() => router.push('/buyer-deliveries')} />
             <MenuRow icon="📤" label="Deliveries from my listings" onPress={() => router.push('/seller-deliveries')} />
             <MenuRow icon="🚐" label="My trip requests" onPress={() => router.push('/quotes')} />
-            {/* NEW: entry point into my-wanted-posts.tsx — closes a real
-                gap where posting a want (post-wanted.tsx) and browsing/
-                responding to others' wants (browse-wanted.tsx) both
-                worked, but there was nowhere to track your own posts or
-                discover that responses had come in.
-                FIX: added a response-count badge, computed in
-                loadProfile() below — a quick visual "something's waiting"
-                signal without building a full push-notification system. */}
             <MenuRow
               icon="🔍"
               label="My wanted posts"
@@ -463,28 +408,25 @@ export default function ProfileScreen() {
             )}
           </View>
 
-          {/* NEW: closes the gap register.tsx's optional Delivery/
-              Transport toggles created — someone who registered without
-              selecting either had no way to become one later. Each row
-              only shows if not already that type, since there's nothing
-              to "become" once you already are.
-              UPDATED (product decision): goes straight to the $10
-              payment screen — no form first. Vehicle details are
-              collected AFTER paying instead (become-operator.tsx now
-              serves that purpose, reached from each payment screen's
-              own success button). Delivery needs one small setup step
-              first: confirm-payment.ts's delivery_operator_registration
-              branch only UPDATES an existing delivery_operators row, it
-              never creates one — so a minimal row has to exist before
-              payment can complete. Transport needs no such step, since
-              its own payment confirmation sets account_type directly. */}
-          <View style={styles.card}>
-            <Text style={styles.cardTitle}>Earn with ImbizoHub</Text>
+          {/* NEW: highlighted card — gold border on the card itself,
+              plus a "💰 Earn" tag on each row (see MenuRow's new
+              `highlighted` prop). Same gold already used everywhere
+              else in the app for "this matters" states, not a new hue —
+              keeps this card visually distinct without teaching users a
+              second accent color. */}
+          <View style={[styles.card, styles.earnCard]}>
+            <View style={styles.earnCardHeader}>
+              <Text style={styles.cardTitle}>Earn with ImbizoHub</Text>
+              <View style={styles.earnHeaderBadge}>
+                <Text style={styles.earnHeaderBadgeText}>💰 Earn money</Text>
+              </View>
+            </View>
             {accountType !== 'delivery' && (
               <MenuRow
                 icon="📦"
                 label="Become a Delivery Operator"
                 onPress={handleBecomeDeliveryOperator}
+                highlighted
               />
             )}
             {accountType !== 'transport_operator' && (
@@ -492,6 +434,7 @@ export default function ProfileScreen() {
                 icon="🚐"
                 label="Become a Transport Operator"
                 onPress={() => router.push('/operator-register-pay')}
+                highlighted
               />
             )}
           </View>
@@ -555,21 +498,24 @@ export default function ProfileScreen() {
             </View>
           )}
 
-          {/* FIX: same overlap bug already fixed on index.tsx, listing.tsx,
-              explore.tsx, and dealer.tsx — bottomNav below is position:
-              'absolute' with real height = 10 (paddingTop) + content +
-              24 + insets.bottom. A hardcoded height: 100 spacer only
-              covers devices with near-zero safe-area inset; on any phone
-              with a real bottom inset, bottomNav was taller than the
-              100px reserved for it, letting it creep up over whatever
-              sat last in this scroll view (ratings/reviews list). */}
+          {/* NEW: account deletion entry point — the real foundation
+              the data retention policy depends on. Deliberately placed
+              here, low-key, at the very bottom of the screen, rather
+              than near the header's Logout button — this is a far
+              more consequential action and shouldn't be one accidental
+              tap away from something routine. account-delete.tsx
+              itself handles the actual typed confirmation. */}
+          <TouchableOpacity
+            style={styles.deleteAccountLink}
+            onPress={() => router.push('/account-delete')}
+          >
+            <Text style={styles.deleteAccountLinkText}>Delete my account</Text>
+          </TouchableOpacity>
+
           <View style={{ height: 100 + insets.bottom }} />
         </ScrollView>
       </KeyboardAvoidingView>
 
-      {/* NEW: shared bottom nav, matching Home/Explore/Messages/Dealer.
-          Kept OUTSIDE the KeyboardAvoidingView above — see top-of-file
-          FIX comment for why. */}
       <View style={[styles.bottomNav, { paddingBottom: 24 + insets.bottom }]}>
         <TouchableOpacity style={styles.navItem} onPress={() => router.push('/')}>
           <Text style={styles.navIcon}>🏠</Text>
@@ -610,20 +556,24 @@ function InfoRow({ label, value }: { label: string; value: string }) {
   );
 }
 
-function MenuRow({ icon, label, badge, onPress }: { icon: string; label: string; badge?: number; onPress: () => void }) {
+// NEW: `highlighted` prop — when true, applies the gold-tinted row
+// treatment used by the "Earn with ImbizoHub" card. Every other
+// MenuRow usage on this screen omits the prop entirely (defaults to
+// false) and renders exactly as it did before this change.
+function MenuRow({ icon, label, badge, onPress, highlighted }: { icon: string; label: string; badge?: number; onPress: () => void; highlighted?: boolean }) {
   return (
-    <TouchableOpacity style={styles.menuRow} onPress={onPress}>
+    <TouchableOpacity
+      style={[styles.menuRow, highlighted && styles.menuRowHighlighted]}
+      onPress={onPress}
+    >
       <Text style={styles.menuIcon}>{icon}</Text>
-      <Text style={styles.menuLabel}>{label}</Text>
-      {/* NEW: small count badge — used by "My wanted posts" to show
-          responses waiting for review at a glance, no push notification
-          system needed for this to be useful. */}
+      <Text style={[styles.menuLabel, highlighted && styles.menuLabelHighlighted]}>{label}</Text>
       {badge != null && badge > 0 ? (
         <View style={styles.menuBadge}>
           <Text style={styles.menuBadgeText}>{badge}</Text>
         </View>
       ) : null}
-      <Text style={styles.menuArrow}>›</Text>
+      <Text style={[styles.menuArrow, highlighted && { color: GOLD }]}>›</Text>
     </TouchableOpacity>
   );
 }
@@ -637,6 +587,11 @@ const styles = StyleSheet.create({
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 },
   headerTitle: { fontSize: 22, fontWeight: '800', color: '#fff' },
   logoutText: { color: '#ff8a8a', fontSize: 13, fontWeight: '600' },
+  // NEW: deliberately understated — a plain text link, no card, no
+  // icon, no color beyond muted grey — this shouldn't visually compete
+  // for attention the way every other action on this screen does.
+  deleteAccountLink: { alignItems: 'center', paddingVertical: 16, marginTop: 8 },
+  deleteAccountLinkText: { color: '#555', fontSize: 12 },
 
   avatarSection: { alignItems: 'center', marginBottom: 24 },
   avatarWrap: { position: 'relative', marginBottom: 14 },
@@ -671,6 +626,14 @@ const styles = StyleSheet.create({
   cardTitle: { fontSize: 14, fontWeight: '700', color: '#fff', marginBottom: 4 },
   editLink: { color: GOLD, fontSize: 13, fontWeight: '600' },
 
+  // NEW: "Earn with ImbizoHub" card highlight — gold border on the
+  // card itself, plus a small header badge, using the exact gold
+  // already used everywhere else for "this matters" states.
+  earnCard: { borderColor: GOLD, borderWidth: 1.5 },
+  earnCardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 },
+  earnHeaderBadge: { backgroundColor: '#3a2800', borderRadius: 20, paddingHorizontal: 10, paddingVertical: 4 },
+  earnHeaderBadgeText: { color: GOLD, fontSize: 10, fontWeight: '700' },
+
   label: { fontSize: 12, fontWeight: '600', color: GREY, marginBottom: 6, marginTop: 12 },
   input: {
     backgroundColor: DARK, borderRadius: 10, paddingHorizontal: 14,
@@ -693,8 +656,16 @@ const styles = StyleSheet.create({
   reviewText: { fontSize: 13, color: '#ccc', lineHeight: 19 },
 
   menuRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 12, borderBottomWidth: 0.5, borderBottomColor: '#2a2a2a' },
+  // NEW: highlighted row variant — subtle gold-tinted background,
+  // rounded corners, and internal padding so it reads as its own
+  // distinct "card within a card" rather than a plain list divider row.
+  menuRowHighlighted: {
+    backgroundColor: '#2a2200', borderRadius: 10, borderBottomWidth: 0,
+    paddingHorizontal: 12, marginBottom: 8,
+  },
   menuIcon: { fontSize: 18, marginRight: 12 },
   menuLabel: { flex: 1, fontSize: 14, color: '#fff' },
+  menuLabelHighlighted: { fontWeight: '700', color: GOLD },
   menuBadge: { backgroundColor: GOLD, borderRadius: 10, minWidth: 20, height: 20, paddingHorizontal: 6, alignItems: 'center', justifyContent: 'center', marginRight: 8 },
   menuBadgeText: { color: BLACK, fontSize: 11, fontWeight: '800' },
   menuArrow: { fontSize: 18, color: GREY },

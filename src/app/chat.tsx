@@ -8,6 +8,45 @@
 // since otherwise buyer/seller could just swap phone numbers here and
 // complete the deal off-platform without ever paying the arrange-deal fee.
 //
+// UPDATED (product decision): Wanted-tab (item-request) chats now work
+// exactly like listing chats — free to chat with ANY responder
+// immediately, the moment they respond, not just the one the buyer
+// eventually accepts. Previously this chat was entirely unreachable
+// until AFTER the buyer had already accepted a response and paid the 5%
+// commission, meaning buyer and seller could never actually talk before
+// committing — no chance to ask questions, clarify details, or build
+// trust before money changed hands. That's now backwards from every
+// other chat type in the app.
+//
+// The correct model, confirmed to mirror listing chats exactly:
+//   - Chat is reachable and free with any individual responder, the
+//     moment they submit a response — no separate "start chat" action
+//     needed.
+//   - Contact info stays BLOCKED in that chat until THIS SPECIFIC
+//     response is accepted and the 5% commission is paid for it — same
+//     protection listing chats give the unlock fee, just checked
+//     per-response instead of per-listing-deposit.
+//   - "Arrange deal" (Meet & Collect / Book delivery) only becomes
+//     available once accepted+paid; before that, the buyer's header
+//     button routes to wanted-responses.tsx to actually accept (and
+//     pay for) this or another response, mirroring how a listing
+//     buyer's "Arrange deal" routes to unlock.tsx before that fee is
+//     paid.
+//
+// This required rethinking depositPaid/chatUnlocked for item-request
+// chats specifically: unlike a listing (where the SELLER inherently has
+// full messaging rights on their own listing regardless of any given
+// buyer's payment status), NEITHER side of an item-request chat has an
+// inherent "rights" shortcut — a buyer chatting with an unaccepted
+// responder has exactly as much access as that responder chatting back,
+// no more. Both depositPaid and chatUnlocked for these chats are now the
+// same single value: has THIS specific response (looked up by
+// item_request_id + whichever side is the responder in this
+// conversation) been accepted. See checkRole() below for how that's
+// resolved per-conversation, mirroring the exact same "whichever side is
+// the buyer in THIS conversation" pattern already used for listing
+// chats' chatUnlocked check.
+//
 // FIX (real bug, found during a full-app review pass): containsContactInfo()
 // was checked unconditionally in sendMessage() with no exception for an
 // already-unlocked/paid chat — meaning the block never actually turned
@@ -18,36 +57,6 @@
 // genuinely paid/unlocked chat should allow contact info, since at that
 // point ImbizoHub has already been paid for this deal and there's no
 // remaining incentive gap to protect.
-//
-// This required a real distinction the old `depositPaid` flag didn't
-// make: `depositPaid` is set to true immediately for the OWNER (seller)
-// of a listing, regardless of whether THIS BUYER has actually paid yet —
-// it's a "do I have full messaging rights" flag, not "has money actually
-// changed hands for this specific conversation." Gating contact-info
-// directly on depositPaid would have let a seller share their number
-// before any buyer ever paid. `chatUnlocked` (new) is computed
-// separately and correctly for both directions: for a listing chat, it
-// checks listing_deposits for whichever side is the BUYER in this
-// specific conversation (receiver_id if I'm the seller, myId if I'm the
-// buyer) — not just "am I the seller." For request/item-request chats,
-// payment already happened before the chat was ever reachable, so it's
-// unconditionally true, same as depositPaid already was for those.
-//
-// THIRD IDENTITY BRANCH ADDED (item_request_id): the Wanted tab. Buyer
-// posts a want, sellers respond with a price, buyer accepts one and pays
-// a 3% commission (wanted-responses.tsx) — that payment is what unlocks
-// this chat in the first place, so unlike listing chats there is no
-// SEPARATE "Arrange deal" fee gate here; the commission already paid to
-// reach this screen IS the unlock. "Arrange deal" is hidden for these
-// chats, same as it's hidden for van-hire (request_id) chats, since
-// neither needs the listing-specific unlock-fee flow.
-//
-// NOT YET BUILT in this pass: a dedicated fulfillment-arrangement entry
-// point for item-request chats (choosing Delivery vs Meet & Collect,
-// per ImbizoHub_Wanted_Tab_Spec.md Section 2 step 5). For now these
-// chats support free messaging only; buyer and seller coordinate
-// fulfillment in plain conversation until that's built. This mirrors how
-// the "Arrange deal" modal itself was added incrementally.
 
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
@@ -70,32 +79,13 @@ function generatePin(): string {
   return Math.floor(1000 + Math.random() * 9000).toString();
 }
 
-// FIX: real bug found via direct DB inspection — pin_expires_at is
-// genuinely correct in the database (confirmed: a freshly-generated PIN
-// showed ~764 seconds remaining via a raw SQL check), yet the app
-// displayed "Expired" for it anyway. Root cause: Postgres's default
-// text rendering for timestamptz is "2026-07-29 19:59:01.885+00" — a
-// SPACE instead of 'T', and a 2-digit offset instead of the full
-// "+00:00". JavaScript's native `Date` constructor is only guaranteed
-// by spec to parse strict ISO 8601; this space-separated, short-offset
-// variant is technically non-standard, and different JS engines handle
-// it inconsistently — some parse it fine, others silently return an
-// Invalid Date, whose getTime() is NaN. Every downstream comparison
-// against NaN is false, so `secondsLeft > 0` was always false — showing
-// "Expired" regardless of the real, correct time in the database.
-//
-// This normalizes the string into a form every engine reliably parses
-// before handing it to `new Date(...)`, rather than trusting the native
-// parser with an ambiguous format.
 function parsePgTimestamp(value: string): number {
   const normalized = value
     .replace(' ', 'T')
-    .replace(/([+-]\d{2})$/, '$1:00'); // "+00" -> "+00:00", "-05" -> "-05:00"
+    .replace(/([+-]\d{2})$/, '$1:00');
   return new Date(normalized).getTime();
 }
 
-// Derive initials from a full name for avatar display.
-// Falls back to a generic person icon if no name is available.
 function getInitials(name: string): string {
   if (!name) return '👤';
   const parts = name.trim().split(/\s+/);
@@ -107,16 +97,6 @@ export default function ChatScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { listing_id, receiver_id, openDeal, request_id, item_request_id } = useLocalSearchParams();
-  // A chat is about exactly one of: a marketplace listing (listing_id), a
-  // van-hire trip request (request_id), or a Wanted-tab item request
-  // (item_request_id) — three separate identity models with separate
-  // "who is the other person" semantics:
-  //   listings.user_id is the seller
-  //   requests.user_id is the customer who posted the trip, chatting with
-  //     whichever operator they're paired with
-  //   item_requests.user_id is the buyer who posted the want, chatting
-  //     with whichever responder (seller) they accepted
-  // Exactly one of these three should be present per navigation.
   const isRequestChat = !listing_id && !item_request_id && !!request_id;
   const isItemRequestChat = !listing_id && !request_id && !!item_request_id;
   const [messages, setMessages] = useState<any[]>([]);
@@ -134,39 +114,18 @@ export default function ChatScreen() {
   const [confirmed, setConfirmed] = useState(false);
   const [secondsLeft, setSecondsLeft] = useState(0);
   const [listingPrice, setListingPrice] = useState<number | null>(null);
-  // NEW: Dealer Pro benefit — buyers never pay the unlock fee on a
-  // listing owned by an active Pro subscriber. Fetched alongside the
-  // listing itself in checkRole() below, used to short-circuit
-  // depositPaid/chatUnlocked to true for the buyer side without ever
-  // needing a listing_deposits row. See unlock.tsx's matching bypass
-  // and enforce_contact_info_block()'s widened server-side check —
-  // this client-side flag is a convenience only, not the real
-  // enforcement.
   const [sellerIsDealerPro, setSellerIsDealerPro] = useState(false);
   const [contactWarning, setContactWarning] = useState(false);
-  // NEW: dedicated error slot for anonymous sign-in failures during
-  // sendMessage() — kept separate from pinError (which belongs to the
-  // Meet & Pay PIN flow) rather than reusing an unrelated field.
   const [sendError, setSendError] = useState('');
   const [otherPersonName, setOtherPersonName] = useState('');
 
   const [depositChecked, setDepositChecked] = useState(false);
   const [depositPaid, setDepositPaid] = useState(false);
-  // NEW: see the top-of-file FIX comment — this is deliberately separate
-  // from depositPaid, which means "do I personally have full messaging
-  // rights" (true immediately for a listing's owner) rather than "has
-  // money genuinely changed hands for THIS conversation." Contact-info
-  // gating needs the latter, checked correctly for whichever side is the
-  // buyer in this specific chat.
   const [chatUnlocked, setChatUnlocked] = useState(false);
   const [dealModal, setDealModal] = useState(false);
   const openDealHandled = useRef(false);
+  const isBuyerRoleRef = useRef(false);
 
-  // NEW: for item-request (Wanted) chats, whether the accepted response
-  // is a physical item (deliverable via delivery-booking.tsx) or a
-  // service (e.g. "a builder" — nothing to courier). Fetched alongside
-  // checkRole() below. Irrelevant/unused for listing and trip-request
-  // chats.
   const [itemIsPhysical, setItemIsPhysical] = useState(true);
 
   useEffect(() => {
@@ -178,31 +137,20 @@ export default function ChatScreen() {
       if (cancelled) return;
       setMyId(uid);
 
-      const { owner, sellerIsDealerPro: isDealerProSeller } = await checkRole(uid);
+      const { owner, sellerIsDealerPro: isDealerProSeller, itemResponseAccepted } = await checkRole(uid);
       if (cancelled) return;
 
       await fetchOtherPersonName();
       if (cancelled) return;
 
-      // NEW: Dealer Pro benefit — checked first, before the existing
-      // owner/request-type branches, so a Pro seller's buyers never see
-      // the unlock-fee warning bar or need a listing_deposits row at
-      // all. See unlock.tsx's matching bypass and
-      // enforce_contact_info_block()'s widened server-side check — this
-      // is a convenience shortcut on top of the real DB-level check,
-      // not a replacement for it.
-      if (owner) {
+      if (isItemRequestChat) {
+        setDepositPaid(itemResponseAccepted);
+        setChatUnlocked(itemResponseAccepted);
+      } else if (owner) {
         setDepositPaid(true);
       } else if (isDealerProSeller) {
         setDepositPaid(true);
-      } else if (isRequestChat || isItemRequestChat) {
-        // No arrange-deal fee concept for trip-request chats OR
-        // item-request (Wanted) chats — both reach this screen only
-        // after their own separate payment already happened (quotes.tsx's
-        // 10% deposit for van hire, wanted-responses.tsx's 3% commission
-        // for Wanted), so there's nothing further to unlock here. Treat
-        // as "paid" so the "chat is free, unlock fee" warning bar (which
-        // is listing-specific) doesn't show for either.
+      } else if (isRequestChat) {
         setDepositPaid(true);
       } else {
         const paid = await checkDepositPaid(uid);
@@ -210,23 +158,18 @@ export default function ChatScreen() {
         setDepositPaid(paid);
       }
 
-      // NEW: chatUnlocked — see top-of-file FIX comment. Computed
-      // independently of depositPaid's owner-convenience shortcut.
-      if (isDealerProSeller) {
-        setChatUnlocked(true);
-      } else if (isRequestChat || isItemRequestChat) {
-        // Payment already happened before this chat was ever reachable
-        // (quotes.tsx / wanted-responses.tsx) — genuinely unlocked.
-        setChatUnlocked(true);
-      } else if (listing_id) {
-        // Whichever side is the BUYER in this specific conversation —
-        // if I'm the owner (seller), the buyer is the other participant
-        // (receiver_id); if I'm not the owner, I am the buyer (uid).
-        const buyerIdForThisChat = owner ? (receiver_id as string) : uid;
-        if (buyerIdForThisChat) {
-          const unlocked = await checkDepositPaid(buyerIdForThisChat);
-          if (cancelled) return;
-          setChatUnlocked(unlocked);
+      if (!isItemRequestChat) {
+        if (isDealerProSeller) {
+          setChatUnlocked(true);
+        } else if (isRequestChat) {
+          setChatUnlocked(true);
+        } else if (listing_id) {
+          const buyerIdForThisChat = owner ? (receiver_id as string) : uid;
+          if (buyerIdForThisChat) {
+            const unlocked = await checkDepositPaid(buyerIdForThisChat);
+            if (cancelled) return;
+            setChatUnlocked(unlocked);
+          }
         }
       }
 
@@ -235,27 +178,6 @@ export default function ChatScreen() {
       await fetchMessages(uid);
       await loadExistingMeetPaySession(uid);
 
-      // Channel name is unique per conversation (listing/request/item-
-      // request + the two participants) instead of a shared static
-      // "messages" name. Using a static name across every mount of this
-      // screen meant re-navigating into chat (e.g. chat -> unlock -> back
-      // to chat via router.replace(...&openDeal=1)) could try to attach a
-      // second set of .on() callbacks to an already-subscribed channel
-      // object with the same name, throwing "cannot add postgres_changes
-      // callbacks for realtime:messages after subscribe()". A unique name
-      // per conversation instance avoids collisions BETWEEN DIFFERENT
-      // conversations, but on its own doesn't protect against the SAME
-      // conversation's channel surviving a re-mount of this screen (e.g.
-      // Expo Router keeping this screen instance alive across a
-      // back/forward navigation instead of fully unmounting it, so this
-      // effect's own cleanup below never got a chance to run). Since the
-      // name is deterministic per conversation, re-running this effect
-      // for the same conversation would otherwise try to .on() a channel
-      // that's already subscribed and throw the exact same error.
-      //
-      // FIX: defensively look up and remove any channel already
-      // registered under this exact name before creating a fresh one,
-      // rather than assuming our own cleanup always ran first.
       if (!cancelled && (listing_id || request_id || item_request_id) && receiver_id && uid) {
         const convoKey = isItemRequestChat
           ? `item-${item_request_id}`
@@ -283,12 +205,7 @@ export default function ChatScreen() {
               (msg.sender_id === receiver_id || msg.receiver_id === receiver_id ||
                msg.sender_id === uid || msg.receiver_id === uid)
             ) {
-              // Dedupe guard: the sender's own client already appended
-              // this message optimistically in sendMessage() above — if
-              // this realtime echo is for our own just-sent message,
-              // skip re-adding it rather than showing it twice.
               setMessages((prev) => (prev.some((m) => m.id === msg.id) ? prev : [...prev, msg]));
-              // Notify if the message is from the other person (not from me)
               if (msg.sender_id !== uid) {
                 notifyNewMessage(
                   'ImbizoHub',
@@ -320,14 +237,6 @@ export default function ChatScreen() {
   useEffect(() => {
     if (!session?.pin_expires_at || session.status !== 'pending') return;
 
-    // FIX: secondsLeft starts at 0 (its useState default) and previously
-    // only got its real value from setInterval's first tick, a full
-    // second later — so right after generating (or regenerating) a
-    // brand new PIN, the screen briefly showed "Expired" (secondsLeft
-    // still 0) even though the PIN was genuinely fresh with ~15 minutes
-    // left. Computing the real remaining time immediately here, before
-    // the interval even starts, closes that gap — the correct time now
-    // shows the instant a session exists, not a second later.
     const computeRemaining = () =>
       Math.max(0, Math.floor((parsePgTimestamp(session.pin_expires_at) - Date.now()) / 1000));
 
@@ -341,15 +250,13 @@ export default function ChatScreen() {
     return () => clearInterval(interval);
   }, [session]);
 
-  // If we just arrived here after paying the unlock fee, open the deal
-  // modal automatically instead of making the buyer tap "Arrange deal" again.
   useEffect(() => {
-    if (isRequestChat || isItemRequestChat) return;
-    if (openDeal === '1' && depositChecked && depositPaid && !isOwnerOfListing && !openDealHandled.current) {
+    if (isRequestChat) return;
+    if (openDeal === '1' && depositChecked && depositPaid && isBuyerRoleRef.current && !openDealHandled.current) {
       openDealHandled.current = true;
       setDealModal(true);
     }
-  }, [openDeal, depositChecked, depositPaid, isOwnerOfListing]);
+  }, [openDeal, depositChecked, depositPaid]);
 
   async function fetchOtherPersonName() {
     if (!receiver_id) return;
@@ -361,54 +268,41 @@ export default function ChatScreen() {
     if (data?.full_name) setOtherPersonName(data.full_name);
   }
 
-  // NEW: return type widened from plain boolean to also carry
-  // sellerIsDealerPro directly, alongside setting the state of the same
-  // name. React state updates aren't visible synchronously even after
-  // an await in the same function — init() below needs this value
-  // immediately, in the same tick it computes depositPaid/chatUnlocked,
-  // so it's returned directly rather than relying on a state read that
-  // would still show the stale pre-fetch value at that point.
-  async function checkRole(uid: string): Promise<{ owner: boolean; sellerIsDealerPro: boolean }> {
+  async function checkRole(uid: string): Promise<{ owner: boolean; sellerIsDealerPro: boolean; itemResponseAccepted: boolean }> {
     if (isItemRequestChat) {
-      // Item-request (Wanted) chat: "owner" here means the buyer who
-      // posted the want (as opposed to the seller/responder they
-      // accepted). No arrange-deal fee flow for these — the 3%
-      // commission in wanted-responses.tsx already gated access before
-      // this screen was ever reached. What's still needed here, though,
-      // is fulfillment: delivery or in-person collection. Fetch the
-      // accepted response's is_physical_item flag so the deal modal
-      // below knows whether "Book delivery" applies at all (a service
-      // like "a builder" can't be couriered).
-      if (!item_request_id) return { owner: false, sellerIsDealerPro: false };
+      if (!item_request_id) return { owner: false, sellerIsDealerPro: false, itemResponseAccepted: false };
       const { data: req } = await supabase
         .from('item_requests')
         .select('user_id')
         .eq('id', item_request_id as string)
         .maybeSingle();
 
-      const { data: acceptedResponse } = await supabase
-        .from('item_responses')
-        .select('is_physical_item')
-        .eq('item_request_id', item_request_id as string)
-        .eq('status', 'accepted')
-        .maybeSingle();
-      if (acceptedResponse) setItemIsPhysical(acceptedResponse.is_physical_item);
+      if (!req) return { owner: false, sellerIsDealerPro: false, itemResponseAccepted: false };
 
-      if (req) {
-        const owner = uid === req.user_id;
-        setIsOwnerOfListing(owner);
-        return { owner, sellerIsDealerPro: false };
+      const owner = uid === req.user_id;
+      setIsOwnerOfListing(owner);
+      isBuyerRoleRef.current = owner;
+
+      const responderIdForThisChat = owner ? (receiver_id as string) : uid;
+      let responseStatus: string | null = null;
+      if (responderIdForThisChat) {
+        const { data: response } = await supabase
+          .from('item_responses')
+          .select('status, is_physical_item')
+          .eq('item_request_id', item_request_id as string)
+          .eq('responder_id', responderIdForThisChat)
+          .maybeSingle();
+        if (response) {
+          setItemIsPhysical(response.is_physical_item);
+          responseStatus = response.status;
+        }
       }
-      return { owner: false, sellerIsDealerPro: false };
+
+      return { owner, sellerIsDealerPro: false, itemResponseAccepted: responseStatus === 'accepted' };
     }
 
     if (isRequestChat) {
-      // Trip-request chat: "owner" here means the customer who posted the
-      // trip request (as opposed to the operator bidding on it). There's
-      // no arrange-deal fee flow for these — quotes.tsx already handles
-      // the 10% deposit before a buyer ever reaches this screen — so we
-      // don't need a price for the Meet & Pay modal here.
-      if (!request_id) return { owner: false, sellerIsDealerPro: false };
+      if (!request_id) return { owner: false, sellerIsDealerPro: false, itemResponseAccepted: false };
       const { data: req } = await supabase
         .from('requests')
         .select('user_id')
@@ -417,12 +311,13 @@ export default function ChatScreen() {
       if (req) {
         const owner = uid === req.user_id;
         setIsOwnerOfListing(owner);
-        return { owner, sellerIsDealerPro: false };
+        isBuyerRoleRef.current = !owner;
+        return { owner, sellerIsDealerPro: false, itemResponseAccepted: false };
       }
-      return { owner: false, sellerIsDealerPro: false };
+      return { owner: false, sellerIsDealerPro: false, itemResponseAccepted: false };
     }
 
-    if (!listing_id) return { owner: false, sellerIsDealerPro: false };
+    if (!listing_id) return { owner: false, sellerIsDealerPro: false, itemResponseAccepted: false };
     const parsedId = parseInt(listing_id as string);
     const { data: listing, error } = await supabase
       .from('listings')
@@ -432,6 +327,7 @@ export default function ChatScreen() {
     if (listing) {
       const owner = uid === listing.user_id;
       setIsOwnerOfListing(owner);
+      isBuyerRoleRef.current = !owner;
       setListingPrice(listing.price);
 
       const { data: sellerProfile } = await supabase
@@ -447,37 +343,11 @@ export default function ChatScreen() {
       );
       setSellerIsDealerPro(isDealerPro);
 
-      return { owner, sellerIsDealerPro: isDealerPro };
+      return { owner, sellerIsDealerPro: isDealerPro, itemResponseAccepted: false };
     }
-    return { owner: false, sellerIsDealerPro: false };
+    return { owner: false, sellerIsDealerPro: false, itemResponseAccepted: false };
   }
 
-  // Reads whether the unlock fee has been paid, for a given buyer id, on
-  // this listing.
-  //
-  // UPDATED: now takes buyerId as a parameter instead of always using the
-  // logged-in user's own id — needed so chatUnlocked (see top-of-file FIX
-  // comment) can check "has the ACTUAL BUYER of this conversation paid"
-  // correctly from either side (seller checking on behalf of their
-  // buyer, or the buyer checking on their own behalf). The original
-  // depositPaid call site (uid, i.e. "am I, the caller, paid up")
-  // continues to work exactly as before — only a rename of the parameter,
-  // not a behavior change for that existing call.
-  //
-  // NOTE: this used to also fire notifyUnlockFeeReceived() when the check
-  // came back true, guarded by `!depositPaid`. That guard compared against
-  // the depositPaid *state*, which is still at its initial value (false)
-  // the very first time this runs on mount — so the guard was always true
-  // on every fresh visit to this screen, not just the first time the fee
-  // was ever paid. Net effect: a buyer who paid last week and simply
-  // reopens this chat would re-trigger the "fee received" notification to
-  // the seller every single time. This function only ever takes a
-  // one-off snapshot of current status on mount (there's no polling), so
-  // it has no reliable way to tell "just paid" apart from "paid a while
-  // ago." That distinction belongs at the moment the payment itself
-  // completes — in paynow-webhook, right after the insert into
-  // listing_deposits succeeds — not here. The notification call has been
-  // removed from this read-only check accordingly.
   async function checkDepositPaid(buyerId: string): Promise<boolean> {
     if (!listing_id || !buyerId) {
       return false;
@@ -502,39 +372,9 @@ export default function ChatScreen() {
   }
 
   async function loadExistingMeetPaySession(currentUserId: string) {
-    // FIX: previously exited immediately if there was no listing_id —
-    // meaning this never ran at all for item-request (Wanted/Meet &
-    // Collect) conversations, since openMeetPay() also creates sessions
-    // keyed by item_request_id, not just listing_id (see the type/
-    // reference_id branch there). Reopening the modal in a Wanted chat
-    // would never find the existing pending session, only ever create
-    // a fresh duplicate one. Reference id now matches whichever type
-    // this conversation actually is.
     const referenceId = isItemRequestChat ? item_request_id : listing_id;
     if (!referenceId) return;
 
-    // FIX (real bug, found while chasing a "PIN always shows expired"
-    // report): this previously filtered ONLY by reference_id — the
-    // listing (or item request) — with no check for WHICH buyer/seller
-    // pair the session belongs to. On a listing that's been used for
-    // Meet & Pay testing by more than one buyer, this could load a
-    // completely unrelated session (someone else's PIN, possibly long
-    // expired) into state. Worse than just a wrong display: once
-    // `session` is set to anything at all, openMeetPay()'s
-    // `if (isBuyerRole && !session)` check for generating a brand new
-    // PIN never fires again — so a buyer stuck with the wrong loaded
-    // session could never actually create their own, no matter how
-    // many times they tried.
-    // Scoping to (buyer_id, seller_id) matching the two actual people
-    // in THIS conversation, in either role, fixes both problems.
-    //
-    // Takes currentUserId as a parameter rather than reading the
-    // component's `myId` state directly — at the point this is called
-    // during initial mount, setMyId() has been called moments earlier
-    // in the same render cycle but the state itself hasn't updated yet
-    // (React state updates apply on the next render, not immediately),
-    // so reading `myId` here would silently use its stale initial
-    // value ('') instead of the real signed-in user id.
     const { data } = await supabase
       .from('meetpay_sessions')
       .select('*')
@@ -578,15 +418,9 @@ export default function ChatScreen() {
     setLoading(false);
   };
 
-  // Widened to catch two evasions beyond the original structural
-  // patterns, mirrored exactly in enforce_contact_info_block() —
-  // see widen-enforce-contact-info-block.sql. Keep both in sync.
   function containsContactInfo(message: string): boolean {
     const cleaned = message.toLowerCase();
 
-    // Normalize spelled-out digits ("zero seven one nine nine" -> "07199")
-    // and at/dot word substitutions ("name at gmail dot com" -> "name@gmail.com")
-    // before running the original checks against the result.
     const NUMBER_WORDS: Record<string, string> = {
       zero: '0', oh: '0', one: '1', two: '2', three: '3', four: '4',
       five: '5', six: '6', seven: '7', eight: '8', nine: '9',
@@ -611,10 +445,6 @@ export default function ChatScreen() {
     const contactWords = /(whatsapp|call me|text me|reach me|my number|contact me)/i;
     if (contactWords.test(normalized) && /\d{4,}/.test(normalized)) return true;
 
-    // NEW: fully-concatenated obfuscation with no separators at all
-    // ("mplalaethigmaildotcom") — nothing above can catch this since
-    // there's nothing to normalize. Strip ALL whitespace and look for
-    // a provider name immediately followed by a TLD-like token.
     const stripped = cleaned.replace(/\s+/g, '');
     const providerPattern = /(gmail|yahoo|hotmail|outlook|icloud|protonmail)(dot)?(com|co\w{0,3}|net|org)/i;
     if (providerPattern.test(stripped)) return true;
@@ -625,73 +455,63 @@ export default function ChatScreen() {
   const sendMessage = async () => {
     if (!text.trim()) return;
 
-    // FIX: now skipped entirely once chatUnlocked is true — see
-    // top-of-file FIX comment. Previously this check ran unconditionally
-    // regardless of payment status, contradicting the warning text's own
-    // promise that sharing becomes fine once the chat is unlocked.
     if (!chatUnlocked && containsContactInfo(text)) {
       setContactWarning(true);
       setTimeout(() => setContactWarning(false), 4000);
       return;
     }
 
-    let { data: { session } } = await supabase.auth.getSession();
+    // FIX (real bug, matching a directly reported "messages vanish
+    // mid-conversation" issue): this used to call
+    // supabase.auth.getSession() fresh, every single time a message
+    // was sent — a known Supabase gotcha. If this client hasn't fully
+    // finished restoring a persisted session from storage yet (a real
+    // timing race, especially right after the app is backgrounded and
+    // resumed, or on a fast cold start straight into a chat via a
+    // deep link/notification), getSession() can momentarily return
+    // null even though a valid anonymous session already exists on
+    // this device. That null incorrectly triggered
+    // signInAnonymously() again, minting a BRAND NEW anonymous
+    // identity mid-conversation. Every message sent before that point
+    // then permanently stopped matching this screen's own sender/
+    // receiver filter (myId no longer equals the id those earlier
+    // messages were sent under), making them vanish from view for
+    // BOTH sides — even though they were, and still are, safely
+    // sitting untouched in the database the whole time. This is a
+    // display/filtering bug, not real data loss.
+    //
+    // Fix: trust the component's own myId state first — already
+    // established once, correctly, when this screen first loaded (see
+    // init() above) — rather than re-querying getSession() on every
+    // single send and risking this exact race repeatedly. Only falls
+    // back to a fresh check/sign-in if myId is genuinely still empty.
+    let currentUid = myId;
 
-    // FIX (product direction correction): browsing AND chatting should
-    // both be fully free, no login required at all — an account is only
-    // needed at the actual payment/deal moment (unlock fee, Wanted
-    // commission, professional registrations). The earlier version of
-    // this fix redirected to /login here, which was too strong: it
-    // turned "send a message" into a hard login wall, which is exactly
-    // what deters casual browsers from ever engaging.
-    //
-    // Supabase's anonymous sign-in gives the visitor a real (but
-    // identity-free) session automatically — no email, no password —
-    // so sender_id still has a valid, real auth.users id to attach to
-    // this message, without asking them to create an account just to
-    // say "is this still available?". Requires "Allow anonymous
-    // sign-ins" to be enabled in Supabase Auth settings.
-    //
-    // This anonymous session persists in this browser (same
-    // persistSession/autoRefreshToken config as any other session, per
-    // lib/supabase.ts), so it's only created once per browser, not once
-    // per message.
-    if (!session) {
-      const { data, error } = await supabase.auth.signInAnonymously();
-      if (error) {
-        console.log('Anonymous sign-in failed:', error.message);
-        setSendError('Couldn\'t send — please check your connection and try again.');
-        return;
+    if (!currentUid) {
+      const { data: { session: existingSession } } = await supabase.auth.getSession();
+      if (existingSession) {
+        currentUid = existingSession.user.id;
+        setMyId(currentUid);
+      } else {
+        const { data, error } = await supabase.auth.signInAnonymously();
+        if (error) {
+          console.log('Anonymous sign-in failed:', error.message);
+          setSendError('Couldn\'t send — please check your connection and try again.');
+          return;
+        }
+        currentUid = data.session?.user?.id ?? '';
+        setMyId(currentUid);
       }
-      session = data.session;
-      setMyId(session?.user?.id ?? '');
     }
 
-    if (!session) return;
+    if (!currentUid) return;
 
     setSendError('');
-    // FIX (message-visibility bug): previously this only inserted and
-    // relied on the realtime channel's echo (below) to actually show the
-    // message on screen. That channel is only created if `uid` was
-    // already set when this screen first mounted — but a brand-new,
-    // never-messaged-before buyer has no session yet at mount time, so
-    // the channel setup block gets skipped entirely (see the `uid`
-    // check around the .channel(...) call above). The message WAS
-    // reaching the database fine; it just never appeared on the
-    // sender's own screen, which looked identical to "nothing happened"
-    // from the buyer's side — and, in turn, meant nothing was ever live
-    // for the other party to be notified about either.
-    //
-    // Fix: request the inserted row back (.select().single()) and add
-    // it to local state directly, regardless of whether a realtime
-    // channel exists. This makes sending correct even when the
-    // realtime channel never got wired up, and doesn't depend on
-    // fixing that timing gap separately.
     const { data: sentMessage, error: insertError } = await supabase
       .from('messages')
       .insert({
         text: text.trim(),
-        sender_id: session.user.id,
+        sender_id: currentUid,
         receiver_id: receiver_id || null,
         listing_id: !isRequestChat && !isItemRequestChat && listing_id ? parseInt(listing_id as string) : null,
         request_id: isRequestChat ? request_id : null,
@@ -706,10 +526,6 @@ export default function ChatScreen() {
       return;
     }
 
-    // Dedupe guard: if a realtime channel DOES also exist for this
-    // sender (e.g. a returning buyer, or the seller side), its INSERT
-    // echo (see the .on('postgres_changes', ...) handler above) is
-    // itself deduped by id, so adding it here first is safe either way.
     if (sentMessage) {
       setMessages((prev) => (prev.some((m) => m.id === sentMessage.id) ? prev : [...prev, sentMessage]));
     }
@@ -724,34 +540,27 @@ export default function ChatScreen() {
     );
   }
 
-  // NEW: normalizes "which side is the buyer" across chat types.
-  // isOwnerOfListing means different things depending on context — for a
-  // regular listing it's the SELLER (they list it), but for an
-  // item-request (Wanted) chat it's the BUYER (they posted the want).
-  // Meet & Pay's PIN flow always needs to know which side generates the
-  // PIN (buyer) vs confirms it (seller/responder) — isBuyerRole gives
-  // that answer correctly for both contexts, without changing what
-  // isOwnerOfListing itself means elsewhere (rating role assignment,
-  // etc., which intentionally still uses the raw value).
+  function goToWantedResponses() {
+    router.push(`/wanted-responses?request_id=${item_request_id}`);
+  }
+
   const isBuyerRole = isItemRequestChat ? isOwnerOfListing : !isOwnerOfListing;
+  isBuyerRoleRef.current = isBuyerRole;
 
   function handleArrangeDealPress() {
+    if (isItemRequestChat) {
+      if (!isBuyerRole) {
+        openMeetPay();
+        return;
+      }
+      if (depositPaid) { setDealModal(true); return; }
+      goToWantedResponses();
+      return;
+    }
     if (!isBuyerRole) {
-      // Confirm-PIN role (seller for listings, responder for an accepted
-      // Wanted match) — go straight to the PIN-entry side of Meet & Pay.
       openMeetPay();
       return;
     }
-    if (isItemRequestChat) {
-      // The Wanted buyer always gets to CHOOSE fulfillment (delivery vs.
-      // meet & collect) here — unlike a regular listing's buyer flow,
-      // there's no separate unlock-fee gate to check, since payment
-      // already happened via the 3% commission before this screen was
-      // ever reachable.
-      setDealModal(true);
-      return;
-    }
-    // Regular listing, buyer role.
     if (depositPaid) { setDealModal(true); return; }
     goToUnlock();
   }
@@ -765,13 +574,6 @@ export default function ChatScreen() {
       const pin = generatePin();
       const expiresAt = new Date(Date.now() + 15 * 60 * 1000);
 
-      // FIX: this used to hardcode type: 'listing' and
-      // reference_id: String(listing_id) unconditionally. That was only
-      // ever safe because openMeetPay() was previously unreachable from
-      // item-request chats (the header button was hidden for them
-      // entirely) — now that Wanted matches can reach Meet & Collect too,
-      // this must branch by chat type, or an item-request session would
-      // be recorded against a null listing_id under the wrong type.
       const { data, error } = await supabase
         .from('meetpay_sessions')
         .insert({
@@ -781,10 +583,6 @@ export default function ChatScreen() {
           seller_id: receiver_id,
           pin,
           pin_expires_at: expiresAt.toISOString(),
-          // No listing price applies to a Wanted match — the item's
-          // price was already settled directly between buyer and seller,
-          // outside the app. This PIN exists purely to confirm the
-          // handover happened, not to record a payment amount.
           amount: isItemRequestChat ? null : listingPrice,
           status: 'pending',
         })
@@ -794,15 +592,6 @@ export default function ChatScreen() {
       if (error) { setPinError(error.message); return; }
       setSession(data);
 
-      // Local notification — shows on THIS device (the buyer's) only,
-      // so it's just immediate on-screen feedback that the PIN was
-      // created, not a way to reach the seller. The seller is notified
-      // for real by notify-meetpay-event, an Edge Function invoked by a
-      // DB trigger on this same meetpay_sessions insert (see
-      // notify-meetpay-event-trigger.sql) — same split responsibility
-      // paynow-webhook already uses for payment events: the acting
-      // client shows its own local feedback, the server sends the real
-      // cross-device push to the other party.
       notifyMeetPayPinGenerated(isItemRequestChat ? 'this item' : 'this listing');
     }
   }
@@ -840,10 +629,6 @@ export default function ChatScreen() {
     if (error) { setPinError(error.message); return; }
     setConfirmed(true);
 
-    // Local notification — shows on THIS device (the confirmer's) only.
-    // The buyer is notified for real by notify-meetpay-event, triggered
-    // server-side off this same status='confirmed' update — see the
-    // matching comment in openMeetPay() above.
     notifyTransactionConfirmed('this listing');
   }
 
@@ -862,14 +647,6 @@ export default function ChatScreen() {
   }
 
   return (
-    // FIX (real bug, reported directly by the person testing the app):
-    // the keyboard covered the message input every time someone typed —
-    // nothing in this screen previously accounted for the keyboard at
-    // all. KeyboardAvoidingView pushes the whole layout up (iOS) or
-    // resizes it (Android) so the input row stays visible above the
-    // keyboard instead of being hidden underneath it. behavior differs
-    // by platform since 'padding' is the standard iOS approach while
-    // Android generally does better with 'height'.
     <KeyboardAvoidingView
       style={styles.container}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
@@ -892,11 +669,6 @@ export default function ChatScreen() {
             <Text style={styles.onlineStatus}>Online now</Text>
           </View>
         </View>
-        {/* NEW: report entry point, always available regardless of chat
-            type (listing/request/item-request) — listing.tsx's own
-            report link only covers the regular-listing case; this
-            covers Wanted and van-hire chats too, which have no listing
-            detail screen to report from at all. */}
         <View style={styles.headerRight}>
           {!isRequestChat && (listing_id || isItemRequestChat) && (
             <TouchableOpacity
@@ -922,11 +694,13 @@ export default function ChatScreen() {
         </View>
       </View>
 
-      {!isOwnerOfListing && !depositPaid && (
+      {isBuyerRole && !depositPaid && !isRequestChat && (
         <View style={styles.warningBar}>
           <Text style={styles.warningIcon}>💬</Text>
           <Text style={styles.warningText}>
-            Chat is free — you'll only pay a small fee when you're ready to arrange Meet & Pay or delivery.
+            {isItemRequestChat
+              ? 'Chat is free — accept this response (and pay the small commission) when you\'re ready to unlock contact info and arrange collection or delivery.'
+              : 'Chat is free — you\'ll only pay a small fee when you\'re ready to arrange Meet & Pay or delivery.'}
           </Text>
         </View>
       )}
@@ -934,7 +708,7 @@ export default function ChatScreen() {
       {contactWarning && (
         <View style={styles.contactWarningBar}>
           <Text style={styles.contactWarningText}>
-            ⚠️ Sharing phone numbers or emails in chat isn't allowed before chat is unlocked. Use Meet & Pay to safely exchange contact info.
+            ⚠️ Sharing phone numbers or emails in chat isn't allowed until this deal is confirmed. {isItemRequestChat ? 'Accept and pay to unlock contact info.' : 'Use Meet & Pay to safely exchange contact info.'}
           </Text>
         </View>
       )}
@@ -1009,7 +783,6 @@ export default function ChatScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* Deal arrangement modal — buyer chooses Meet & Pay or Book Delivery */}
       <Modal visible={dealModal} animationType="slide" transparent onRequestClose={() => setDealModal(false)}>
         <View style={styles.modalOverlay}>
           <View style={styles.modalSheet}>
@@ -1033,10 +806,6 @@ export default function ChatScreen() {
                 </Text>
                 <Text style={styles.dealOptionDesc}>
                   {isItemRequestChat
-                    // No payment happens at this step — the price was
-                    // already settled directly between buyer and seller.
-                    // The PIN here is purely a handover confirmation, for
-                    // both sides' records.
                     ? 'Meet in person, hand over the item, and confirm with a PIN. Best for same-city arrangements.'
                     : 'Meet the seller in person, inspect the item, and confirm with a PIN. Best for same-city trades.'}
                 </Text>
@@ -1044,10 +813,6 @@ export default function ChatScreen() {
               <Text style={styles.dealOptionArrow}>›</Text>
             </TouchableOpacity>
 
-            {/* Delivery is only offered for item-request chats when the
-                accepted response was flagged as a physical item — a
-                service (e.g. "a builder") has nothing to courier. For
-                regular listing chats, always offered as before. */}
             {(!isItemRequestChat || itemIsPhysical) && (
               <TouchableOpacity
                 style={styles.dealOption}
@@ -1065,7 +830,7 @@ export default function ChatScreen() {
                 <View style={{ flex: 1 }}>
                   <Text style={styles.dealOptionTitle}>Book delivery</Text>
                   <Text style={styles.dealOptionDesc}>
-                    A registered driver delivers the item to you. $5 within city · $10 intercity. + $2 booking fee.
+                    A registered driver delivers the item to you. Rate depends on item size — see next screen.
                   </Text>
                 </View>
                 <Text style={styles.dealOptionArrow}>›</Text>
@@ -1096,15 +861,6 @@ export default function ChatScreen() {
                   style={styles.modalBtn}
                   onPress={() => {
                     setMeetPayModal(false);
-                    // Navigate to rating screen. reviewee_id is
-                    // receiver_id regardless of role — it already
-                    // represents "the other participant in this chat"
-                    // from either role's perspective. `role` uses
-                    // isBuyerRole (not the raw isOwnerOfListing) since
-                    // "owner" flips meaning between a listing chat
-                    // (seller) and an item-request chat (buyer) — using
-                    // the raw value here would have labeled an
-                    // item-request buyer as "seller" on their own rating.
                     router.push(
                       `/rating?session_id=${session?.id}&reviewee_id=${receiver_id}&role=${isBuyerRole ? 'buyer' : 'seller'}&listing_id=${listing_id}`
                     );
@@ -1137,17 +893,6 @@ export default function ChatScreen() {
                       </Text>
                     </View>
 
-                    {/* FIX: was gated behind secondsLeft === 0, so a buyer
-                        who wanted a fresh PIN before the old one expired
-                        (plans changed, showed it to the wrong person,
-                        whatever the reason) had no way to get one — stuck
-                        either waiting out the full 15 minutes or using a
-                        PIN they no longer wanted valid. regeneratePin()
-                        already just updates this same session row's pin/
-                        pin_expires_at regardless of the old PIN's state,
-                        so there's no reason to withhold the button while
-                        it's still technically valid — the old PIN simply
-                        stops working the moment a new one's generated. */}
                     <TouchableOpacity style={styles.regenBtn} onPress={regeneratePin}>
                       <Text style={styles.regenBtnText}>
                         {secondsLeft === 0 ? 'Generate new PIN' : 'Get a new PIN'}

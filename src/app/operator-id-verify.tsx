@@ -18,6 +18,16 @@
 // third tier ('trusted') that needs an affidavit + referee, a
 // meaningfully different process not built here.
 //
+// NEW: "Take Photo" now opens IdCameraCapture — a custom in-app camera
+// with a visible ID-boundary guide overlay — instead of the plain OS
+// camera picker (ImagePicker.launchCameraAsync), which has no way to
+// show a custom alignment guide on its native UI. See
+// components/IdCameraCapture.tsx for why this needed a different
+// library (expo-camera instead of expo-image-picker for this specific
+// path). Gallery selection is unchanged — still expo-image-picker,
+// since there's no live camera feed to overlay a guide on for an
+// already-existing photo.
+//
 // Usage: router.push('/operator-id-verify?type=delivery_operator')
 //        router.push('/operator-id-verify?type=transport_operator')
 
@@ -28,6 +38,7 @@ import {
   ActivityIndicator, Image, Platform, ScrollView, StyleSheet,
   Text, TouchableOpacity, View,
 } from 'react-native';
+import IdCameraCapture from '../../components/IdCameraCapture';
 import { supabase } from '../../lib/supabase';
 import { prepareUpload } from '../../lib/uploadHelpers';
 
@@ -69,6 +80,7 @@ export default function OperatorIdVerifyScreen() {
   const [uploading, setUploading] = useState(false);
   const [pickedImageUri, setPickedImageUri] = useState<string | null>(null);
   const [error, setError] = useState('');
+  const [showCamera, setShowCamera] = useState(false);
 
   useEffect(() => { init(); }, [operatorType]);
 
@@ -133,26 +145,14 @@ export default function OperatorIdVerifyScreen() {
     }
   }
 
-  // NEW: camera capture, alongside the existing gallery picker. Camera
-  // and photo-library permissions are SEPARATE on both iOS and
-  // Android — granting one doesn't grant the other, so this needs its
-  // own permission request rather than reusing pickDocument's.
-  async function takePhoto() {
+  function handleTakePhoto() {
     setError('');
-    const permission = await ImagePicker.requestCameraPermissionsAsync();
-    if (!permission.granted) {
-      setError('We need camera permission to take a photo of your ID.');
-      return;
-    }
+    setShowCamera(true);
+  }
 
-    const result = await ImagePicker.launchCameraAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      quality: 0.8,
-    });
-
-    if (!result.canceled && result.assets?.[0]) {
-      setPickedImageUri(result.assets[0].uri);
-    }
+  function handleCameraCapture(uri: string) {
+    setShowCamera(false);
+    setPickedImageUri(uri);
   }
 
   async function handleUpload() {
@@ -161,13 +161,6 @@ export default function OperatorIdVerifyScreen() {
     setUploading(true);
 
     try {
-      // FIX (real bug, not the earlier deprecation warning): this used
-      // to be fetch(pickedImageUri).then(r => r.blob()) — a well-known
-      // failure mode on React Native/Expo where the Blob polyfill can
-      // throw "Creating blobs from 'ArrayBuffer' and 'ArrayBufferView'
-      // are not supported". Replaced with the ArrayBuffer approach
-      // Supabase's own docs recommend — see lib/uploadHelpers.ts for
-      // the full reasoning.
       const { data, contentType, extension } = await prepareUpload(pickedImageUri);
       const path = `${myId}/${Date.now()}.${extension}`;
 
@@ -291,12 +284,8 @@ export default function OperatorIdVerifyScreen() {
               </TouchableOpacity>
             </>
           ) : (
-            // NEW: two options instead of one — Take Photo (camera) and
-            // Choose from Gallery, since camera capture is often more
-            // convenient for an ID photo taken in the moment, while
-            // gallery still supports uploading an existing scan/photo.
             <View style={styles.uploadOptionsRow}>
-              <TouchableOpacity style={styles.uploadBtnHalf} onPress={takePhoto}>
+              <TouchableOpacity style={styles.uploadBtnHalf} onPress={handleTakePhoto}>
                 <Text style={styles.uploadBtnHalfText}>📸 Take Photo</Text>
               </TouchableOpacity>
               <TouchableOpacity style={styles.uploadBtnHalf} onPress={pickDocument}>
@@ -310,6 +299,12 @@ export default function OperatorIdVerifyScreen() {
           <View style={styles.errorBox}><Text style={styles.errorText}>⚠️ {error}</Text></View>
         ) : null}
       </ScrollView>
+
+      <IdCameraCapture
+        visible={showCamera}
+        onCapture={handleCameraCapture}
+        onClose={() => setShowCamera(false)}
+      />
     </View>
   );
 }

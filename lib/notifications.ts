@@ -36,18 +36,6 @@ async function getNotificationsModule() {
 
   try {
     cachedModule = await import('expo-notifications');
-    // FIX: shouldShowAlert is deprecated — Expo replaced it with
-    // shouldShowBanner (the visible on-screen banner while the app is
-    // open, which is the actual "on-screen alert" behavior we want)
-    // and shouldShowList (whether it also appears in the system
-    // notification center/tray). The old field alone risks silently
-    // NOT showing a visible banner on current SDK versions, even
-    // though the code looks correct at a glance — confirmed against
-    // Expo's own current documentation before making this change.
-    // shouldShowAlert is kept alongside for backward compatibility on
-    // any older client that hasn't picked up the newer field names yet
-    // — harmless to include both, and safer than assuming everyone's
-    // on the exact same expo-notifications patch version.
     cachedModule.setNotificationHandler({
       handleNotification: async () => ({
         shouldShowAlert: true,
@@ -101,9 +89,17 @@ export async function savePushToken(token: string) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return;
 
+  // FIX: push_token_updated_at added — needed by the data retention
+  // policy's stale-token cleanup job (cleanup-expired-data), which
+  // clears any token that hasn't refreshed in 6 months. Without this
+  // timestamp, that job has no way to tell a genuinely stale token
+  // apart from one set yesterday. Set every time this function runs,
+  // which happens on every app launch — so an actively-used token's
+  // clock keeps resetting naturally, and only truly abandoned ones
+  // (app uninstalled, account inactive) ever reach the 6-month mark.
   await supabase
     .from('profiles')
-    .update({ push_token: token })
+    .update({ push_token: token, push_token_updated_at: new Date().toISOString() })
     .eq('id', user.id);
 }
 

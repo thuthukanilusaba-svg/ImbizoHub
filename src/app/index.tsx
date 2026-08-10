@@ -209,7 +209,7 @@ export default function HomeScreen() {
         >
           <View style={styles.vanBannerLeft}>
             <Text style={styles.vanBannerEmoji}>🔍</Text>
-            <View>
+            <View style={styles.vanBannerTextCol}>
               <Text style={styles.vanBannerTitle}>Looking for something specific?</Text>
               <Text style={styles.vanBannerSub}>Post it — sellers respond with a price</Text>
             </View>
@@ -232,7 +232,7 @@ export default function HomeScreen() {
         >
           <View style={styles.vanBannerLeft}>
             <Text style={styles.vanBannerEmoji}>🛍️</Text>
-            <View>
+            <View style={styles.vanBannerTextCol}>
               <Text style={styles.vanBannerTitle}>See what people want</Text>
               <Text style={styles.vanBannerSub}>Browse open wants — respond with your price, free</Text>
             </View>
@@ -311,8 +311,8 @@ export default function HomeScreen() {
           >
             <View style={styles.vanBannerLeft}>
               <Text style={styles.vanBannerEmoji}>🚐</Text>
-              <View>
-                <Text style={styles.vanBannerTitle}>Need a van?</Text>
+              <View style={styles.vanBannerTextCol}>
+                <Text style={styles.vanBannerTitle}>Hire Transport</Text>
                 <Text style={styles.vanBannerSub}>Post a trip — operators bid for your job</Text>
               </View>
             </View>
@@ -442,7 +442,17 @@ const styles = StyleSheet.create({
   // (gold-tinted, matching the app's primary accent) since this is the
   // BROWSE counterpart, not another "post" action.
   browseWantedBanner: { backgroundColor: '#2e2a1a', borderRadius: 14, marginHorizontal: 16, marginTop: 4, marginBottom: 4, paddingHorizontal: 18, paddingVertical: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderWidth: 0.5, borderColor: '#5e5a3a' },
-  vanBannerLeft: { flexDirection: 'row', alignItems: 'center', gap: 14 },
+  vanBannerLeft: { flexDirection: 'row', alignItems: 'center', gap: 14, flex: 1, minWidth: 0 },
+  // NEW: fixes a real overflow bug — this View wrapping the title+
+  // subtitle text previously had no style at all, so it took its
+  // natural content width instead of wrapping within the banner's
+  // actual available space. Long subtitle text (e.g. "Browse open
+  // wants — respond with your price, free") ran past the rounded box
+  // edge instead of wrapping to a second line. flex: 1 lets it claim
+  // the remaining row space after the emoji/gap/arrow; minWidth: 0 is
+  // the actual fix — without it, flexbox still lets content dictate a
+  // wider-than-container intrinsic size regardless of flex: 1.
+  vanBannerTextCol: { flex: 1, minWidth: 0 },
   vanBannerEmoji: { fontSize: 28 },
   vanBannerTitle: { color: '#ffffff', fontSize: 15, fontWeight: '700' },
   vanBannerSub: { color: '#8888aa', fontSize: 12, marginTop: 2 },
