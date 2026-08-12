@@ -14,7 +14,9 @@
       "url": "https://u.expo.dev/08be3d09-3027-4c07-957e-dbe3088ad2ac"
     },
     "ios": {
-      "icon": "./assets/expo.icon"
+      "icon": "./assets/expo.icon",
+      "bundleIdentifier": "com.imbizohub.app",
+      "associatedDomains": ["applinks:imbizohub.app"]
     },
     "android": {
       "adaptiveIcon": {
@@ -24,7 +26,21 @@
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
       "predictiveBackGestureEnabled": false,
-      "package": "com.imbizohub.app"
+      "package": "com.imbizohub.app",
+      "intentFilters": [
+        {
+          "action": "VIEW",
+          "autoVerify": true,
+          "data": [
+            {
+              "scheme": "https",
+              "host": "imbizohub.app",
+              "pathPrefix": "/seller"
+            }
+          ],
+          "category": ["BROWSABLE", "DEFAULT"]
+        }
+      ]
     },
     "web": {
       "output": "static",

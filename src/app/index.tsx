@@ -265,6 +265,42 @@ export default function HomeScreen() {
           <Text style={styles.vanBannerArrow}>›</Text>
         </TouchableOpacity>
 
+        {/* NEW: trust/safety section — real infrastructure that's been
+            built all along (PIN-confirmed handovers, ID-verified
+            delivery operators, ratings tied to confirmed transactions
+            only) but was never actually marketed anywhere in the app.
+            Deliberately only claims things that are genuinely true and
+            built — no escrow language (Meet & Pay is cash-in-person,
+            not fund-holding), nothing overstated. Visually distinct
+            from the action banners above (no border accent color, no
+            arrow, not tappable) since this is reassurance content, not
+            a call to action — reads as "here's how this works," not
+            "tap here." */}
+        <View style={styles.trustSection}>
+          <Text style={styles.trustTitle}>How ImbizoHub keeps you safe</Text>
+          <View style={styles.trustRow}>
+            <Text style={styles.trustIcon}>🔐</Text>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.trustItemTitle}>PIN-confirmed handovers</Text>
+              <Text style={styles.trustItemSub}>Nothing's marked complete until both sides confirm, in person, with a one-time PIN</Text>
+            </View>
+          </View>
+          <View style={styles.trustRow}>
+            <Text style={styles.trustIcon}>🪪</Text>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.trustItemTitle}>ID-verified delivery operators</Text>
+              <Text style={styles.trustItemSub}>Drivers submit real identification before they can accept delivery jobs</Text>
+            </View>
+          </View>
+          <View style={styles.trustRow}>
+            <Text style={styles.trustIcon}>⭐</Text>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.trustItemTitle}>Real ratings only</Text>
+              <Text style={styles.trustItemSub}>Reviews only come from confirmed transactions — never fake, never bought</Text>
+            </View>
+          </View>
+        </View>
+
         {featuredListing && (
           <View style={styles.section}>
             <TouchableOpacity
@@ -472,6 +508,15 @@ const styles = StyleSheet.create({
   // two banners) — instant visual recognition for exactly the seller
   // this banner is trying to reach.
   whatsappBanner: { backgroundColor: '#1a2e22', borderRadius: 14, marginHorizontal: 16, marginTop: 4, marginBottom: 4, paddingHorizontal: 18, paddingVertical: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderWidth: 0.5, borderColor: '#25D366' },
+  // NEW: trust section styles — deliberately plainer than the action
+  // banners (no colored border accent, no arrow) since this is
+  // informational, not a tappable call to action.
+  trustSection: { backgroundColor: '#161616', borderRadius: 14, marginHorizontal: 16, marginTop: 12, marginBottom: 4, padding: 18, borderWidth: 0.5, borderColor: '#2a2a2a' },
+  trustTitle: { color: '#fff', fontSize: 14, fontWeight: '700', marginBottom: 14 },
+  trustRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 12, marginBottom: 14 },
+  trustIcon: { fontSize: 20, marginTop: 1 },
+  trustItemTitle: { color: '#fff', fontSize: 13, fontWeight: '600', marginBottom: 2 },
+  trustItemSub: { color: '#999', fontSize: 11, lineHeight: 16 },
   vanBannerLeft: { flexDirection: 'row', alignItems: 'center', gap: 14, flex: 1, minWidth: 0 },
   // NEW: fixes a real overflow bug — this View wrapping the title+
   // subtitle text previously had no style at all, so it took its

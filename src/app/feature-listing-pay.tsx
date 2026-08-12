@@ -1,13 +1,12 @@
 // app/feature-listing-pay.tsx
 // Pay to feature a specific listing for 7 days.
 //
-// index.tsx's "FEATURED" card on Home was previously entirely hardcoded
-// fake content — not connected to any real listing at all. This screen
-// is the other half of making that real: a seller pays here,
-// listings.featured_until gets set 7 days out (via paynow-webhook, see
-// featured-verified-migration.sql), and index.tsx now queries for
-// whichever real listing currently has featured_until > now() instead
-// of showing static text.
+// NEW: launch promotion — free until Jan 31, 2027, same window as the
+// other four promo flows built today. See
+// feature-listing-free-promo/index.ts for the full reasoning. Kept as
+// a fully separate handler from handlePay(), same pattern used
+// throughout today's promo work — handlePay() itself is completely
+// untouched and ready to take over immediately once the promo ends.
 //
 // Usage: router.push(`/feature-listing-pay?listing_id=${id}`)
 
@@ -15,8 +14,8 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import * as WebBrowser from 'expo-web-browser';
 import { useEffect, useState } from 'react';
 import {
-    ActivityIndicator, Platform, ScrollView, StyleSheet,
-    Text, TouchableOpacity, View,
+  ActivityIndicator, Platform, ScrollView, StyleSheet,
+  Text, TouchableOpacity, View,
 } from 'react-native';
 import { supabase } from '../../lib/supabase';
 
@@ -24,10 +23,14 @@ const GOLD = '#B8860B';
 const BLACK = '#1A1A18';
 const DARK = '#2a2a2a';
 const GREY = '#AAAAAA';
+const GREEN = '#4fc96e';
 
 const PRICE = 5;
 const POLL_INTERVAL_MS = 2000;
 const POLL_MAX_ATTEMPTS = 15;
+
+const FREE_PROMO_END = new Date('2027-01-31T23:59:59Z');
+const isPromoActive = () => new Date() < FREE_PROMO_END;
 
 export default function FeatureListingPayScreen() {
   const router = useRouter();
@@ -68,6 +71,28 @@ export default function FeatureListingPayScreen() {
 
     setListing(data);
     setLoading(false);
+  }
+
+  async function handleFeatureFree() {
+    setError('');
+    setPaying(true);
+
+    const { data, error: fnError } = await supabase.functions.invoke('feature-listing-free-promo', {
+      body: {
+        listing_id: listing.id,
+        buyer_id: myId,
+      },
+    });
+
+    setPaying(false);
+
+    if (fnError || data?.error) {
+      setError(fnError?.message || data?.error || 'Could not feature this listing. Please try again.');
+      return;
+    }
+
+    setListing((prev: any) => ({ ...prev, featured_until: data.featured_until }));
+    setSuccess(true);
   }
 
   async function handlePay() {
@@ -187,7 +212,14 @@ export default function FeatureListingPayScreen() {
 
         <View style={styles.priceCard}>
           <Text style={styles.priceLabel}>7 days Featured</Text>
-          <Text style={styles.priceValue}>${PRICE.toFixed(2)}</Text>
+          {isPromoActive() ? (
+            <>
+              <Text style={[styles.priceValue, { color: GREEN }]}>FREE</Text>
+              <Text style={styles.priceNote}>Normally ${PRICE.toFixed(2)} — launch promo through Jan 31, 2027</Text>
+            </>
+          ) : (
+            <Text style={styles.priceValue}>${PRICE.toFixed(2)}</Text>
+          )}
         </View>
 
         {error ? (
@@ -196,11 +228,13 @@ export default function FeatureListingPayScreen() {
 
         <TouchableOpacity
           style={[styles.payBtn, (paying || verifying) && { opacity: 0.6 }]}
-          onPress={handlePay}
+          onPress={isPromoActive() ? handleFeatureFree : handlePay}
           disabled={paying || verifying}
         >
           {paying || verifying
             ? <ActivityIndicator color={BLACK} />
+            : isPromoActive()
+            ? <Text style={styles.payBtnText}>Feature free — launch promo</Text>
             : <Text style={styles.payBtnText}>Pay ${PRICE.toFixed(2)} with Paynow</Text>
           }
         </TouchableOpacity>
@@ -229,6 +263,7 @@ const styles = StyleSheet.create({
   priceCard: { backgroundColor: DARK, borderRadius: 14, padding: 20, alignItems: 'center', marginBottom: 20, borderWidth: 1, borderColor: GOLD },
   priceLabel: { color: GREY, fontSize: 12, marginBottom: 6 },
   priceValue: { color: GOLD, fontSize: 32, fontWeight: '800' },
+  priceNote: { color: GREY, fontSize: 11, marginTop: 6, textAlign: 'center' },
 
   errorBox: { backgroundColor: '#3a1a1a', borderRadius: 10, padding: 12, marginBottom: 16 },
   errorText: { color: '#ff8a8a', fontSize: 13, textAlign: 'center' },
