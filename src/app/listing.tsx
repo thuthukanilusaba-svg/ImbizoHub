@@ -38,6 +38,25 @@
 // system navigation bar on devices with a taller gesture bar/nav
 // buttons than 28px. Same fix: useSafeAreaInsets(), real inset added on
 // top of the existing padding instead of a hardcoded number.
+//
+// FIX (found during a thorough review): the Feature-listing button
+// always said "$5" regardless of the launch promo (Featured Listing
+// has been free through Jan 31, 2027 since earlier today) — same
+// stale-text pattern already caught and fixed on browse-wanted.tsx and
+// hirevan.tsx. Now branches on the same isPromoActive() check used
+// consistently elsewhere.
+//
+// FIX (found during the same review): handleMarkAsSold() and
+// handleReactivate() updated listings by id alone, with no
+// .eq('user_id', myId) ownership filter — the one place in this file
+// that broke from the pattern used consistently everywhere else in
+// this app (dealer.tsx's dispatch photo upload, delivery-track.tsx's
+// PIN generation, etc.), where ownership is always filtered directly
+// in the query as defense-in-depth, not left to RLS alone. The button
+// itself is already owner-gated client-side, so this may have been
+// redundant if RLS independently covers it — added anyway for
+// consistency and because it's harmless either way, unlike leaving a
+// genuine gap if RLS doesn't.
 
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
@@ -53,9 +72,6 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-// NEW: imports from the local wrapper, not react-native-image-viewing
-// directly — see components/PhotoZoomViewer.native.tsx and .web.tsx for
-// why. Metro picks the right file per platform automatically.
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import PhotoZoomViewer from '../../components/PhotoZoomViewer';
 import { supabase } from '../../lib/supabase';
@@ -64,7 +80,14 @@ const GOLD = '#B8860B';
 const BLACK = '#1A1A18';
 const DARK = '#2a2a2a';
 const GREY = '#AAAAAA';
+const GREEN = '#4fc96e';
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
+
+// NEW: same launch promo window used consistently elsewhere today —
+// needed here so the Feature-listing button reflects the current
+// real price, matching what feature-listing-pay.tsx itself shows.
+const FREE_PROMO_END = new Date('2027-01-31T23:59:59Z');
+const isPromoActive = () => new Date() < FREE_PROMO_END;
 
 export default function ListingScreen() {
   const router = useRouter();
@@ -76,9 +99,7 @@ export default function ListingScreen() {
   const [myId, setMyId] = useState('');
   const [markingAsSold, setMarkingAsSold] = useState(false);
   const [statusError, setStatusError] = useState('');
-  // NEW: the seller's real, paid verification status — see fetchListing()
   const [sellerVerified, setSellerVerified] = useState(false);
-  // NEW: full-screen photo zoom viewer visibility — see top-of-file comment.
   const [zoomVisible, setZoomVisible] = useState(false);
   const scrollRef = useRef<ScrollView>(null);
 
@@ -98,10 +119,6 @@ export default function ListingScreen() {
       .maybeSingle();
     setListing(data);
 
-    // FIX: "Verified" used to just read listing.badge directly, a plain
-    // stored text value with zero enforcement. Now fetches the seller's
-    // real, paid verification status separately (same two-query pattern
-    // already proven correct elsewhere, not a broken embedded-join).
     if (data?.user_id) {
       const { data: seller } = await supabase
         .from('profiles')
@@ -140,10 +157,12 @@ export default function ListingScreen() {
 
     setStatusError('');
     setMarkingAsSold(true);
+    // FIX: added .eq('user_id', myId) — see top-of-file comment.
     const { error } = await supabase
       .from('listings')
       .update({ status: 'sold' })
-      .eq('id', listing.id);
+      .eq('id', listing.id)
+      .eq('user_id', myId);
     setMarkingAsSold(false);
     if (!error) {
       setListing({ ...listing, status: 'sold' });
@@ -155,10 +174,12 @@ export default function ListingScreen() {
   async function handleReactivate() {
     setStatusError('');
     setMarkingAsSold(true);
+    // FIX: added .eq('user_id', myId) — see top-of-file comment.
     const { error } = await supabase
       .from('listings')
       .update({ status: 'active' })
-      .eq('id', listing.id);
+      .eq('id', listing.id)
+      .eq('user_id', myId);
     setMarkingAsSold(false);
     if (!error) {
       setListing({ ...listing, status: 'active' });
@@ -218,9 +239,6 @@ export default function ListingScreen() {
                 scrollEventThrottle={16}
               >
                 {photos.map((url, i) => (
-                  // NEW: wrapped in TouchableOpacity to open the
-                  // full-screen zoom viewer — opens on whichever photo
-                  // was actually tapped, not always the first one.
                   <TouchableOpacity
                     key={i}
                     activeOpacity={0.95}
@@ -252,7 +270,6 @@ export default function ListingScreen() {
             </View>
           )}
 
-          {/* Sold overlay */}
           {isSold && (
             <View style={styles.soldOverlay}>
               <Text style={styles.soldOverlayText}>SOLD</Text>
@@ -304,9 +321,6 @@ export default function ListingScreen() {
             </View>
           ) : null}
 
-          {/* NEW: real purchase entry points for the owner — previously
-              there was no way to actually buy either of these upgrades
-              anywhere in the app. */}
           {isOwner && !isSold && (
             <View style={styles.promoRow}>
               {!listing.featured_until || new Date(listing.featured_until).getTime() < Date.now() ? (
@@ -314,7 +328,9 @@ export default function ListingScreen() {
                   style={styles.promoBtn}
                   onPress={() => router.push(`/feature-listing-pay?listing_id=${listing.id}`)}
                 >
-                  <Text style={styles.promoBtnText}>⭐ Feature this listing — $5</Text>
+                  <Text style={[styles.promoBtnText, isPromoActive() && { color: GREEN }]}>
+                    ⭐ Feature this listing — {isPromoActive() ? 'FREE (launch promo)' : '$5'}
+                  </Text>
                 </TouchableOpacity>
               ) : (
                 <View style={styles.promoActiveBox}>
@@ -334,7 +350,6 @@ export default function ListingScreen() {
             </View>
           )}
 
-          {/* Mark as sold / reactivate — only visible to owner */}
           {isOwner && (
             <TouchableOpacity
               style={[styles.soldToggleBtn, isSold && styles.reactivateBtn]}
@@ -350,10 +365,6 @@ export default function ListingScreen() {
             </TouchableOpacity>
           )}
 
-          {/* NEW: real entry point for reporting a seller — previously
-              nowhere in the app to do this at all. Kept deliberately
-              low-key (a plain text link, not a prominent button) since
-              this is a rare-use safety feature, not a primary action. */}
           {!isOwner && (
             <TouchableOpacity
               style={styles.reportLink}
@@ -366,28 +377,11 @@ export default function ListingScreen() {
           )}
         </View>
 
-        {/* FIX: this spacer reserves room above the floating actionBar
-            below so scrolled-to-bottom content (here, the owner's "Mark
-            as sold" button) doesn't end up partially covered by it. It
-            was a hardcoded height: 100 — a static guess that only held
-            up on devices with near-zero safe-area inset. The actionBar
-            itself is genuinely taller than that on any phone with a
-            real bottom inset (paddingBottom: 16 + insets.bottom, per
-            the FIX above), so the reserved space fell short by exactly
-            insets.bottom on those devices, letting the actionBar creep
-            up over the sold-toggle button. Same fix as the actionBar's
-            own padding: add the real inset instead of trusting a fixed
-            number. */}
         <View style={{ height: 100 + insets.bottom }} />
       </ScrollView>
 
       {/* Bottom action bar */}
       {isOwner ? (
-        // FIX: owner now always gets "Message buyers", sold or not —
-        // previously this whole block was gated by `!isSold`, meaning a
-        // seller lost access to messaging buyers the moment they marked
-        // their own listing sold, with no equivalent offered anywhere on
-        // this screen.
         <View style={[styles.actionBar, { paddingBottom: 16 + insets.bottom }]}>
           <TouchableOpacity
             style={styles.chatBtn}
@@ -407,9 +401,6 @@ export default function ListingScreen() {
           <TouchableOpacity
             style={styles.chatBtn}
             onPress={() => {
-              // Chat is unconditionally free for everyone — owner or buyer.
-              // The "Arrange deal" fee gate lives inside chat.tsx itself,
-              // not here. This screen should never route to /unlock.
               router.push(`/chat?listing_id=${listing.id}&receiver_id=${listing.user_id}`);
             }}
           >
@@ -418,11 +409,6 @@ export default function ListingScreen() {
         </View>
       )}
 
-      {/* NEW: full-screen zoom viewer — see top-of-file comment.
-          Renders on top of everything else (including the action bar)
-          when visible=true, with its own built-in close (X) button,
-          swipe-down-to-dismiss, and pinch/double-tap zoom. imageIndex
-          controls which photo it opens on. */}
       <PhotoZoomViewer
         photos={photos}
         imageIndex={activeIndex}

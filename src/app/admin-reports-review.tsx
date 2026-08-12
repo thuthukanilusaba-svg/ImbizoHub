@@ -24,8 +24,8 @@
 import { useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import {
-  ActivityIndicator, Image, KeyboardAvoidingView, Platform, ScrollView,
-  StyleSheet, Text, TextInput, TouchableOpacity, View,
+  ActivityIndicator, Image, Platform, RefreshControl, ScrollView, StyleSheet,
+  Text, TextInput, TouchableOpacity, View,
 } from 'react-native';
 import { supabase } from '../../lib/supabase';
 
@@ -75,8 +75,20 @@ export default function AdminVerificationReviewScreen() {
   const [actioningId, setActioningId] = useState<string | null>(null);
   const [rejectingId, setRejectingId] = useState<string | null>(null);
   const [rejectReason, setRejectReason] = useState('');
+  // NEW: document signed URLs expire after SIGNED_URL_TTL_SECONDS (5
+  // minutes) — an admin who leaves this screen open longer than that
+  // would see broken images with no obvious way to fix it. Pull-to-
+  // refresh gives a direct, discoverable way to regenerate them,
+  // instead of navigating away and back.
+  const [refreshing, setRefreshing] = useState(false);
 
   useEffect(() => { load(); }, [filter]);
+
+  async function handleRefresh() {
+    setRefreshing(true);
+    await load();
+    setRefreshing(false);
+  }
 
   async function load() {
     setLoading(true);
@@ -87,9 +99,6 @@ export default function AdminVerificationReviewScreen() {
     });
 
     if (rpcError) {
-      // The RPC itself raises "Not authorized" for non-admins — treat
-      // any error from this call as "you don't have access", not just
-      // a generic failure.
       setAuthorized(false);
       setLoading(false);
       return;
@@ -97,10 +106,6 @@ export default function AdminVerificationReviewScreen() {
 
     const list: PendingItem[] = data ?? [];
 
-    // Signed URLs for the private bucket — admins can generate these
-    // for any path thanks to the "Admins read any verification
-    // document" storage policy, unlike regular users who are limited to
-    // their own folder.
     const withUrls = await Promise.all(
       list.map(async (item) => {
         const { data: signed } = await supabase.storage
@@ -176,19 +181,15 @@ export default function AdminVerificationReviewScreen() {
   }
 
   return (
-    <KeyboardAvoidingView
-      style={styles.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-    >
-      <ScrollView contentContainerStyle={styles.content}>
+    <View style={styles.container}>
+      <ScrollView
+        contentContainerStyle={styles.content}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={GOLD} />}
+      >
         <View style={styles.topRow}>
           <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
             <Text style={styles.backText}>← Back</Text>
           </TouchableOpacity>
-          {/* NEW: cross-link to the reports admin screen — see top-of-file
-              comment. Small, deliberately not a full nav bar; just a
-              way to move between the two admin screens once you're
-              already in one of them via a direct link. */}
           <TouchableOpacity onPress={() => router.push('/admin-reports-review')}>
             <Text style={styles.crossLinkText}>Reports →</Text>
           </TouchableOpacity>
@@ -287,7 +288,22 @@ export default function AdminVerificationReviewScreen() {
                   </TouchableOpacity>
                   <TouchableOpacity
                     style={styles.rejectBtn}
-                    onPress={() => setRejectingId(item.request_id)}
+                    onPress={() => {
+                      // FIX (real bug, found during a thorough review):
+                      // rejectReason is a single shared string across
+                      // every item in this list, not per-item. Without
+                      // resetting it here, an admin who starts typing a
+                      // reason for one applicant, then taps "Reject" on
+                      // a DIFFERENT applicant instead (without
+                      // confirming the first), would carry that
+                      // still-typed text over — potentially confirming
+                      // a rejection for the second applicant using a
+                      // reason actually written about the first.
+                      // Resetting on open, not just on cancel/confirm,
+                      // closes that gap.
+                      setRejectReason('');
+                      setRejectingId(item.request_id);
+                    }}
                     disabled={isActioning}
                   >
                     <Text style={styles.rejectBtnText}>✕ Reject</Text>
@@ -300,7 +316,7 @@ export default function AdminVerificationReviewScreen() {
 
         <View style={{ height: 40 }} />
       </ScrollView>
-    </KeyboardAvoidingView>
+    </View>
   );
 }
 

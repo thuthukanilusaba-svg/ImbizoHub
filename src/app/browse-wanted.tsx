@@ -29,6 +29,23 @@
 // operator-requests.tsx and quotes.tsx's modal sheets. On any phone
 // with a real gesture-nav bar or home indicator, "Send response" sat
 // partially or fully under the phone's OWN system UI, not the app's.
+//
+// FIX (real staleness bug, found during a thorough review): the
+// success message told every responder a chat would open "once they've
+// paid ImbizoHub's small commission" — unconditionally, even though
+// accepting a Wanted response is currently FREE under the launch promo
+// (through Jan 31, 2027). Same category of pricing-text-accuracy issue
+// spent real effort fixing across the app earlier — now branches on
+// the same isPromoActive() pattern used everywhere else.
+//
+// FIX (real gap, found during the same review): submitResponse() never
+// re-checked that the want was still 'open' before inserting — the
+// modal can stay open indefinitely while someone fills in price,
+// message, and an optional photo, during which the want could have
+// been matched by someone else entirely. Low severity (no money/
+// security at stake, just a stray response nobody will ever act on and
+// mild confusion for the responder), but worth a real check rather
+// than silently allowing it.
 
 import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
@@ -55,6 +72,11 @@ const GOLD = '#B8860B';
 const BLACK = '#1A1A18';
 const DARK = '#2a2a2a';
 const GREY = '#AAAAAA';
+
+// NEW: same launch promo window used everywhere else today — the
+// success message needs to know whether accepting is currently free.
+const FREE_PROMO_END = new Date('2027-01-31T23:59:59Z');
+const isPromoActive = () => new Date() < FREE_PROMO_END;
 
 type ItemRequest = {
   id: string;
@@ -90,10 +112,6 @@ export default function BrowseWantedScreen() {
   const [price, setPrice] = useState('');
   const [message, setMessage] = useState('');
   const [isPhysicalItem, setIsPhysicalItem] = useState(true);
-  // NEW: optional photo of what's being offered — lets a buyer actually
-  // see the item instead of relying purely on price + text. Genuinely
-  // optional: services and sellers without a handy photo can still
-  // respond with none at all.
   const [pickedImageUri, setPickedImageUri] = useState<string | null>(null);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -150,9 +168,6 @@ export default function BrowseWantedScreen() {
     setModalVisible(true);
   }
 
-  // NEW: same optional-photo pattern used elsewhere (seller-deliveries.tsx's
-  // dispatch photo, profile.tsx's avatar) — gallery and camera share the
-  // upload logic, only the picker call differs.
   async function pickPhoto() {
     setSubmitError('');
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -196,6 +211,27 @@ export default function BrowseWantedScreen() {
       return;
     }
 
+    if (!selected) {
+      setSubmitError('Something went wrong. Please try again.');
+      return;
+    }
+
+    // FIX: re-check the want is still open right before submitting —
+    // see top-of-file comment. The modal can stay open a long time
+    // (filling in price, message, an optional photo), during which the
+    // want could have been matched by someone else. Cheap check, real
+    // gap it closes.
+    const { data: stillOpen } = await supabase
+      .from('item_requests')
+      .select('status')
+      .eq('id', selected.id)
+      .maybeSingle();
+
+    if (!stillOpen || stillOpen.status !== 'open') {
+      setSubmitError('This want has already been matched with someone else.');
+      return;
+    }
+
     let { data: { user } } = await supabase.auth.getUser();
     if (!user) {
       const { data, error: signInError } = await supabase.auth.signInAnonymously();
@@ -212,12 +248,6 @@ export default function BrowseWantedScreen() {
 
     setSubmitting(true);
 
-    // NEW: upload the optional photo first, if one was picked — same
-    // ArrayBuffer-based prepareUpload() approach used throughout the
-    // app (avoids the React Native Blob-from-ArrayBuffer failure mode).
-    // Reuses the 'listing-photos' bucket, same as dispatch photos on
-    // seller-deliveries.tsx — no need for a dedicated bucket just for
-    // this.
     let imageUrl: string | null = null;
     if (pickedImageUri) {
       setUploadingPhoto(true);
@@ -248,7 +278,7 @@ export default function BrowseWantedScreen() {
     }
 
     const { error } = await supabase.from('item_responses').insert({
-      item_request_id: selected!.id,
+      item_request_id: selected.id,
       responder_id: user.id,
       price: priceNum,
       message: message.trim(),
@@ -261,7 +291,7 @@ export default function BrowseWantedScreen() {
     if (error) { setSubmitError(error.message); return; }
 
     setSubmitted(true);
-    setMyResponseIds((prev) => new Set(prev).add(selected!.id));
+    setMyResponseIds((prev) => new Set(prev).add(selected.id));
   }
 
   if (loading) {
@@ -395,11 +425,6 @@ export default function BrowseWantedScreen() {
                     : 'Services (like a builder or mechanic) aren\'t deliverable — the buyer will arrange details with you directly in chat.'}
                 </Text>
 
-                {/* NEW: optional photo of the actual item being
-                    offered — closes a real gap where a buyer could
-                    only ever go on price + text, never actually see
-                    what's on offer before deciding who to chat with or
-                    accept. */}
                 <Text style={styles.modalLabel}>Photo of the item (optional)</Text>
                 {pickedImageUri ? (
                   <>
@@ -442,8 +467,9 @@ export default function BrowseWantedScreen() {
                 <Text style={styles.successEmoji}>✅</Text>
                 <Text style={styles.successTitle}>Response sent!</Text>
                 <Text style={styles.successBody}>
-                  The buyer will review your price. If they pick you, you'll be notified and a chat will
-                  open once they've paid ImbizoHub's small commission.
+                  {isPromoActive()
+                    ? 'The buyer will review your price. If they pick you, you\'ll be notified and a chat will open right away — free, launch promotion through Jan 31, 2027.'
+                    : 'The buyer will review your price. If they pick you, you\'ll be notified and a chat will open once they\'ve paid ImbizoHub\'s small commission.'}
                 </Text>
                 <TouchableOpacity style={styles.submitModalBtn} onPress={() => setModalVisible(false)}>
                   <Text style={styles.submitModalBtnText}>Done</Text>
@@ -486,16 +512,6 @@ const styles = StyleSheet.create({
   card: {
     backgroundColor: BLACK, borderRadius: 14, padding: 16,
     borderWidth: 0.5, borderColor: '#333',
-    // FIX (real bug, directly reported): spacing between cards used to
-    // come from `gap: 14` on the FlatList's contentContainerStyle
-    // instead — a known cross-platform quirk where gap doesn't always
-    // apply reliably right at the boundary between the LAST real list
-    // item and whatever renders after it (here, the "+ Post a want"
-    // footer). That's exactly why only the last card's "You've
-    // responded" badge was getting visually overlapped, from below,
-    // while every other card in the list was fine. marginBottom here
-    // is well-supported everywhere and doesn't depend on FlatList's
-    // gap-handling behavior at all.
     marginBottom: 14,
   },
   cardTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10, marginBottom: 6 },
@@ -538,7 +554,6 @@ const styles = StyleSheet.create({
   itemTypeChipText: { color: GREY, fontSize: 12, fontWeight: '600' },
   itemTypeChipTextActive: { color: GOLD, fontWeight: '700' },
   itemTypeHint: { color: '#888', fontSize: 11, marginTop: 8, lineHeight: 15 },
-  // NEW: optional response-photo styles
   photoOptionsRow: { flexDirection: 'row', gap: 8 },
   photoOptionBtn: { flex: 1, backgroundColor: DARK, borderRadius: 10, paddingVertical: 14, alignItems: 'center', borderWidth: 1, borderColor: '#444', borderStyle: 'dashed' },
   photoOptionBtnText: { color: '#fff', fontSize: 12, fontWeight: '700', textAlign: 'center' },

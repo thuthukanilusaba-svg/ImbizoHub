@@ -1,6 +1,17 @@
 // app/dealer.tsx
 // Dealer/Operator dashboard
-// Shows dealer stats + inventory for sellers (account_type === 'seller')
+// Shows dealer stats + inventory for anyone with at least one listing
+// (myListingCount > 0) — CONFIRMED as the intended definition during a
+// review pass, not account_type === 'seller' as an earlier version of
+// this comment claimed. accountType was being fetched into state but
+// never actually used anywhere in the component; removed for clarity
+// rather than left as dead state implying a gate that doesn't exist.
+// Given any real account can post a listing regardless of account_type,
+// "has a listing" is the more meaningful real-world signal for whether
+// someone needs dealer tools — a delivery operator who also sells a
+// few things should see listing management too, matching the same
+// dual-role spirit already used elsewhere in this file.
+//
 // Shows delivery jobs for paid delivery operators
 // Both sections render independently — a seller who is ALSO a paid delivery
 // operator sees both, not just one. Previously these were mutually
@@ -40,6 +51,23 @@
 // deciding whether to accept a job. An operator could see the fee
 // ($15) without any clear signal that meant "large item, bring a
 // van/truck" specifically.
+//
+// FIX (real race-condition bug, found during a thorough review):
+// acceptJob() and confirmDelivery() both relied on a `.eq('status',
+// 'requested')` / `.eq('pin', entered)` guard to prevent double-
+// acceptance or a stale-PIN confirmation — a correct guard on its own,
+// but neither call checked how many rows it actually matched. If two
+// operators tapped "Accept" on the same job near-simultaneously, the
+// losing operator's update would match ZERO rows (the other operator
+// already changed the status) yet still return no error — and the code
+// treated "no error" as success regardless, optimistically showing the
+// job in the losing operator's own "My deliveries" list even though the
+// database never actually assigned it to them. Same pattern in
+// confirmDelivery(): a buyer regenerating their PIN at the wrong moment
+// could cause an operator's correct-at-the-time PIN entry to silently
+// match nothing, while still being shown as "confirmed." Both now use
+// .select() and explicitly check whether any row actually came back
+// before treating the action as successful.
 
 import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
@@ -57,7 +85,6 @@ export default function DealerScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const [myId, setMyId] = useState('');
-  const [accountType, setAccountType] = useState('');
   const [myListingCount, setMyListingCount] = useState(0);
   const [myFullName, setMyFullName] = useState('');
   const [myEmail, setMyEmail] = useState('');
@@ -67,6 +94,7 @@ export default function DealerScreen() {
   const [myJobs, setMyJobs] = useState<any[]>([]);
   const [loadingJobs, setLoadingJobs] = useState(false);
   const [acceptingId, setAcceptingId] = useState<string | null>(null);
+  const [acceptError, setAcceptError] = useState('');
   const [pinInputs, setPinInputs] = useState<Record<string, string>>({});
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
   const [pinErrors, setPinErrors] = useState<Record<string, string>>({});
@@ -86,12 +114,11 @@ export default function DealerScreen() {
 
     const { data: profile } = await supabase
       .from('profiles')
-      .select('account_type, full_name, dealer_pro_active, dealer_pro_expires_at')
+      .select('full_name, dealer_pro_active, dealer_pro_expires_at')
       .eq('id', user.id)
       .maybeSingle();
 
     if (profile) {
-      setAccountType(profile.account_type ?? '');
       setMyFullName(profile.full_name ?? '');
       setDealerProActive(!!(
         profile.dealer_pro_active &&
@@ -190,8 +217,13 @@ export default function DealerScreen() {
   async function acceptJob(bookingId: string) {
     if (!deliveryOperator) return;
     setAcceptingId(bookingId);
+    setAcceptError('');
 
-    const { error } = await supabase
+    // FIX: added .select() and now checks whether any row actually
+    // came back — see top-of-file comment. Without this, a losing
+    // operator in a race against another operator accepting the same
+    // job would see a false "success."
+    const { data, error } = await supabase
       .from('delivery_bookings')
       .update({
         operator_id: deliveryOperator.id,
@@ -199,16 +231,30 @@ export default function DealerScreen() {
         accepted_at: new Date().toISOString(),
       })
       .eq('id', bookingId)
-      .eq('status', 'requested');
+      .eq('status', 'requested')
+      .select();
 
     setAcceptingId(null);
 
-    if (!error) {
-      const job = openJobs.find(j => j.id === bookingId);
-      if (job) {
-        setOpenJobs(prev => prev.filter(j => j.id !== bookingId));
-        setMyJobs(prev => [{ ...job, status: 'accepted', operator_id: deliveryOperator.id }, ...prev]);
-      }
+    if (error) {
+      setAcceptError(error.message);
+      return;
+    }
+
+    if (!data || data.length === 0) {
+      // Someone else already accepted this job in the time between it
+      // loading and this tap — remove it from the open list so it
+      // doesn't look falsely still available, and say so plainly
+      // rather than silently doing nothing.
+      setOpenJobs(prev => prev.filter(j => j.id !== bookingId));
+      setAcceptError('This job was just accepted by another driver.');
+      return;
+    }
+
+    const job = openJobs.find(j => j.id === bookingId);
+    if (job) {
+      setOpenJobs(prev => prev.filter(j => j.id !== bookingId));
+      setMyJobs(prev => [{ ...job, status: 'accepted', operator_id: deliveryOperator.id }, ...prev]);
     }
   }
 
@@ -262,16 +308,32 @@ export default function DealerScreen() {
 
     setConfirmingId(job.id);
 
-    const { error } = await supabase
+    // FIX: added .select() and now checks whether any row came back —
+    // same reasoning as acceptJob() above. If the buyer regenerated
+    // their PIN in the moment between this screen loading job.pin and
+    // this submit, the .eq('pin', entered) guard would correctly
+    // reject the stale PIN by matching zero rows — but the old code
+    // only checked for a query ERROR, which this isn't, so it would
+    // have shown "confirmed" without anything actually being confirmed.
+    const { data, error } = await supabase
       .from('delivery_bookings')
       .update({ status: 'confirmed', confirmed_at: new Date().toISOString() })
       .eq('id', job.id)
-      .eq('pin', entered);
+      .eq('pin', entered)
+      .select();
 
     setConfirmingId(null);
 
     if (error) {
       setPinErrors(prev => ({ ...prev, [job.id]: error.message }));
+      return;
+    }
+
+    if (!data || data.length === 0) {
+      setPinErrors(prev => ({
+        ...prev,
+        [job.id]: 'That PIN no longer matches — ask the buyer for their current PIN and try again.',
+      }));
       return;
     }
 
@@ -474,6 +536,10 @@ export default function DealerScreen() {
                   </TouchableOpacity>
                 </View>
 
+                {acceptError ? (
+                  <View style={styles.acceptErrorBox}><Text style={styles.acceptErrorText}>⚠️ {acceptError}</Text></View>
+                ) : null}
+
                 {loadingJobs ? (
                   <ActivityIndicator color={GOLD} style={{ marginTop: 20 }} />
                 ) : openJobs.length === 0 ? (
@@ -493,14 +559,6 @@ export default function DealerScreen() {
                         </View>
                       </View>
 
-                      {/* NEW: closes a real gap — the size tier was
-                          built into pricing and driver-matching, but
-                          nothing ever actually SHOWED it to the
-                          operator deciding whether to accept a job.
-                          Only rendered when parcel_size is actually
-                          set — older bookings from before this column
-                          existed just won't show a badge at all,
-                          rather than a broken/blank one. */}
                       {job.parcel_size && (
                         <View style={[
                           styles.jobSizeBadge,
@@ -555,10 +613,6 @@ export default function DealerScreen() {
                         </Text>
                       </View>
 
-                      {/* NEW: same size badge as the Open requests
-                          section above, so an operator can still see
-                          what they signed up for once a job's already
-                          accepted, not just before accepting. */}
                       {job.parcel_size && (
                         <View style={[
                           styles.jobSizeBadge,
@@ -648,19 +702,6 @@ export default function DealerScreen() {
               )}
 
               <View style={styles.section}>
-                {/* FIX: this used to be a hardcoded, fake stats grid
-                    ($2,840, 23, 12, 4.9, "↑ 18% vs last month", etc.) —
-                    static text with zero real data behind it, shown to
-                    EVERY seller for free regardless of Dealer Pro
-                    status. Doubly misleading: it looked like real
-                    performance data, and it undercut the actual paid
-                    Dealer Pro analytics benefit by giving away a fake
-                    version of it for free. Replaced with a real,
-                    honest link to analytics.tsx — which already
-                    computes genuine numbers from the listings table
-                    and correctly gates them behind an active Dealer
-                    Pro subscription itself, so there's nothing to
-                    duplicate or get out of sync here. */}
                 <TouchableOpacity style={styles.analyticsTeaser} onPress={() => router.push('/analytics')}>
                   <View style={{ flex: 1 }}>
                     <Text style={styles.analyticsTeaserTitle}>📊 Listing performance</Text>
@@ -775,6 +816,9 @@ const styles = StyleSheet.create({
   sectionTitle: { color: '#fff', fontSize: 13, fontWeight: '700', marginBottom: 4 },
   refreshText: { color: GOLD, fontSize: 11 },
 
+  acceptErrorBox: { backgroundColor: '#3a1a1a', borderRadius: 10, padding: 10, marginBottom: 10 },
+  acceptErrorText: { color: '#ff8a8a', fontSize: 12 },
+
   regRequiredCard: { backgroundColor: DARK, borderRadius: 14, padding: 24, alignItems: 'center', borderWidth: 1, borderColor: GOLD },
   regRequiredEmoji: { fontSize: 40, marginBottom: 10 },
   regRequiredTitle: { color: '#fff', fontSize: 16, fontWeight: '800', marginBottom: 8, textAlign: 'center' },
@@ -807,10 +851,6 @@ const styles = StyleSheet.create({
   jobTypeBadge: { borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3 },
   jobTypeBadgeText: { fontSize: 10, fontWeight: '700' },
 
-  // NEW: item-size badge styles — small items get a subtle neutral
-  // treatment, large items get a visually louder gold/warning
-  // treatment since that's the one operators specifically need to
-  // notice before accepting.
   jobSizeBadge: { alignSelf: 'flex-start', backgroundColor: '#1a2a1a', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 5, marginBottom: 8 },
   jobSizeBadgeLarge: { backgroundColor: '#3a2800', borderWidth: 1, borderColor: GOLD },
   jobSizeBadgeText: { color: '#4fc96e', fontSize: 11, fontWeight: '700' },
@@ -850,8 +890,6 @@ const styles = StyleSheet.create({
   statTrend: { color: '#4A90D9', fontSize: 11, marginTop: 4 },
   statTrendGrey: { color: '#555', fontSize: 11, marginTop: 4 },
   statTrendGold: { color: GOLD, fontSize: 11, marginTop: 4 },
-  // NEW: real, honest teaser linking to the actual analytics.tsx
-  // screen, replacing the removed fake stats grid above.
   analyticsTeaser: { backgroundColor: DARK, borderRadius: 12, padding: 16, flexDirection: 'row', alignItems: 'center', borderWidth: 0.5, borderColor: '#333' },
   analyticsTeaserTitle: { color: '#fff', fontSize: 14, fontWeight: '700', marginBottom: 3 },
   analyticsTeaserSub: { color: GREY, fontSize: 11 },

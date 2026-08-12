@@ -1,3 +1,31 @@
+// app/login.tsx
+//
+// FIX (found during a thorough review): handleLogin() submitted
+// directly to Supabase with no check for empty email/password —
+// tapping "Sign in" on an empty form wasted a real network round-trip
+// for something that should be caught instantly, client-side. The
+// button was also only disabled while loading, never tied to whether
+// the fields were actually filled — every other form reviewed today
+// (forgot-password.tsx, for instance) disables on empty input too.
+// Both fixed for consistency with that established pattern.
+//
+// FIX (built as a follow-up, not folded into the pass above): if
+// someone had been browsing anonymously — posted a want, had
+// conversations, everything confirmed reachable anonymously across
+// today's review — logging into a DIFFERENT, existing real account
+// here meant Supabase's signInWithPassword() swapped them onto a
+// completely different user id. That anonymous activity didn't merge
+// or transfer; it just became invisible, still sitting in the
+// database under an id they could no longer access. Now captures the
+// anonymous session's id right before signing in, then calls
+// merge_anonymous_session() (see merge-anonymous-session.sql)
+// afterward to re-assign that activity onto the real, now-
+// authenticated account. Best-effort: if the merge itself fails for
+// any reason, the login still succeeds rather than blocking someone
+// from signing in over a secondary step — the anonymous data would
+// just remain orphaned in that unlikely case, same as before this fix
+// existed.
+
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
 import { ActivityIndicator, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
@@ -15,15 +43,44 @@ export default function LoginScreen() {
   const [error, setError] = useState('');
 
   async function handleLogin() {
+    if (!email.trim() || !password) {
+      setError('Please enter your email and password.');
+      return;
+    }
+
     setLoading(true);
     setError('');
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
-    if (error) {
-      setError(error.message);
-    } else {
-      router.replace('/');
+
+    // NEW: capture the current anonymous session's id (if any) BEFORE
+    // signing in — signInWithPassword replaces the session entirely,
+    // so this is the only chance to know what to merge afterward.
+    const { data: { user: previousUser } } = await supabase.auth.getUser();
+    const previousAnonymousId = previousUser?.is_anonymous ? previousUser.id : null;
+
+    const { error: signInError } = await supabase.auth.signInWithPassword({
+      email: email.trim(),
+      password,
+    });
+
+    if (signInError) {
+      setError(signInError.message);
+      setLoading(false);
+      return;
     }
+
+    // NEW: merge any anonymous activity into the now-authenticated
+    // real account. Best-effort — see top-of-file comment.
+    if (previousAnonymousId) {
+      const { error: mergeError } = await supabase.rpc('merge_anonymous_session', {
+        p_anonymous_id: previousAnonymousId,
+      });
+      if (mergeError) {
+        console.log('Anonymous session merge failed (non-fatal):', mergeError.message);
+      }
+    }
+
     setLoading(false);
+    router.replace('/');
   }
 
   return (
@@ -59,14 +116,15 @@ export default function LoginScreen() {
           secureTextEntry
         />
 
-        {/* NEW: previously there was no password recovery path at all
-            anywhere in the app — see forgot-password.tsx for the full
-            reasoning and known caveats. */}
         <TouchableOpacity onPress={() => router.push('/forgot-password')} style={styles.forgotLink}>
           <Text style={styles.forgotLinkText}>Forgot your password?</Text>
         </TouchableOpacity>
 
-        <TouchableOpacity style={styles.button} onPress={handleLogin} disabled={loading}>
+        <TouchableOpacity
+          style={[styles.button, (loading || !email.trim() || !password) && { opacity: 0.6 }]}
+          onPress={handleLogin}
+          disabled={loading || !email.trim() || !password}
+        >
           {loading ? <ActivityIndicator color={BLACK} /> : <Text style={styles.buttonText}>Sign in</Text>}
         </TouchableOpacity>
 

@@ -23,8 +23,8 @@
 import { useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import {
-    ActivityIndicator, Platform, ScrollView, StyleSheet,
-    Text, TextInput, TouchableOpacity, View,
+  ActivityIndicator, Platform, ScrollView, StyleSheet,
+  Text, TextInput, TouchableOpacity, View,
 } from 'react-native';
 import { supabase } from '../../lib/supabase';
 
@@ -68,7 +68,7 @@ type Incident = {
 export default function AdminSecurityIncidentsScreen() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
-  const [authorized, setAuthorized] = useState(true);
+  const [authorized, setAuthorized] = useState(false);
   const [incidents, setIncidents] = useState<Incident[]>([]);
   const [error, setError] = useState('');
 
@@ -88,13 +88,45 @@ export default function AdminSecurityIncidentsScreen() {
     setLoading(true);
     setError('');
 
+    // FIX (real bug, found during a thorough review): this used to
+    // infer admin status purely from whether the incidents query
+    // below returned an error — but RLS on a plain SELECT typically
+    // filters rows SILENTLY rather than raising an error (unlike the
+    // RPC-based admin screens, which explicitly raise an exception).
+    // That meant a non-admin reaching this screen would never actually
+    // see "Not authorized" — they'd see the full admin UI with just an
+    // empty list, since RLS quietly returned zero rows instead of
+    // erroring. The underlying data was always protected either way,
+    // but the UI-gating didn't match what it claimed to do. Checking
+    // profiles.is_admin explicitly instead of inferring it.
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      setAuthorized(false);
+      setLoading(false);
+      return;
+    }
+
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('is_admin')
+      .eq('id', user.id)
+      .maybeSingle();
+
+    if (!profile?.is_admin) {
+      setAuthorized(false);
+      setLoading(false);
+      return;
+    }
+
+    setAuthorized(true);
+
     const { data, error: fetchError } = await supabase
       .from('security_incidents')
       .select('*')
       .order('discovered_at', { ascending: false });
 
     if (fetchError) {
-      setAuthorized(false);
+      setError(fetchError.message);
       setLoading(false);
       return;
     }

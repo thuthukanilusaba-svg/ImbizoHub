@@ -52,12 +52,69 @@ export default function RootLayout() {
         console.log('Notification received:', notification);
       },
       (response) => {
+        // FIX (real gap, found during a thorough review): this only
+        // ever handled 'message' and 'meetpay' — every other
+        // notification type actually built and sent today (unlock,
+        // wanted_match, trip_deposit, quote_declined,
+        // registration_expiring) fell through doing nothing at all.
+        // Someone getting a real, specific push like "Your quote was
+        // accepted!" and tapping it would just land wherever the app
+        // already was, with no navigation to the actual context.
+        // Routes below use only destinations already confirmed real
+        // and working elsewhere in the app today — not guessed at.
+        //
+        // NOT fixed here, and can't be from this file alone:
+        // 'delivery', 'delivery_booked', and 'confirmed' notifications
+        // (see notifications.ts's showLocalNotification helpers) never
+        // included an id in their own data payload to begin with — so
+        // even with correct routing logic here, there's nothing to
+        // deep-link TO for those three. That needs a payload fix in
+        // notifications.ts itself, a separate change from this file.
         const data = response.notification.request.content.data;
+
         if (data?.type === 'message' && data?.listing_id) {
           router.push(`/chat?listing_id=${data.listing_id}`);
         } else if (data?.type === 'meetpay') {
           router.push('/chat');
+        } else if (data?.type === 'unlock' && data?.listing_id) {
+          router.push(`/chat?listing_id=${data.listing_id}`);
+        } else if (data?.type === 'wanted_match' && data?.item_request_id) {
+          router.push(`/chat?item_request_id=${data.item_request_id}`);
+        } else if (data?.type === 'trip_deposit' && data?.request_id) {
+          router.push(`/chat?request_id=${data.request_id}`);
+        } else if (data?.type === 'quote_declined') {
+          router.push('/operator-requests');
+        } else if (data?.type === 'registration_expiring') {
+          router.push(
+            data?.operator_type === 'delivery'
+              ? '/delivery-operator-register-pay'
+              : '/operator-register-pay'
+          );
+        } else if (data?.type === 'delivery' && data?.booking_id) {
+          // FIX: closes the gap flagged two turns ago — now that
+          // delivery-track.tsx is confirmed real (and its own missing
+          // ownership check has been fixed), this routes correctly.
+          router.push(`/delivery-track?booking_id=${data.booking_id}`);
+        } else if (data?.type === 'confirmed' && data?.session_id) {
+          // FIX: closes the second gap — routes to the real /rating
+          // screen, confirmed via delivery-track.tsx's own "Rate this
+          // delivery" button. Falls through silently if any of the
+          // required fields are missing (matches this file's existing
+          // pattern of never navigating with an incomplete URL).
+          if (data?.reviewee_id && data?.role) {
+            router.push(
+              `/rating?session_id=${data.session_id}&reviewee_id=${data.reviewee_id}&role=${data.role}&listing_id=${data?.listing_id ?? ''}`
+            );
+          }
+        } else if (data?.type === 'delivery_booked') {
+          // FIX: closes the last remaining gap — seller-deliveries.tsx
+          // confirmed as the real destination, and confirmed to need
+          // no query param at all (it loads every booking by the
+          // authenticated seller's own id directly), so this is a
+          // plain route, no id required.
+          router.push('/seller-deliveries');
         }
+        // All nine notification types built today are now handled.
       }
     ).then((unsubscribe) => {
       unsubscribeRef.current = unsubscribe;

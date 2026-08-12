@@ -76,7 +76,7 @@ export default function DeliveryTrackScreen() {
     setMyId(user.id);
 
     if (booking_id) {
-      await loadBooking(booking_id, true);
+      await loadBooking(booking_id, true, user.id);
     } else {
       const { data, error: fetchError } = await supabase
         .from('delivery_bookings')
@@ -94,7 +94,7 @@ export default function DeliveryTrackScreen() {
     setLoading(false);
   }
 
-  async function loadBooking(id: string, showLoading: boolean) {
+  async function loadBooking(id: string, showLoading: boolean, buyerId?: string) {
     if (showLoading) setLoading(true);
     const { data, error: fetchError } = await supabase
       .from('delivery_bookings')
@@ -104,6 +104,26 @@ export default function DeliveryTrackScreen() {
 
     if (fetchError) { setError(fetchError.message); setLoading(false); return; }
     if (!data) { setError('Delivery not found.'); setLoading(false); return; }
+
+    // FIX (real security bug, found during a thorough review): this
+    // had no ownership check at all when a booking_id came in via the
+    // URL — any logged-in user who knew or guessed a booking_id could
+    // load full delivery details for someone else's booking, including
+    // driver info AND the actual PIN value (part of the `*` select
+    // above). The PIN is meant to be the buyer's private handover
+    // confirmation code; this screen's own header comment calls it
+    // "Buyer-facing," but nothing actually enforced that. Using the
+    // buyerId passed from init() (captured once, right after auth,
+    // rather than re-fetching auth on every 5-second poll tick) to
+    // reject anything that isn't genuinely this user's own booking.
+    const effectiveBuyerId = buyerId ?? myId;
+    if (effectiveBuyerId && data.buyer_id !== effectiveBuyerId) {
+      setError('This delivery does not belong to your account.');
+      setBooking(null);
+      setLoading(false);
+      return;
+    }
+
     setBooking(data);
     if (showLoading) setLoading(false);
   }

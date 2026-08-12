@@ -24,6 +24,29 @@
 // created server-side by paynow-webhook once payment is confirmed, not
 // here. The driver fee itself is unchanged and stays cash-on-collection;
 // only the $2 platform fee goes through Paynow.
+//
+// FIX (real, serious bug, found during a thorough review): this screen
+// had NO account check at all — the mount-time auth fetch just did
+// nothing if the user was null or anonymous, and confirmBooking() had
+// no check of its own either. That meant a fully anonymous session
+// could complete an actual $2 Paynow payment and create a real
+// delivery_bookings row. This is worse than the "wrong check" version
+// of this bug found on several other screens today, specifically
+// because of what happens AFTER booking: the buyer needs
+// delivery-track.tsx later to generate the PIN and confirm receipt. If
+// an anonymous session is lost between booking and delivery (app
+// reinstalled, data cleared — genuinely common for anonymous sessions),
+// the buyer would be permanently locked out of ever confirming their
+// own delivery, leaving real money and a real physical parcel stuck in
+// limbo. Now checks on mount, before any details can even be filled
+// in, matching post.tsx's reasoning for checking early rather than
+// letting someone invest effort before finding out they can't proceed.
+//
+// FIX (secondary, found in the same pass): findDrivers() validated
+// pickup/dropoff cities but never checked that a "Schedule for later"
+// selection actually had a date picked — someone could toggle
+// scheduled, never pick a date, and the booking would silently proceed
+// as if it were ASAP with no warning at all.
 
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -43,14 +66,6 @@ const GREY = '#AAAAAA';
 const POLL_INTERVAL_MS = 2000;
 const POLL_MAX_ATTEMPTS = 20;
 
-// NEW: driver-matching for large items. vehicle_type is free text
-// entered by the operator at registration (e.g. "Bakkie", "Toyota Hiace
-// van", "Motorbike") — there's no structured vehicle-category field to
-// filter on directly. This is a pragmatic keyword heuristic rather than
-// a hard guarantee: it checks for common large-vehicle words. It can
-// have false negatives (an operator who described their van in an
-// unusual way) but meaningfully avoids the worse problem — showing a
-// motorbike-only operator as a choosable option for a window frame.
 const LARGE_VEHICLE_KEYWORDS = ['van', 'truck', 'bakkie', 'pickup', 'pick-up', 'lorry', 'minibus'];
 
 function canCarryLargeItems(vehicleType: string | null | undefined): boolean {
@@ -70,13 +85,12 @@ export default function DeliveryBookingScreen() {
 
   const isFromWantedMatch = !listing_id && !!item_request_id;
 
+  const [checkingAuth, setCheckingAuth] = useState(true);
   const [myId, setMyId] = useState('');
   const [myEmail, setMyEmail] = useState('');
   const [pickupCity, setPickupCity] = useState('');
   const [dropoffCity, setDropoffCity] = useState('');
   const [parcelDescription, setParcelDescription] = useState('');
-  // NEW: item size tier — see top-of-file comment for the pricing
-  // reasoning. Defaults to 'small' since most listed items are.
   const [parcelSize, setParcelSize] = useState<'small' | 'large'>('small');
   const [deliveryTiming, setDeliveryTiming] = useState<'asap' | 'scheduled'>('asap');
   const [scheduledDate, setScheduledDate] = useState('');
@@ -117,35 +131,37 @@ export default function DeliveryBookingScreen() {
   const [error, setError] = useState('');
   const [step, setStep] = useState<'details' | 'choose-driver' | 'confirm'>('details');
 
-  useEffect(() => {
-    supabase.auth.getUser().then(({ data: { user } }) => {
-      if (user) {
-        setMyId(user.id);
-        setMyEmail(user.email ?? '');
-      }
-    });
-  }, []);
+  useEffect(() => { checkAuth(); }, []);
 
-  // NEW: isIntercity is only ever MEANINGFUL for small items — large
-  // items are always local-only regardless of what cities are typed
-  // (per product decision: "just don't offer intercity as an option
-  // when Large is selected", not a hard block/error). The city
-  // comparison itself still runs the same way underneath; it's just
-  // ignored for fee/type purposes once parcelSize is 'large'.
+  async function checkAuth() {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user || user.is_anonymous) {
+      router.replace('/register');
+      return;
+    }
+    setMyId(user.id);
+    setMyEmail(user.email ?? '');
+    setCheckingAuth(false);
+  }
+
   const citiesDiffer = pickupCity.trim().toLowerCase() !== dropoffCity.trim().toLowerCase()
     && pickupCity.trim() !== '' && dropoffCity.trim() !== '';
   const isIntercity = parcelSize === 'small' && citiesDiffer;
 
   const deliveryFee = parcelSize === 'large' ? 15 : (isIntercity ? 12 : 8);
-  // Large is always recorded as 'local' — there's no 'large_intercity'
-  // concept anywhere in this app; large-item delivery is local-only by
-  // design.
   const deliveryType = parcelSize === 'large' ? 'local' : (isIntercity ? 'intercity' : 'local');
   const BOOKING_FEE = 2;
 
   async function findDrivers() {
     if (!pickupCity.trim() || !dropoffCity.trim()) {
       setError('Please enter both pickup and dropoff cities.');
+      return;
+    }
+    // FIX: see top-of-file comment — was possible to select "Schedule
+    // for later" and proceed all the way to payment without ever
+    // actually picking a date.
+    if (deliveryTiming === 'scheduled' && !scheduledDate) {
+      setError('Please select a date for your scheduled delivery.');
       return;
     }
     setError('');
@@ -167,10 +183,6 @@ export default function DeliveryBookingScreen() {
       return;
     }
 
-    // NEW: for large items, only show operators whose vehicle_type
-    // looks like it can actually carry something bulky — see
-    // canCarryLargeItems() above. Small items keep the full,
-    // unfiltered list, exactly as before this existed.
     const filtered = parcelSize === 'large'
       ? (data ?? []).filter((d) => canCarryLargeItems(d.vehicle_type))
       : (data ?? []);
@@ -215,10 +227,6 @@ export default function DeliveryBookingScreen() {
         dropoff_city: dropoffCity.trim(),
         delivery_type: deliveryType,
         delivery_fee: deliveryFee,
-        // NEW: sent through to create-payment, stored on payment_intents,
-        // then carried into the real delivery_bookings row by
-        // confirm-payment.ts once payment confirms — same pattern
-        // already proven for scheduled_date.
         parcel_size: parcelSize,
         parcel_description: parcelDescription.trim() || undefined,
         scheduled_date: scheduledDate || undefined,
@@ -271,6 +279,14 @@ export default function DeliveryBookingScreen() {
     return 'Confirm booking';
   }
 
+  if (checkingAuth) {
+    return (
+      <View style={[styles.container, { alignItems: 'center', justifyContent: 'center' }]}>
+        <ActivityIndicator size="large" color={GOLD} />
+      </View>
+    );
+  }
+
   if (booked) {
     return (
       <View style={styles.container}>
@@ -292,14 +308,6 @@ export default function DeliveryBookingScreen() {
   }
 
   return (
-    // FIX (real bug, directly reported): this screen had no
-    // KeyboardAvoidingView at all — the pickup/dropoff city fields and
-    // parcel description had nothing protecting them from the
-    // keyboard, unlike most other screens in the app with text inputs.
-    // Same fix pattern used everywhere else: 'padding' on iOS (pushes
-    // layout up), 'height' on Android (resizes it), so the focused
-    // field stays visible above the keyboard instead of hidden
-    // underneath it.
     <KeyboardAvoidingView
       style={styles.container}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
@@ -318,10 +326,6 @@ export default function DeliveryBookingScreen() {
               You pay the driver <Text style={{ color: GOLD }}>cash on collection</Text>.
             </Text>
 
-            {/* NEW: item size tier — the actual price driver. Placed
-                first, before cities, since it changes what's even
-                offered below (large items never show an intercity
-                option, regardless of what cities get typed). */}
             <Text style={styles.label}>Item size</Text>
             <View style={styles.sizeRow}>
               <TouchableOpacity
@@ -344,9 +348,6 @@ export default function DeliveryBookingScreen() {
               </TouchableOpacity>
             </View>
 
-            {/* Fee preview — reflects whichever size is currently
-                selected, so it's never showing pricing for the option
-                that isn't chosen. */}
             <View style={styles.feeCard}>
               {parcelSize === 'small' ? (
                 <>
@@ -387,11 +388,6 @@ export default function DeliveryBookingScreen() {
             />
 
             {parcelSize === 'large' && citiesDiffer && (
-              // NEW: informational only, not a blocking error — per
-              // product decision, large items just quietly stay local-
-              // only regardless of what's typed here; this simply
-              // explains why the badge below won't say "intercity"
-              // even though the two cities differ.
               <View style={styles.largeIntercityNote}>
                 <Text style={styles.largeIntercityNoteText}>
                   ℹ️ Large-item delivery is local only. This booking will be treated as local pickup and dropoff.
@@ -517,9 +513,6 @@ export default function DeliveryBookingScreen() {
                   : 'No drivers available right now. Try again later or choose Meet & Collect instead.'}
             </Text>
 
-            {/* NEW: explains why the list is narrower than usual, since
-                a buyer who's used to seeing more drivers for small
-                items might otherwise wonder why fewer show up here. */}
             {parcelSize === 'large' && availableDrivers.length > 0 && (
               <View style={styles.largeIntercityNote}>
                 <Text style={styles.largeIntercityNoteText}>
@@ -641,7 +634,6 @@ const styles = StyleSheet.create({
   heading: { fontSize: 24, fontWeight: '800', color: '#fff', marginBottom: 8 },
   subheading: { fontSize: 13, color: GREY, lineHeight: 19, marginBottom: 20 },
 
-  // NEW: item size toggle styles
   sizeRow: { flexDirection: 'row', gap: 8, marginBottom: 16 },
   sizeChip: {
     flex: 1, backgroundColor: DARK, borderRadius: 12, paddingVertical: 14, paddingHorizontal: 8,

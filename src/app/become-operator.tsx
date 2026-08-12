@@ -29,6 +29,15 @@
 // dealer.tsx's verification card on their own to ever find it. Now
 // genuinely routes there for delivery operators. See handleSubmit().
 //
+// FIX (real data-loss bug, found during a thorough review): the
+// "General area / city" field had its own state and its own real
+// TextInput, but delivery_operators never had a column for it —
+// confirmed against the actual schema (see
+// add-delivery-area-column.sql, which adds delivery_area). Every
+// delivery operator who filled this field in had that value silently
+// discarded on submit — no error, form succeeded, data just vanished.
+// Now actually included in the delivery_operators update below.
+//
 // Usage: router.push('/become-operator?type=delivery')
 //     or router.push('/become-operator?type=operator')
 
@@ -99,7 +108,12 @@ export default function BecomeOperatorScreen() {
     if (isDelivery) {
       const { error: deliveryError } = await supabase
         .from('delivery_operators')
-        .update({ vehicle_type: deliveryVehicleType })
+        .update({
+          vehicle_type: deliveryVehicleType,
+          // FIX: was missing entirely — see top-of-file comment. This
+          // is the only line needed once the column actually exists.
+          delivery_area: deliveryArea.trim() || null,
+        })
         .eq('user_id', user.id);
 
       if (deliveryError) {
@@ -111,10 +125,6 @@ export default function BecomeOperatorScreen() {
 
     setLoading(false);
 
-    // FIX: see top-of-file comment. Delivery operators now genuinely
-    // land on ID verification, matching what the note below promises.
-    // Transport operators have no such promise made on this screen, so
-    // their flow is unchanged.
     if (isDelivery) {
       router.replace('/operator-id-verify?type=delivery_operator');
     } else {

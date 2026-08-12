@@ -11,14 +11,6 @@ const BLACK = '#1A1A18';
 const DARK = '#2a2a2a';
 const GREY = '#AAAAAA';
 
-// NEW: real pagination. Previously fetchListings() had no .range()/
-// .limit() at all — it pulled EVERY active listing in the entire
-// database, every single time this screen loaded, regardless of how
-// many existed. Fine with a handful of test listings; genuinely
-// unworkable once the marketplace has hundreds or thousands — slower
-// loads, more data used per visit, and a huge grid rendered all at once
-// getting laggy to scroll. PAGE_SIZE of 20 matches what most real
-// marketplace apps use as a first-batch size.
 const PAGE_SIZE = 20;
 
 const categories = [
@@ -62,6 +54,7 @@ export default function HomeScreen() {
   useEffect(() => {
     loadUser();
     fetchListings(0, false);
+    fetchFeaturedListing();
   }, []);
 
   async function loadUser() {
@@ -79,12 +72,6 @@ export default function HomeScreen() {
 
     setIsAdmin(!!profile?.is_admin);
 
-    // UPDATED (product decision): was account_type === 'seller' — a
-    // self-declared label from registration that never actually gated
-    // anything (post.tsx never checked it; anyone could post
-    // regardless). Now driven by something real: has this person
-    // actually posted at least one listing. head:true + count:'exact'
-    // gets just the count without pulling any row data — cheap check.
     const { count: listingCount } = await supabase
       .from('listings')
       .select('id', { count: 'exact', head: true })
@@ -105,6 +92,30 @@ export default function HomeScreen() {
     );
 
     setShowDashboardTab(hasPostedListing || isActiveOperator);
+  }
+
+  // FIX (real bug, found during a thorough review): the featured
+  // listing used to be derived by filtering whatever happened to be in
+  // page 0 of the general chronological feed — meaning a genuinely
+  // active featured listing (someone paid, or used the free promo,
+  // specifically for prominent Home placement) would silently stop
+  // appearing here the moment 20+ newer listings got posted, even
+  // though featured_until was still in the future. That defeats the
+  // entire point of the feature — "Featured" is supposed to mean
+  // prominent regardless of recency, not "prominent only if also
+  // coincidentally recent." Now a real, dedicated query, completely
+  // independent of the general feed's pagination.
+  async function fetchFeaturedListing() {
+    const { data } = await supabase
+      .from('listings')
+      .select('*')
+      .eq('status', 'active')
+      .gt('featured_until', new Date().toISOString())
+      .order('featured_until', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    setFeaturedListing(data ?? null);
   }
 
   const fetchListings = async (page: number, append: boolean) => {
@@ -136,13 +147,6 @@ export default function HomeScreen() {
           profiles.forEach((p: any) => { profileMap[p.id] = p; });
           setSellerProfiles((prev) => ({ ...prev, ...profileMap }));
         }
-      }
-
-      if (page === 0) {
-        const activeFeatured = (data as any[])
-          .filter((l) => l.featured_until && new Date(l.featured_until).getTime() > Date.now())
-          .sort((a, b) => new Date(b.featured_until).getTime() - new Date(a.featured_until).getTime());
-        setFeaturedListing(activeFeatured[0] ?? null);
       }
     }
 
@@ -217,14 +221,6 @@ export default function HomeScreen() {
           <Text style={styles.vanBannerArrow}>›</Text>
         </TouchableOpacity>
 
-        {/* NEW: closes a real navigation gap — there was previously NO
-            link anywhere in the app to browse-wanted.tsx (the screen
-            where sellers see and respond to everyone's posted wants).
-            The banner above only ever linked to POSTING a want; nothing
-            linked to BROWSING them. browse-wanted.tsx itself was
-            completely fine — it just had zero discoverable entry point,
-            which is exactly why posted wants seemed to "not show up
-            anywhere": there was nowhere to go look for them. */}
         <TouchableOpacity
           style={styles.browseWantedBanner}
           onPress={() => router.push('/browse-wanted')}
@@ -240,16 +236,6 @@ export default function HomeScreen() {
           <Text style={styles.vanBannerArrow}>›</Text>
         </TouchableOpacity>
 
-        {/* NEW: real, prominent entry point for WhatsApp import —
-            leaning harder into this specifically because it's the
-            strongest acquisition wedge available (meets sellers where
-            they already sell, rather than asking them to start from
-            zero). Previously the ONLY way to find this screen was a
-            small link buried inside post.tsx, easy to miss entirely if
-            someone never opens the regular listing form first. Styled
-            with WhatsApp's own recognizable green for instant
-            recognition, distinct from the gold/green-tinted Wanted
-            banners above. */}
         <TouchableOpacity
           style={styles.whatsappBanner}
           onPress={() => router.push('/whatsapp-import')}
@@ -265,17 +251,6 @@ export default function HomeScreen() {
           <Text style={styles.vanBannerArrow}>›</Text>
         </TouchableOpacity>
 
-        {/* NEW: trust/safety section — real infrastructure that's been
-            built all along (PIN-confirmed handovers, ID-verified
-            delivery operators, ratings tied to confirmed transactions
-            only) but was never actually marketed anywhere in the app.
-            Deliberately only claims things that are genuinely true and
-            built — no escrow language (Meet & Pay is cash-in-person,
-            not fund-holding), nothing overstated. Visually distinct
-            from the action banners above (no border accent color, no
-            arrow, not tappable) since this is reassurance content, not
-            a call to action — reads as "here's how this works," not
-            "tap here." */}
         <View style={styles.trustSection}>
           <Text style={styles.trustTitle}>How ImbizoHub keeps you safe</Text>
           <View style={styles.trustRow}>
@@ -498,19 +473,8 @@ const styles = StyleSheet.create({
   searchPlaceholder: { color: '#555', fontSize: 13 },
   vanBanner: { backgroundColor: '#1a1a2e', borderRadius: 14, marginHorizontal: 16, marginTop: 12, marginBottom: 4, paddingHorizontal: 18, paddingVertical: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderWidth: 0.5, borderColor: '#3a3a5e' },
   wantedBanner: { backgroundColor: '#1a2e1a', borderRadius: 14, marginHorizontal: 16, marginTop: 12, marginBottom: 4, paddingHorizontal: 18, paddingVertical: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderWidth: 0.5, borderColor: '#3a5e3a' },
-  // NEW: styled distinctly from wantedBanner (posting) so the two don't
-  // read as duplicates — same shape/spacing, different color family
-  // (gold-tinted, matching the app's primary accent) since this is the
-  // BROWSE counterpart, not another "post" action.
   browseWantedBanner: { backgroundColor: '#2e2a1a', borderRadius: 14, marginHorizontal: 16, marginTop: 4, marginBottom: 4, paddingHorizontal: 18, paddingVertical: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderWidth: 0.5, borderColor: '#5e5a3a' },
-  // NEW: WhatsApp's own recognizable green (#25D366-derived dark tint,
-  // matching the same dark-tinted-background treatment as the other
-  // two banners) — instant visual recognition for exactly the seller
-  // this banner is trying to reach.
   whatsappBanner: { backgroundColor: '#1a2e22', borderRadius: 14, marginHorizontal: 16, marginTop: 4, marginBottom: 4, paddingHorizontal: 18, paddingVertical: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderWidth: 0.5, borderColor: '#25D366' },
-  // NEW: trust section styles — deliberately plainer than the action
-  // banners (no colored border accent, no arrow) since this is
-  // informational, not a tappable call to action.
   trustSection: { backgroundColor: '#161616', borderRadius: 14, marginHorizontal: 16, marginTop: 12, marginBottom: 4, padding: 18, borderWidth: 0.5, borderColor: '#2a2a2a' },
   trustTitle: { color: '#fff', fontSize: 14, fontWeight: '700', marginBottom: 14 },
   trustRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 12, marginBottom: 14 },
@@ -518,15 +482,6 @@ const styles = StyleSheet.create({
   trustItemTitle: { color: '#fff', fontSize: 13, fontWeight: '600', marginBottom: 2 },
   trustItemSub: { color: '#999', fontSize: 11, lineHeight: 16 },
   vanBannerLeft: { flexDirection: 'row', alignItems: 'center', gap: 14, flex: 1, minWidth: 0 },
-  // NEW: fixes a real overflow bug — this View wrapping the title+
-  // subtitle text previously had no style at all, so it took its
-  // natural content width instead of wrapping within the banner's
-  // actual available space. Long subtitle text (e.g. "Browse open
-  // wants — respond with your price, free") ran past the rounded box
-  // edge instead of wrapping to a second line. flex: 1 lets it claim
-  // the remaining row space after the emoji/gap/arrow; minWidth: 0 is
-  // the actual fix — without it, flexbox still lets content dictate a
-  // wider-than-container intrinsic size regardless of flex: 1.
   vanBannerTextCol: { flex: 1, minWidth: 0 },
   vanBannerEmoji: { fontSize: 28 },
   vanBannerTitle: { color: '#ffffff', fontSize: 15, fontWeight: '700' },

@@ -28,14 +28,32 @@
 // rough edge in the underlying tools, not necessarily a bug in this
 // specific code.
 //
+// FIX (real bug, found during a thorough review): the previous version
+// treated ANY error other than rate-limiting as a fake success, on the
+// stated reasoning of not revealing whether an email is registered.
+// That reasoning is already handled by Supabase itself — its own
+// resetPasswordForEmail() doesn't return a distinguishing error for
+// "no such user" by design. This extra swallowing wasn't protecting
+// against anything Supabase wasn't already handling; it was just
+// hiding genuine errors — network failures, Supabase outages, and
+// especially malformed email input, which had no format validation at
+// all beyond "not empty." A simple typo'd email would show the same
+// false "check your email" message and leave someone waiting
+// indefinitely for something that was never sendable. Now only
+// specially handles rate-limiting with a friendlier message; every
+// other real error is shown honestly. Also added a basic email-format
+// check before submission, to catch the most common typo case with an
+// immediate, specific message instead of relying on Supabase's own
+// response to catch it.
+//
 // Usage: router.push('/forgot-password')
 
 import * as Linking from 'expo-linking';
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
 import {
-    ActivityIndicator, KeyboardAvoidingView, Platform, StyleSheet,
-    Text, TextInput, TouchableOpacity, View,
+  ActivityIndicator, KeyboardAvoidingView, Platform, StyleSheet,
+  Text, TextInput, TouchableOpacity, View,
 } from 'react-native';
 import { supabase } from '../../lib/supabase';
 
@@ -43,6 +61,8 @@ const GOLD = '#B8860B';
 const BLACK = '#1A1A18';
 const DARK = '#2a2a2a';
 const GREY = '#AAAAAA';
+
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export default function ForgotPasswordScreen() {
   const router = useRouter();
@@ -57,13 +77,19 @@ export default function ForgotPasswordScreen() {
       return;
     }
 
+    // NEW: basic format check before submission — catches the most
+    // common typo case (missing @, missing domain, etc.) with an
+    // immediate, specific message, rather than relying on Supabase's
+    // own response and risking it being masked by the fix below.
+    if (!EMAIL_PATTERN.test(email.trim())) {
+      setError('That doesn\'t look like a valid email address.');
+      return;
+    }
+
     setError('');
     setLoading(true);
 
     const redirectTo = Linking.createURL('reset-password');
-    // Worth checking this value once during setup — see the
-    // top-of-file comment on why it needs to be added to Supabase's
-    // Redirect URLs allowlist.
     console.log('Password reset redirectTo:', redirectTo);
 
     const { error: resetError } = await supabase.auth.resetPasswordForEmail(
@@ -73,17 +99,19 @@ export default function ForgotPasswordScreen() {
 
     setLoading(false);
 
-    // NOTE: deliberately shown regardless of whether resetError is set
-    // (except for genuine network/rate-limit failures) — Supabase
-    // itself doesn't reveal whether an email address has an account,
-    // to avoid leaking which emails are registered. Showing a
-    // different message on failure here would defeat that.
-    if (resetError && !resetError.message.toLowerCase().includes('rate limit')) {
-      setSent(true);
-      return;
-    }
+    // FIX: was swallowing every non-rate-limit error as a fake
+    // success — see top-of-file comment for why that was wrong.
+    // Supabase already doesn't reveal whether an email is registered
+    // on its own; this code doesn't need to add extra protection for
+    // that case, and doing so was hiding real errors instead. Only
+    // rate-limiting gets a special, friendlier message now; everything
+    // else is shown honestly.
     if (resetError) {
-      setError('Too many attempts — please wait a few minutes and try again.');
+      if (resetError.message.toLowerCase().includes('rate limit')) {
+        setError('Too many attempts — please wait a few minutes and try again.');
+      } else {
+        setError(resetError.message);
+      }
       return;
     }
 

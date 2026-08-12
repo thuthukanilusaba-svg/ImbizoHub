@@ -36,6 +36,17 @@
 // branch below) — this only blocks NEW purchases while paused, never
 // blocks managing/renewing an existing one.
 //
+// FIX (cosmetic, but worth closing): the "Full listing performance
+// analytics" feature row's own comment claimed it was "restored,
+// linking to that real screen" — but the Feature component had no tap
+// handler at all, just static text. Nobody was told anything false
+// (the feature genuinely exists and is genuinely gated correctly on
+// analytics.tsx), it just wasn't literally clickable the way the
+// comment implied. Made Feature accept an optional onPress, and wired
+// this one specifically to /analytics — matches the comment's own
+// claim now, and gives an active subscriber a real, direct way to
+// reach the feature being advertised right here, not just a promise.
+//
 // Usage: router.push('/dealer-pro-pay')
 
 const DEALER_PRO_PAUSED = true;
@@ -103,8 +114,6 @@ export default function DealerProPayScreen() {
   }
 
   async function handlePay() {
-    // Guard lives here, not just in the render branch below — defense
-    // in depth, same reasoning as hirevan.tsx's own pause guard.
     if (DEALER_PRO_PAUSED && !currentlyActive) return;
 
     setError('');
@@ -185,6 +194,14 @@ export default function DealerProPayScreen() {
                 Renews on {new Date(expiresAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}
               </Text>
             )}
+            {/* NEW: active subscribers get the same real, tappable link
+                to analytics.tsx as the feature-list row below — this
+                is the screen they'd land on right after subscribing,
+                so it's worth being reachable here too, not just on the
+                pre-purchase feature list. */}
+            <TouchableOpacity style={styles.analyticsLinkBtn} onPress={() => router.push('/analytics')}>
+              <Text style={styles.analyticsLinkBtnText}>📊 View my listing analytics</Text>
+            </TouchableOpacity>
             <TouchableOpacity style={styles.doneBtn} onPress={() => router.replace('/dealer')}>
               <Text style={styles.doneBtnText}>Back to Dashboard</Text>
             </TouchableOpacity>
@@ -228,20 +245,12 @@ export default function DealerProPayScreen() {
         <Text style={styles.subheading}>Everything you need to run a serious selling operation.</Text>
 
         <View style={styles.card}>
-          {/* FIX: "Priority placement in search results" removed —
-              genuinely unbuilt, no Pro-boost logic exists anywhere in
-              explore.tsx/index.tsx's listing queries. "Full listing
-              performance analytics" restored after further review — a
-              real, properly-gated screen (analytics.tsx) backs this
-              claim; it was wrongly removed alongside the priority
-              placement claim on an assumption that turned out false
-              for this one specifically. Also added: buyers skip the
-              unlock fee entirely when messaging a Dealer Pro seller —
-              confirmed real in unlock.tsx's own Dealer Pro bypass,
-              genuinely real but was never listed here before. */}
           <Feature text="Dealer badge on all your listings" />
           <Feature text="Buyers message you for free — no unlock fee for them" />
-          <Feature text="Full listing performance analytics" />
+          {/* FIX: now genuinely tappable, matching what the top-of-file
+              comment already claimed. Routes straight to the real,
+              correctly-gated analytics.tsx screen. */}
+          <Feature text="Full listing performance analytics" onPress={() => router.push('/analytics')} />
         </View>
 
         <View style={styles.priceCard}>
@@ -272,13 +281,28 @@ export default function DealerProPayScreen() {
   );
 }
 
-function Feature({ text }: { text: string }) {
-  return (
-    <View style={styles.featureRow}>
+// FIX: Feature now optionally accepts an onPress — when provided, the
+// row renders as a real TouchableOpacity with a chevron affordance
+// instead of plain static text, so it's visually obvious which
+// features are actually clickable versus purely informational.
+function Feature({ text, onPress }: { text: string; onPress?: () => void }) {
+  const content = (
+    <>
       <Text style={styles.featureCheck}>✓</Text>
-      <Text style={styles.featureText}>{text}</Text>
-    </View>
+      <Text style={[styles.featureText, onPress && styles.featureTextLink]}>{text}</Text>
+      {onPress && <Text style={styles.featureArrow}>›</Text>}
+    </>
   );
+
+  if (onPress) {
+    return (
+      <TouchableOpacity style={styles.featureRow} onPress={onPress} activeOpacity={0.7}>
+        {content}
+      </TouchableOpacity>
+    );
+  }
+
+  return <View style={styles.featureRow}>{content}</View>;
 }
 
 const styles = StyleSheet.create({
@@ -295,6 +319,8 @@ const styles = StyleSheet.create({
   featureRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 12 },
   featureCheck: { color: GREEN, fontSize: 15, fontWeight: '800' },
   featureText: { color: '#fff', fontSize: 13, flex: 1 },
+  featureTextLink: { color: GOLD, fontWeight: '600' },
+  featureArrow: { color: GOLD, fontSize: 16 },
 
   priceCard: { backgroundColor: DARK, borderRadius: 14, padding: 20, alignItems: 'center', marginBottom: 20, borderWidth: 1, borderColor: GOLD },
   priceLabel: { color: GREY, fontSize: 12, marginBottom: 6 },
@@ -312,6 +338,8 @@ const styles = StyleSheet.create({
   successEmoji: { fontSize: 56, marginBottom: 16 },
   successTitle: { color: '#fff', fontSize: 20, fontWeight: '800', marginBottom: 8 },
   successBody: { color: GREY, fontSize: 13, marginBottom: 28 },
+  analyticsLinkBtn: { paddingVertical: 12, paddingHorizontal: 20, marginBottom: 16 },
+  analyticsLinkBtnText: { color: GOLD, fontSize: 14, fontWeight: '700' },
   doneBtn: { backgroundColor: GOLD, borderRadius: 14, paddingVertical: 14, paddingHorizontal: 32 },
   doneBtnText: { color: BLACK, fontSize: 14, fontWeight: '800' },
 });

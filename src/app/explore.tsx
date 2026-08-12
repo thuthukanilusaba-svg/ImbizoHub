@@ -52,7 +52,6 @@ export default function ExploreScreen() {
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(true);
   const [showDashboardTab, setShowDashboardTab] = useState(false);
-  const [proSellerIds, setProSellerIds] = useState<Set<string>>(new Set());
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -154,7 +153,14 @@ export default function ExploreScreen() {
           return bPro - aPro;
         });
 
-        setProSellerIds((prev) => new Set([...prev, ...proIds]));
+        // FIX (dead state removed, found during a thorough review):
+        // this used to also do
+        // `setProSellerIds((prev) => new Set([...prev, ...proIds]))` —
+        // accumulating a Set that was never actually read anywhere else
+        // in the file. The real sort above already correctly uses the
+        // LOCAL proIds from this specific page fetch; the accumulated
+        // state variable was pure overhead with no consumer. Confirmed
+        // genuinely unused before removing, not just unused right now.
         setListings((prev) => (append ? [...prev, ...sortedPage] : sortedPage));
       } else {
         setListings((prev) => (append ? prev : []));

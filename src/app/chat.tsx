@@ -857,12 +857,23 @@ export default function ChatScreen() {
                     ? (isItemRequestChat ? 'You confirmed you received the item.' : 'You confirmed the deal with the buyer.')
                     : (isItemRequestChat ? 'The buyer confirmed receipt. Thank you for using ImbizoHub safely.' : 'The seller confirmed receipt. Thank you for using ImbizoHub safely.')}
                 </Text>
+                {/* FIX (real bug, found during a thorough review):
+                    this used to always interpolate listing_id
+                    directly, even for item-request (Wanted-tab)
+                    chats — where listing_id is genuinely undefined,
+                    producing the literal string "listing_id=undefined"
+                    in the URL rather than an empty value. dealModal's
+                    delivery-booking link, a few functions away in this
+                    same file, already correctly branches on
+                    isItemRequestChat for the exact same distinction;
+                    this spot just hadn't gotten the same treatment. */}
                 <TouchableOpacity
                   style={styles.modalBtn}
                   onPress={() => {
                     setMeetPayModal(false);
+                    const ratingListingParam = isItemRequestChat ? '' : (listing_id ?? '');
                     router.push(
-                      `/rating?session_id=${session?.id}&reviewee_id=${receiver_id}&role=${isBuyerRole ? 'buyer' : 'seller'}&listing_id=${listing_id}`
+                      `/rating?session_id=${session?.id}&reviewee_id=${receiver_id}&role=${isBuyerRole ? 'buyer' : 'seller'}&listing_id=${ratingListingParam}`
                     );
                   }}
                 >

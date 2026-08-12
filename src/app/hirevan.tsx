@@ -42,6 +42,14 @@ const GOLD = '#B8860B';
 const BLACK = '#1A1A18';
 const DARK = '#2a2a2a';
 const GREY = '#AAAAAA';
+const GREEN = '#4fc96e';
+
+// NEW: same launch promo window used everywhere else today — needed
+// here so the info box can honestly reflect that the deposit
+// mentioned below is currently free, matching what quotes.tsx (the
+// next screen in this flow) actually shows.
+const FREE_PROMO_END = new Date('2027-01-31T23:59:59Z');
+const isPromoActive = () => new Date() < FREE_PROMO_END;
 
 export default function HireVanScreen() {
   const router = useRouter();
@@ -49,11 +57,6 @@ export default function HireVanScreen() {
   const [pickup, setPickup] = useState('');
   const [destination, setDestination] = useState('');
   const [date, setDate] = useState('');
-  // NEW: calendar picker, replacing free-text date entry. `date` above
-  // stays a plain 'YYYY-MM-DD' string (same format the field already
-  // suggested via its old placeholder, "e.g. 2026-08-15") — only the
-  // INPUT METHOD changed, not the stored format, so requests.date
-  // doesn't need any schema change regardless of its exact column type.
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [dateObj, setDateObj] = useState<Date>(new Date());
 
@@ -72,17 +75,12 @@ export default function HireVanScreen() {
 
   function handleDateChange(event: any, selected?: Date) {
     if (Platform.OS === 'android') {
-      // Android's picker is a native dialog that dismisses itself —
-      // hide our own wrapper the moment it reports any outcome.
       setShowDatePicker(false);
       if (event.type === 'set' && selected) {
         setDateObj(selected);
         setDate(toIsoDate(selected));
       }
     } else {
-      // iOS: the picker stays open inline until the user taps our own
-      // "Done" button (see the Modal below) — just track the
-      // in-progress selection here.
       if (selected) setDateObj(selected);
     }
   }
@@ -93,8 +91,6 @@ export default function HireVanScreen() {
   const [success, setSuccess] = useState(false);
 
   async function handleSubmit() {
-    // Guard lives here, not just at the entry point — matches the
-    // reasoning in the top-of-file comment.
     if (VAN_HIRE_PAUSED) return;
 
     setError('');
@@ -120,7 +116,7 @@ export default function HireVanScreen() {
     // the kind of friction that deters casual customers before they've
     // even seen a quote. A real account is only needed once money
     // actually changes hands — paying the commitment fee (7%, capped
-    // at $30) in quotes.tsx.
+    // at $15) in quotes.tsx.
     let { data: { user } } = await supabase.auth.getUser();
     if (!user) {
       const { data, error: signInError } = await supabase.auth.signInAnonymously();
@@ -250,10 +246,6 @@ export default function HireVanScreen() {
           <Text style={styles.dateFieldIcon}>📅</Text>
         </TouchableOpacity>
 
-        {/* Android shows its own native dialog automatically the
-            moment this renders — no extra wrapper needed. iOS renders
-            inline, so it's wrapped in a Modal with our own "Done"
-            button, matching the confirmed design. */}
         {showDatePicker && Platform.OS === 'android' && (
           <DateTimePicker
             value={dateObj}
@@ -312,9 +304,19 @@ export default function HireVanScreen() {
         />
       </View>
 
+      {/* FIX (real staleness bug, found during a thorough review): this
+          used to unconditionally say "pay a small deposit," even
+          though accepting a quote is currently free under the launch
+          promo — the exact thing quotes.tsx (the very next screen in
+          this flow) already correctly shows. Someone posting a trip
+          here would be told to expect a fee that, right now, doesn't
+          apply. Now branches the same way every other promo-aware
+          screen does today. */}
       <View style={styles.infoBox}>
         <Text style={styles.infoText}>
-          🔒 Your contact details stay private until you choose an operator and pay a small deposit.
+          {isPromoActive()
+            ? '🔒 Your contact details stay private until you choose an operator — free right now, launch promotion through Jan 31, 2027.'
+            : '🔒 Your contact details stay private until you choose an operator and pay a small deposit.'}
         </Text>
       </View>
 
@@ -368,7 +370,6 @@ const styles = StyleSheet.create({
   },
   textArea: { height: 90, textAlignVertical: 'top', paddingTop: 10 },
 
-  // NEW: calendar date field, replacing manual text entry
   dateField: {
     backgroundColor: DARK, borderRadius: 10, paddingHorizontal: 14,
     paddingVertical: Platform.OS === 'ios' ? 13 : 12,
@@ -390,7 +391,6 @@ const styles = StyleSheet.create({
   submitBtnDisabled: { opacity: 0.6 },
   submitText: { color: BLACK, fontSize: 16, fontWeight: '800' },
 
-  // Success screen
   successScreen: {
     flex: 1,
     backgroundColor: '#111111',

@@ -171,15 +171,40 @@ export function notifyMeetPayPinGenerated(listingTitle: string) {
   );
 }
 
-export function notifyTransactionConfirmed(listingTitle: string) {
+// FIX: same class of gap as notifyUnlockFeeReceived above — no
+// reference id at all, meaning even if _layout.tsx had routing logic
+// for 'confirmed', there'd be nothing to link it to. Added an optional
+// reference id (listing/booking/whatever makes sense for the specific
+// deal being confirmed) for the same backward-compatible reason.
+// FIX: expanded now that the real destination is confirmed —
+// delivery-track.tsx's "Rate this delivery" button shows the actual
+// route: /rating?session_id=X&reviewee_id=X&role=X&listing_id=X. A
+// bare reference_id alone (the earlier fix) wasn't enough to construct
+// that URL; needed the full set of fields.
+export function notifyTransactionConfirmed(
+  listingTitle: string,
+  sessionId?: string,
+  revieweeId?: string,
+  role?: 'buyer' | 'seller',
+  listingId?: string
+) {
   return showLocalNotification(
     'Transaction confirmed! ✅',
     `The deal for "${listingTitle}" has been confirmed. Please leave a rating.`,
-    { type: 'confirmed' }
+    {
+      type: 'confirmed',
+      ...(sessionId ? { session_id: sessionId } : {}),
+      ...(revieweeId ? { reviewee_id: revieweeId } : {}),
+      ...(role ? { role } : {}),
+      ...(listingId ? { listing_id: listingId } : {}),
+    }
   );
 }
 
-export function notifyDeliveryUpdate(status: string, listingTitle: string) {
+// FIX: same gap — no delivery_bookings id, so even correct routing
+// logic in _layout.tsx would have nothing to deep-link to (which
+// specific delivery would it open?). Added optional bookingId.
+export function notifyDeliveryUpdate(status: string, listingTitle: string, bookingId?: string) {
   const messages: Record<string, string> = {
     accepted: `A driver has accepted your delivery request for "${listingTitle}".`,
     dispatched: `"${listingTitle}" has been dispatched and is on its way.`,
@@ -188,22 +213,35 @@ export function notifyDeliveryUpdate(status: string, listingTitle: string) {
   return showLocalNotification(
     'Delivery update 🚚',
     messages[status] ?? `Delivery status updated for "${listingTitle}".`,
-    { type: 'delivery', status }
+    { type: 'delivery', status, ...(bookingId ? { booking_id: bookingId } : {}) }
   );
 }
 
-export function notifySellerDeliveryBooked(listingTitle: string) {
+// FIX: same gap — no id to deep-link a seller to the specific booking
+// that was just made. Added optional bookingId.
+export function notifySellerDeliveryBooked(listingTitle: string, bookingId?: string) {
   return showLocalNotification(
     'Delivery booked 📦',
     `A buyer booked delivery for "${listingTitle}". Prepare the parcel for pickup.`,
-    { type: 'delivery_booked' }
+    { type: 'delivery_booked', ...(bookingId ? { booking_id: bookingId } : {}) }
   );
 }
 
-export function notifyUnlockFeeReceived(listingTitle: string) {
+// FIX (real bug, found during a thorough review): this local version
+// sent { type: 'unlock' } with no listing_id at all — but the real,
+// server-side push notification for the exact same event
+// (confirm-payment.ts's notifyUnlockFeeReceived, a different function
+// with the same name in a different file) correctly includes it, and
+// _layout.tsx's tap handler specifically requires data.listing_id to
+// route the 'unlock' type anywhere. Without this, tapping THIS local
+// version's notification would silently fail to navigate, even though
+// the real server-pushed one works correctly. Added as an optional
+// parameter so existing call sites still compile without changes;
+// only calls updated to pass it actually get correct routing.
+export function notifyUnlockFeeReceived(listingTitle: string, listingId?: string) {
   return showLocalNotification(
     'New buyer unlocked your chat 🔓',
     `Someone paid to message you about "${listingTitle}". Reply now.`,
-    { type: 'unlock' }
+    { type: 'unlock', ...(listingId ? { listing_id: listingId } : {}) }
   );
 }

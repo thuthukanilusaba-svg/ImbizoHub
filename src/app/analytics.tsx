@@ -13,12 +13,18 @@
 // index.tsx's showDashboardTab check, etc.) and shows a locked state
 // instead of the real numbers for anyone who isn't an active subscriber.
 //
-// Deliberately independent of dealer-pro-pay.tsx's SHOW_PAYWALL flag —
-// that flag only pauses NEW purchases while the paywall isn't worth
-// charging for yet; this gate is what makes analytics an actual real
-// Dealer Pro benefit the moment SHOW_PAYWALL flips back on. Building
-// this now means there's nothing left to wire up later — flip that one
-// flag and this screen is already correctly gated.
+// FIX (real data-accuracy bug, found during a thorough review): the
+// top-line "ACTIVE" stat strictly required status === 'active' (or
+// null/undefined, defaulted), but the category breakdown and the
+// Recent Listings badge both used a looser "anything that isn't
+// literally 'sold' counts as active" check — which silently
+// misclassified 'removed' listings (set when an account is deleted,
+// or a listing taken down) as active in two of three places on a
+// screen whose entire selling point is "real numbers, no estimates."
+// The top-line count and the category breakdown could genuinely
+// disagree with each other for any seller with a removed listing.
+// Replaced with one classifyListing() helper, used consistently
+// everywhere a listing's status needs to be judged.
 
 import { useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
@@ -45,12 +51,19 @@ const CATEGORY_ICONS: Record<string, string> = {
   Other: '📦',
 };
 
+type ListingClass = 'active' | 'sold' | 'other';
+function classifyListing(status: string | null | undefined): ListingClass {
+  const s = status ?? 'active';
+  if (s === 'sold') return 'sold';
+  if (s === 'active') return 'active';
+  return 'other';
+}
+
 export default function AnalyticsScreen() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [listings, setListings] = useState<any[]>([]);
-  // NEW: real Dealer Pro gate — see FIX comment above.
   const [dealerProActive, setDealerProActive] = useState(false);
 
   useEffect(() => { init(); }, []);
@@ -60,12 +73,8 @@ export default function AnalyticsScreen() {
     setError('');
 
     const { data: { user } } = await supabase.auth.getUser();
-    if (!user) { router.replace('/login'); return; }
+    if (!user || user.is_anonymous) { router.replace('/register'); return; }
 
-    // Same "paid boolean + expires_at, checked against now()" pattern
-    // already proven correct for dealer_pro_active elsewhere (dealer.tsx,
-    // dealer-pro-pay.tsx) — fetched here independently since this screen
-    // can be reached directly, not only via dealer.tsx's Quick Actions.
     const { data: profile } = await supabase
       .from('profiles')
       .select('dealer_pro_active, dealer_pro_expires_at')
@@ -79,8 +88,6 @@ export default function AnalyticsScreen() {
     );
     setDealerProActive(isActive);
 
-    // Only fetch the real listing data for active subscribers — no
-    // point loading it for someone who's about to see the locked state.
     if (isActive) {
       const { data, error: fetchError } = await supabase
         .from('listings')
@@ -96,17 +103,18 @@ export default function AnalyticsScreen() {
   }
 
   const total = listings.length;
-  const active = listings.filter(l => (l.status ?? 'active') === 'active').length;
-  const sold = listings.filter(l => l.status === 'sold').length;
+  const active = listings.filter(l => classifyListing(l.status) === 'active').length;
+  const sold = listings.filter(l => classifyListing(l.status) === 'sold').length;
   const activeValue = listings
-    .filter(l => (l.status ?? 'active') === 'active')
+    .filter(l => classifyListing(l.status) === 'active')
     .reduce((sum, l) => sum + (Number(l.price) || 0), 0);
 
   const byCategory = listings.reduce((acc: Record<string, { active: number; sold: number }>, l) => {
+    const cls = classifyListing(l.status);
+    if (cls === 'other') return acc;
     const cat = l.category || 'Other';
     if (!acc[cat]) acc[cat] = { active: 0, sold: 0 };
-    if (l.status === 'sold') acc[cat].sold += 1;
-    else acc[cat].active += 1;
+    acc[cat][cls] += 1;
     return acc;
   }, {});
 
@@ -120,10 +128,6 @@ export default function AnalyticsScreen() {
     );
   }
 
-  // NEW: locked state for anyone who isn't an active Dealer Pro
-  // subscriber — real gate, not just marketing copy on the payment
-  // screen. Links to dealer-pro-pay.tsx, which currently shows its own
-  // "coming soon" state while SHOW_PAYWALL is paused there.
   if (!dealerProActive) {
     return (
       <View style={styles.container}>
@@ -171,7 +175,6 @@ export default function AnalyticsScreen() {
           </View>
         ) : (
           <>
-            {/* Top-line stats */}
             <View style={styles.statsGrid}>
               <View style={styles.statCard}>
                 <Text style={styles.statLbl}>TOTAL LISTINGS</Text>
@@ -191,7 +194,6 @@ export default function AnalyticsScreen() {
               </View>
             </View>
 
-            {/* By category */}
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>By category</Text>
               {categoryRows.map(([cat, counts]) => (
@@ -206,25 +208,34 @@ export default function AnalyticsScreen() {
               ))}
             </View>
 
-            {/* Recent listings */}
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>Recent listings</Text>
-              {listings.slice(0, 8).map((l) => (
-                <View key={l.id} style={styles.listingRow}>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.listingTitle} numberOfLines={1}>{l.title}</Text>
-                    <Text style={styles.listingMeta}>
-                      {l.category || 'Other'} · {new Date(l.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
-                    </Text>
+              {listings.slice(0, 8).map((l) => {
+                const cls = classifyListing(l.status);
+                return (
+                  <View key={l.id} style={styles.listingRow}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.listingTitle} numberOfLines={1}>{l.title}</Text>
+                      <Text style={styles.listingMeta}>
+                        {l.category || 'Other'} · {new Date(l.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
+                      </Text>
+                    </View>
+                    <Text style={styles.listingPrice}>${l.price}</Text>
+                    <View style={[
+                      styles.listingBadge,
+                      cls === 'sold' ? styles.listingBadgeSold : cls === 'active' ? styles.listingBadgeActive : styles.listingBadgeOther,
+                    ]}>
+                      <Text style={
+                        cls === 'sold' ? styles.listingBadgeSoldText
+                        : cls === 'active' ? styles.listingBadgeActiveText
+                        : styles.listingBadgeOtherText
+                      }>
+                        {cls === 'sold' ? 'Sold' : cls === 'active' ? 'Active' : 'Removed'}
+                      </Text>
+                    </View>
                   </View>
-                  <Text style={styles.listingPrice}>${l.price}</Text>
-                  <View style={[styles.listingBadge, l.status === 'sold' ? styles.listingBadgeSold : styles.listingBadgeActive]}>
-                    <Text style={l.status === 'sold' ? styles.listingBadgeSoldText : styles.listingBadgeActiveText}>
-                      {l.status === 'sold' ? 'Sold' : 'Active'}
-                    </Text>
-                  </View>
-                </View>
-              ))}
+                );
+              })}
             </View>
           </>
         )}
@@ -254,8 +265,6 @@ const styles = StyleSheet.create({
   postBtn: { backgroundColor: GOLD, borderRadius: 10, paddingHorizontal: 20, paddingVertical: 12 },
   postBtnText: { color: BLACK, fontSize: 13, fontWeight: '800' },
 
-  // NEW: locked (non-Dealer-Pro) state — same visual language as
-  // emptyBox above, distinct icon/copy.
   lockedBox: { backgroundColor: BLACK, borderRadius: 14, padding: 28, alignItems: 'center', borderWidth: 1, borderColor: GOLD, marginTop: 20 },
   lockedEmoji: { fontSize: 40, marginBottom: 12 },
   lockedTitle: { color: '#fff', fontSize: 16, fontWeight: '800', marginBottom: 10 },
@@ -287,6 +296,8 @@ const styles = StyleSheet.create({
   listingBadge: { borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3 },
   listingBadgeActive: { backgroundColor: '#1a2a1a' },
   listingBadgeSold: { backgroundColor: '#2a1a1a' },
+  listingBadgeOther: { backgroundColor: '#2a2a2a' },
   listingBadgeActiveText: { color: GREEN, fontSize: 10, fontWeight: '700' },
   listingBadgeSoldText: { color: '#ff8a8a', fontSize: 10, fontWeight: '700' },
+  listingBadgeOtherText: { color: GREY, fontSize: 10, fontWeight: '700' },
 });

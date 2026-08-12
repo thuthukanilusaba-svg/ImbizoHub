@@ -17,10 +17,10 @@
 // Usage: router.push('/account-delete')
 
 import { useRouter } from 'expo-router';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
-    ActivityIndicator, Platform, ScrollView, StyleSheet,
-    Text, TextInput, TouchableOpacity, View,
+  ActivityIndicator, Platform, ScrollView, StyleSheet,
+  Text, TextInput, TouchableOpacity, View,
 } from 'react-native';
 import { supabase } from '../../lib/supabase';
 
@@ -32,10 +32,35 @@ const RED = '#ff8a8a';
 
 export default function AccountDeleteScreen() {
   const router = useRouter();
+  // NEW: unlike every other screen touched today, this one had no
+  // auth check at all — it rendered the delete form unconditionally.
+  // A fully logged-out user would hit the RPC's own server-side
+  // "auth.uid() is null" guard and see a raw, untranslated Postgres
+  // error rather than a graceful redirect. An anonymous session is
+  // the more interesting case — anonymous users DO have a real
+  // auth.uid(), so they'd sail past that server-side check entirely
+  // and could "delete" their own anonymous session. Not a security
+  // bug (the RPC only ever touches the caller's own row, so no
+  // cross-user harm is possible), but a confusing dead-end for
+  // someone who never had a real account to delete. Checking on
+  // mount and redirecting both cases away, rather than letting them
+  // reach the form at all.
+  const [checkingAuth, setCheckingAuth] = useState(true);
   const [confirmText, setConfirmText] = useState('');
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState('');
   const [done, setDone] = useState(false);
+
+  useEffect(() => { checkAuth(); }, []);
+
+  async function checkAuth() {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user || user.is_anonymous) {
+      router.replace('/');
+      return;
+    }
+    setCheckingAuth(false);
+  }
 
   const canConfirm = confirmText.trim().toUpperCase() === 'DELETE';
 
@@ -55,6 +80,14 @@ export default function AccountDeleteScreen() {
     await supabase.auth.signOut();
     setDeleting(false);
     setDone(true);
+  }
+
+  if (checkingAuth) {
+    return (
+      <View style={[styles.container, { alignItems: 'center', justifyContent: 'center' }]}>
+        <ActivityIndicator size="large" color={GOLD} />
+      </View>
+    );
   }
 
   if (done) {

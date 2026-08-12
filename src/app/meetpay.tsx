@@ -15,10 +15,32 @@
 // This still gates ratings exactly the way the PIN used to — nothing
 // about that changed, only the mechanism for reaching "confirmed."
 //
+// FIX (real bug, found during a thorough review): the "waiting for the
+// other person" screen had no way to detect when they actually
+// confirmed — no realtime subscription, no polling, nothing. session
+// state was set once and never refreshed, so confirming first meant
+// seeing "Waiting..." forever until manually leaving and returning.
+// This is the exact same gap already found and fixed for
+// meetpay_sessions in chat.tsx earlier — it just never got applied to
+// this dedicated van-hire confirmation screen. Same fix here: a
+// realtime subscription that updates session state automatically the
+// moment the other party's confirmation comes in.
+//
+// FIX (real data bug, found in the same pass): createSession() sets
+// buyer_id: null when the OPERATOR reaches this screen before the
+// customer does (there's no buyer_id URL param to fall back on the way
+// seller_id has one). Nothing ever filled that in afterward —
+// handleConfirmMyself() only ever touched the confirmation timestamp
+// columns. Consequence: if the operator confirms and later tries to
+// rate the customer, session.buyer_id was still null, silently
+// breaking the rating link in exactly that ordering. Now sets buyer_id
+// alongside the buyer's own confirmation timestamp, closing the gap
+// regardless of who reached the screen first.
+//
 // Usage: router.push(`/meetpay?type=van_hire&reference_id=${quoteId}&seller_id=${operatorId}&amount=${balance}`)
 
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator, Platform,
   StyleSheet,
@@ -46,8 +68,17 @@ export default function MeetPayScreen() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [confirming, setConfirming] = useState(false);
+  const channelRef = useRef<any>(null);
 
-  useEffect(() => { init(); }, []);
+  useEffect(() => {
+    init();
+    return () => {
+      if (channelRef.current) {
+        supabase.removeChannel(channelRef.current);
+        channelRef.current = null;
+      }
+    };
+  }, []);
 
   async function init() {
     setLoading(true);
@@ -68,14 +99,35 @@ export default function MeetPayScreen() {
 
     if (existing) {
       setSession(existing);
+      subscribeToSession(existing.id);
     } else {
-      // NEW: either side can be the first to reach this screen now —
-      // no more "only the buyer creates it" restriction, since there's
-      // no PIN to generate that specifically needs a buyer-first order.
       await createSession(user.id, isSeller);
     }
 
     setLoading(false);
+  }
+
+  // NEW: realtime sync — see top-of-file comment. Catches the other
+  // party's confirmation (or the session first being created, if this
+  // side got here before a session existed at all) without needing a
+  // manual reload.
+  function subscribeToSession(sessionId: string) {
+    if (channelRef.current) {
+      supabase.removeChannel(channelRef.current);
+      channelRef.current = null;
+    }
+
+    const channel = supabase
+      .channel(`meetpay-session-${sessionId}`)
+      .on('postgres_changes', {
+        event: 'UPDATE', schema: 'public', table: 'meetpay_sessions',
+        filter: `id=eq.${sessionId}`,
+      }, (payload) => {
+        if (payload.new) setSession(payload.new);
+      })
+      .subscribe();
+
+    channelRef.current = channel;
   }
 
   async function createSession(userId: string, isSeller: boolean) {
@@ -97,24 +149,27 @@ export default function MeetPayScreen() {
       return;
     }
     setSession(data);
+    subscribeToSession(data.id);
   }
 
-  // NEW: replaces the old PIN entry/check entirely. Sets MY OWN
-  // confirmation timestamp only — the database, not this client,
-  // decides when both sides have confirmed (avoids a race condition
-  // where two clients both think they're "the second confirmer" at
-  // the same moment).
   async function handleConfirmMyself() {
     if (!session) return;
     setError('');
     setConfirming(true);
 
-    const myColumn = role === 'buyer' ? 'buyer_confirmed_at' : 'operator_confirmed_at';
     const now = new Date().toISOString();
+    // FIX: also set buyer_id here when the confirming party is the
+    // buyer — see top-of-file comment. Harmless if it was already
+    // correctly set (operator wasn't first); actually necessary if it
+    // was null (operator reached this screen first, with no buyer_id
+    // URL param available to have set it at creation time).
+    const updatePayload: Record<string, any> = role === 'buyer'
+      ? { buyer_confirmed_at: now, buyer_id: myId }
+      : { operator_confirmed_at: now };
 
     const { data, error: updateError } = await supabase
       .from('meetpay_sessions')
-      .update({ [myColumn]: now })
+      .update(updatePayload)
       .eq('id', session.id)
       .select()
       .single();
@@ -125,10 +180,6 @@ export default function MeetPayScreen() {
       return;
     }
 
-    // Both sides confirmed — flip status now. Each client only ever
-    // writes its OWN column, so if both tap at nearly the same moment,
-    // whichever request completes second correctly sees both
-    // timestamps already set and performs this final update — no race.
     if (data.buyer_confirmed_at && data.operator_confirmed_at && data.status !== 'confirmed') {
       const { data: finalData, error: confirmError } = await supabase
         .from('meetpay_sessions')
@@ -162,7 +213,6 @@ export default function MeetPayScreen() {
   const otherRoleLabel = role === 'buyer' ? 'your driver' : 'your customer';
   const isFullyConfirmed = session?.status === 'confirmed';
 
-  // ── Fully confirmed screen (both roles) ──
   if (isFullyConfirmed) {
     return (
       <View style={styles.confirmedScreen}>
@@ -192,7 +242,6 @@ export default function MeetPayScreen() {
     );
   }
 
-  // ── I've confirmed, waiting on the other person ──
   if (myConfirmedAt && !otherConfirmedAt) {
     return (
       <View style={styles.container}>
@@ -212,7 +261,6 @@ export default function MeetPayScreen() {
     );
   }
 
-  // ── Not yet confirmed by me — the main action screen ──
   return (
     <View style={styles.container}>
       <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
@@ -288,7 +336,6 @@ const styles = StyleSheet.create({
   waitingTitle: { fontSize: 16, fontWeight: '700', color: '#fff', marginBottom: 4 },
   waitingText: { fontSize: 13, color: GREY, textAlign: 'center' },
 
-  // Confirmed screen
   confirmedScreen: { flex: 1, backgroundColor: '#111', alignItems: 'center', justifyContent: 'center', padding: 32 },
   confirmedEmoji: { fontSize: 64, marginBottom: 20 },
   confirmedTitle: { fontSize: 24, fontWeight: '800', color: '#fff', marginBottom: 10, textAlign: 'center' },

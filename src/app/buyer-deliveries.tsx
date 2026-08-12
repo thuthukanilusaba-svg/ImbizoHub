@@ -17,6 +17,15 @@
 // chat.tsx. Anything actively trackable links out to
 // /delivery-track?booking_id=... for the real single-booking detail
 // view and PIN generation.
+//
+// FIX (found during a later review pass): the account check here only
+// tested `!user`, missing the same `user.is_anonymous` gap found on
+// several other screens — anonymous sessions have a real user object,
+// they just don't pass `!user`. Fixed for consistency here; whether
+// this was ever actually exploitable depends on whether
+// delivery-booking.tsx (the screen that creates these bookings via
+// payment) itself blocks anonymous buyers, which hasn't been reviewed
+// yet in this pass.
 
 import { useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
@@ -74,7 +83,9 @@ export default function BuyerDeliveriesScreen() {
     setError('');
 
     const { data: { user } } = await supabase.auth.getUser();
-    if (!user) { router.replace('/login'); return; }
+    // FIX: was `if (!user)`, missing the same user.is_anonymous check
+    // found on several other screens — see top-of-file comment.
+    if (!user || user.is_anonymous) { router.replace('/register'); return; }
     setMyId(user.id);
 
     await loadBookings(user.id);
@@ -158,19 +169,6 @@ export default function BuyerDeliveriesScreen() {
                   ))}
                 </View>
 
-                {/* FIX: this used to have its own inline PIN-generation UI
-                    right here — duplicating delivery-track.tsx, a
-                    screen that already existed in the project (found
-                    after this file was first built) and does the same
-                    job with real advantages this list format can't
-                    easily match: live 5-second polling for status
-                    changes, a real countdown timer on the PIN, driver
-                    rating, and a full "how it works" walkthrough.
-                    Rather than keep two competing implementations, this
-                    list now links OUT to that richer single-booking
-                    view for anything actively trackable — this screen's
-                    job is just to be the list, same relationship
-                    messages.tsx has to chat.tsx. */}
                 {isTrackable && (
                   <TouchableOpacity
                     style={styles.trackBtn}
