@@ -22,6 +22,16 @@ const GREY = '#AAAAAA';
 const GREEN = '#4fc96e';
 const REG_FEE = 10;
 
+// NEW: launch promotion — free registration until Jan 31, 2027, to
+// build momentum while payments/product mature. See
+// free-operator-registration-promo.sql for the full reasoning —
+// verification status is completely untouched by this; only the paid
+// registration itself is free during this window, and expires
+// naturally on Feb 1 via the SAME expiry check already used
+// everywhere else in the app.
+const FREE_PROMO_END = new Date('2027-01-31T23:59:59Z');
+const isPromoActive = () => new Date() < FREE_PROMO_END;
+
 const OPERATOR_TERMS_URL = 'https://thuthukanilusaba-svg.github.io/imbizohub-legal/operator-terms.html';
 
 const POLL_INTERVAL_MS = 2000;
@@ -85,6 +95,38 @@ export default function DeliveryOperatorRegisterPayScreen() {
 
     setOperatorRow(data);
     setLoading(false);
+  }
+
+  // NEW: free-promo registration path — calls register_operator_free_promo()
+  // directly, no Paynow checkout at all, since no real money changes
+  // hands during the promo window. Kept as a fully separate function
+  // from handlePay() (the real payment path) rather than branching
+  // deep inside it — these are genuinely different flows (RPC call vs.
+  // checkout+poll), and keeping them separate makes it obvious exactly
+  // what changes when the promo ends: this whole function simply stops
+  // being called, handlePay() below is completely untouched and ready
+  // to take over immediately on Feb 1.
+  async function handleFreeRegister() {
+    if (!agreedToTerms) {
+      setError('Please agree to the Operator Terms to continue.');
+      return;
+    }
+
+    setPaying(true);
+    setError('');
+
+    const { error: rpcError } = await supabase.rpc('register_operator_free_promo', {
+      p_operator_type: 'delivery',
+    });
+
+    setPaying(false);
+
+    if (rpcError) {
+      setError(rpcError.message);
+      return;
+    }
+
+    setDone(true);
   }
 
   async function handlePay() {
@@ -212,9 +254,17 @@ export default function DeliveryOperatorRegisterPayScreen() {
         <View style={styles.pricingRow}>
           <View>
             <Text style={styles.pricingLabel}>Registration fee</Text>
-            <Text style={styles.pricingNote}>Renews yearly</Text>
+            <Text style={styles.pricingNote}>
+              {isPromoActive()
+                ? 'Free until Jan 31, 2027 \u2014 then $10/year'
+                : 'Renews yearly'}
+            </Text>
           </View>
-          <Text style={styles.pricingAmount}>${REG_FEE}</Text>
+          {isPromoActive() ? (
+            <Text style={[styles.pricingAmount, { color: GREEN }]}>FREE</Text>
+          ) : (
+            <Text style={styles.pricingAmount}>${REG_FEE}</Text>
+          )}
         </View>
         <View style={styles.divider} />
         <View style={styles.pricingRow}>
@@ -261,7 +311,7 @@ export default function DeliveryOperatorRegisterPayScreen() {
 
       <TouchableOpacity
         style={[styles.payBtn, (paying || verifying) && { opacity: 0.6 }]}
-        onPress={handlePay}
+        onPress={isPromoActive() ? handleFreeRegister : handlePay}
         disabled={paying || verifying}
         activeOpacity={0.85}
       >
@@ -271,6 +321,11 @@ export default function DeliveryOperatorRegisterPayScreen() {
           <>
             <ActivityIndicator color={BLACK} />
             <Text style={styles.payBtnSub}>Confirming your payment…</Text>
+          </>
+        ) : isPromoActive() ? (
+          <>
+            <Text style={styles.payBtnText}>Register free and start delivering</Text>
+            <Text style={styles.payBtnSub}>Free until January 31, 2027</Text>
           </>
         ) : (
           <>

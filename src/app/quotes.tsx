@@ -62,6 +62,13 @@ const BLUE = '#4A90D9';
 const DEPOSIT_PCT = 0.07;
 const DEPOSIT_CAP = 15;
 
+// NEW: launch promotion — accepting a quote is free until Jan 31,
+// 2027, same window as the operator registration promos. See
+// accept-quote-free-promo/index.ts for the full reasoning on why this
+// is a dedicated Edge Function rather than a plain RPC.
+const FREE_PROMO_END = new Date('2027-01-31T23:59:59Z');
+const isPromoActive = () => new Date() < FREE_PROMO_END;
+
 function calculateDeposit(price: number): number {
   return Math.min(parseFloat((price * DEPOSIT_PCT).toFixed(2)), DEPOSIT_CAP);
 }
@@ -193,6 +200,46 @@ export default function QuotesScreen() {
     setStep(quote.status === 'accepted' && quote.deposit_paid ? 'revealed' : 'confirm');
     setPayError('');
     setModalVisible(true);
+  }
+
+  // NEW: free-promo accept path — calls accept-quote-free-promo
+  // directly, no Paynow checkout at all. Kept fully separate from
+  // handlePayDeposit() below rather than branching inside it — these
+  // are genuinely different flows (direct Edge Function call vs.
+  // checkout+poll), and separating them means handlePayDeposit()
+  // itself is completely untouched, ready to take over immediately
+  // once the promo ends on Feb 1 with zero risk of this promo code
+  // accidentally affecting the real payment path.
+  async function handleAcceptFree() {
+    if (!chosenQuote || !request) return;
+    setPayError('');
+
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user || user.is_anonymous) {
+      setModalVisible(false);
+      router.push('/register');
+      return;
+    }
+
+    setPaying(true);
+
+    const { data, error: fnError } = await supabase.functions.invoke('accept-quote-free-promo', {
+      body: {
+        trip_quote_id: chosenQuote.id,
+        buyer_id: user.id,
+        seller_id: chosenQuote.operator_id,
+      },
+    });
+
+    setPaying(false);
+
+    if (fnError || data?.error) {
+      setPayError(fnError?.message || data?.error || 'Could not accept this quote. Please try again.');
+      return;
+    }
+
+    setStep('revealed');
+    await loadData();
   }
 
   async function handlePayDeposit() {
@@ -330,7 +377,10 @@ export default function QuotesScreen() {
             quotes.length > 0 ? (
               <View style={styles.infoBar}>
                 <Text style={styles.infoBarText}>
-                  {quotes.length} quote{quotes.length !== 1 ? 's' : ''} · sorted cheapest first · accept to pay 7% commitment fee (capped at $15)
+                  {quotes.length} quote{quotes.length !== 1 ? 's' : ''} · sorted cheapest first ·{' '}
+                  {isPromoActive()
+                    ? 'accept free \u2014 launch promo through Jan 31, 2027'
+                    : 'accept to pay 7% commitment fee (capped at $15)'}
                 </Text>
               </View>
             ) : null
@@ -377,7 +427,9 @@ export default function QuotesScreen() {
 
                 {!isDeclined && !isAccepted && request.status === 'open' && (
                   <TouchableOpacity style={styles.pickBtn} onPress={() => openModal(item)} activeOpacity={0.85}>
-                    <Text style={styles.pickBtnText}>Accept — pay ${dep} commitment fee</Text>
+                    <Text style={styles.pickBtnText}>
+                      {isPromoActive() ? 'Accept \u2014 free (launch promo)' : `Accept — pay $${dep} commitment fee`}
+                    </Text>
                   </TouchableOpacity>
                 )}
 
@@ -404,7 +456,11 @@ export default function QuotesScreen() {
             {(step === 'confirm' || step === 'paying') && chosenQuote && (
               <>
                 <Text style={styles.modalTitle}>Confirm booking</Text>
-                <Text style={styles.modalSub}>Pay a 7% commitment fee (capped at $15) to lock in this operator and reveal their contact details.</Text>
+                <Text style={styles.modalSub}>
+                  {isPromoActive()
+                    ? 'Accept this quote for free \u2014 launch promotion through January 31, 2027 \u2014 to lock in this operator and reveal their contact details.'
+                    : 'Pay a 7% commitment fee (capped at $15) to lock in this operator and reveal their contact details.'}
+                </Text>
 
                 {/* Summary */}
                 <View style={styles.summaryBox}>
@@ -412,8 +468,12 @@ export default function QuotesScreen() {
                   <SummaryRow label="Vehicle" value={chosenQuote.vehicle} />
                   <SummaryRow label="Total fare" value={`$${chosenQuote.price}`} />
                   <View style={styles.divider} />
-                  <SummaryRow label="Commitment fee (7%, capped at $15)" value={`$${deposit}`} gold />
-                  <SummaryRow label="Balance remaining" value={`$${balance}`} />
+                  {isPromoActive() ? (
+                    <SummaryRow label="Commitment fee" value="FREE (launch promo)" gold />
+                  ) : (
+                    <SummaryRow label="Commitment fee (7%, capped at $15)" value={`$${deposit}`} gold />
+                  )}
+                  <SummaryRow label="Balance remaining" value={`$${isPromoActive() ? chosenQuote.price : balance}`} />
                 </View>
 
                 {/* Balance payment options */}
@@ -448,7 +508,7 @@ export default function QuotesScreen() {
 
                 <TouchableOpacity
                   style={[styles.payBtn, (paying || verifying) && { opacity: 0.6 }]}
-                  onPress={handlePayDeposit}
+                  onPress={isPromoActive() ? handleAcceptFree : handlePayDeposit}
                   disabled={paying || verifying}
                 >
                   {paying ? (
@@ -458,6 +518,8 @@ export default function QuotesScreen() {
                       <ActivityIndicator color={BLACK} />
                       <Text style={styles.payBtnSub}>Confirming your payment…</Text>
                     </>
+                  ) : isPromoActive() ? (
+                    <Text style={styles.payBtnText}>Accept free — launch promo</Text>
                   ) : (
                     <Text style={styles.payBtnText}>Pay ${deposit} commitment fee</Text>
                   )}

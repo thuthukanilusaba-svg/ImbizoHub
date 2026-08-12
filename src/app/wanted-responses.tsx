@@ -62,6 +62,12 @@ const GREEN = '#4fc96e';
 const POLL_INTERVAL_MS = 2000;
 const POLL_MAX_ATTEMPTS = 20;
 
+// NEW: launch promotion — accepting a response is free until Jan 31,
+// 2027, same window as every other promo built today. See
+// accept-response-free-promo/index.ts for the full reasoning.
+const FREE_PROMO_END = new Date('2027-01-31T23:59:59Z');
+const isPromoActive = () => new Date() < FREE_PROMO_END;
+
 export default function WantedResponsesScreen() {
   const router = useRouter();
   const { request_id } = useLocalSearchParams<{ request_id: string }>();
@@ -125,6 +131,36 @@ export default function WantedResponsesScreen() {
 
   function handleChat(response: any) {
     router.push(`/chat?item_request_id=${request_id}&receiver_id=${response.responder_id}`);
+  }
+
+  // NEW: free-promo accept path — calls accept-response-free-promo
+  // directly, no Paynow checkout. Kept fully separate from
+  // handleAccept() below, same reasoning as every other promo path
+  // built today — handleAccept() itself is completely untouched and
+  // ready to take over immediately once the promo ends Feb 1.
+  async function handleAcceptFree(response: any) {
+    if (!request || request.user_id !== myId) return;
+
+    setError('');
+    setAcceptingId(response.id);
+
+    const { data, error: fnError } = await supabase.functions.invoke('accept-response-free-promo', {
+      body: {
+        item_request_id: request_id,
+        item_response_id: response.id,
+        buyer_id: myId,
+        seller_id: response.responder_id,
+      },
+    });
+
+    setAcceptingId(null);
+
+    if (fnError || data?.error) {
+      setError(fnError?.message || data?.error || 'Could not accept this response. Please try again.');
+      return;
+    }
+
+    router.replace(`/chat?item_request_id=${request_id}&receiver_id=${response.responder_id}&openDeal=1`);
   }
 
   async function handleAccept(response: any) {
@@ -254,13 +290,15 @@ export default function WantedResponsesScreen() {
               ) : (
                 <TouchableOpacity
                   style={[styles.acceptBtn, (isAccepting || verifying) && { opacity: 0.6 }]}
-                  onPress={() => handleAccept(item)}
+                  onPress={() => (isPromoActive() ? handleAcceptFree(item) : handleAccept(item))}
                   disabled={isAccepting || verifying}
                 >
                   {isAccepting ? (
                     <ActivityIndicator color={BLACK} />
                   ) : verifying && acceptingId === null ? (
                     <ActivityIndicator color={BLACK} />
+                  ) : isPromoActive() ? (
+                    <Text style={styles.acceptBtnText}>Accept free — launch promo</Text>
                   ) : (
                     <Text style={styles.acceptBtnText}>Accept — unlock contact info</Text>
                   )}

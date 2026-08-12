@@ -392,6 +392,10 @@ export default function ProfileScreen() {
 
           <View style={styles.card}>
             <Text style={styles.cardTitle}>My activity</Text>
+            {/* NEW: entry point to the new public, shareable seller
+                profile — leaning into today's strategy work turning
+                the ratings system into real lock-in. */}
+            <MenuRow icon="🔗" label="View my public profile" onPress={() => router.push(`/seller?id=${userId}`)} />
             <MenuRow icon="🏷️" label="My listings" onPress={() => router.push('/my-listings')} />
             <MenuRow icon="📥" label="Deliveries to me" onPress={() => router.push('/buyer-deliveries')} />
             <MenuRow icon="📤" label="Deliveries from my listings" onPress={() => router.push('/seller-deliveries')} />

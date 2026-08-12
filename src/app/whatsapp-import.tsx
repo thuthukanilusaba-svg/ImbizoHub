@@ -1,10 +1,22 @@
 // app/whatsapp-import.tsx
-// WhatsApp Import Tool — paste-and-extract
-// Sellers migrating from WhatsApp paste a product message here. We guess
-// a title, price, and description from the free text, then let the seller
-// review/edit before it becomes a real listing — same insert logic as
-// post.tsx. Photos are not handled here (WhatsApp text has none); sellers
-// can add photos afterward by editing the listing normally.
+// WhatsApp Import Tool — paste-and-extract, now with BULK support.
+//
+// NEW (leaning harder into this as the real acquisition wedge it is):
+// this used to handle exactly one product per paste. A seller with a
+// real WhatsApp catalog — the actual target user for this feature —
+// doesn't have one product, they have ten or twenty, usually pasted
+// together separated by blank lines between each one (the natural way
+// people copy a series of WhatsApp status posts or catalog messages).
+// The old version forced them to repeat the single-item flow once per
+// product, which meant migrating a real catalog was barely faster than
+// just using post.tsx directly — the entire point of this screen.
+//
+// splitIntoItems() below detects blank-line-separated blocks first
+// (the strongest, most common real-world signal), falling back to
+// numbered-list markers (1. / 2) / etc.) if no blank-line blocks are
+// found. If only one item is detected either way, this renders
+// EXACTLY the same single-item review form as before — nothing changes
+// for the simple case, this is additive only.
 //
 // FIX: button label changed from "Parse message" to "Extract details" —
 // "parse" is a programming term that doesn't mean anything to most
@@ -35,30 +47,63 @@ const GOLD = '#B8860B';
 const BLACK = '#1A1A18';
 const DARK = '#2a2a2a';
 const GREY = '#AAAAAA';
+const GREEN = '#4fc96e';
+const RED = '#ff8a8a';
 
 const categories = ['Phones', 'Vehicles', 'Furniture', 'Clothing', 'Appliances', 'Building', 'Baby', 'Other'];
 
-// Guess a price from free text. Handles: R3500, R3,500, R 3 500, $50, 3.5k, 3500
-//
-// FIX: the old third tier (plain-number fallback) scanned the ENTIRE pasted
-// text left-to-right for the first standalone 2+-digit number, with no
-// awareness of line structure. That meant a model/year number appearing
-// earlier in the text than the actual price would win — e.g.
-//   "Toyota Corolla 2016, asking 3500"
-// used to return "2016" instead of "3500", because 2016 is a valid
-// word-bounded 2+-digit number and it simply appears first.
-//
-// FIX ADDS a new tier BEFORE that fallback: look for a line that is
-// ENTIRELY a number (optionally with a currency symbol, commas, or
-// spaces) and nothing else — e.g. a line that just says "3500" or
-// "R 3 500" on its own. This is the single strongest, most common signal
-// for a WhatsApp-style price line (see the placeholder example below,
-// where the price is already its own line), and it's checked before the
-// old whole-text scan so a genuine standalone price line always wins over
-// a number embedded inside a title/description line.
-//
-// The final fallback (old behavior) is kept as a last resort for messages
-// that don't put the price on its own line at all.
+// NEW: splits a pasted block of text into separate items, for bulk
+// catalog imports. Two heuristics, tried in order:
+//   1. Blank-line-separated blocks — the strongest signal, since this
+//      is how people naturally paste a series of individual WhatsApp
+//      messages/status posts one after another.
+//   2. Numbered-list markers at the start of a line ("1.", "2)", "3 -")
+//      — the other common way a seller might type out a quick catalog
+//      list directly rather than pasting separate messages.
+// If neither heuristic finds more than one block, the whole text is
+// treated as a single item — identical to the screen's original
+// behavior.
+function splitIntoItems(text: string): string[] {
+  const trimmed = text.trim();
+  if (!trimmed) return [];
+
+  // Heuristic 1: blank-line-separated blocks.
+  const blankLineBlocks = trimmed
+    .split(/\n\s*\n+/)
+    .map((b) => b.trim())
+    .filter((b) => b.length > 0);
+
+  if (blankLineBlocks.length > 1) {
+    return blankLineBlocks;
+  }
+
+  // Heuristic 2: numbered-list markers at the START of a line only
+  // (not just anywhere a digit appears, which would wrongly split on
+  // model numbers or years inside a single item's own description).
+  const numberedMarker = /^\s*\d{1,2}[.)\-]\s+/;
+  const lines = trimmed.split('\n');
+  const hasMultipleMarkers = lines.filter((l) => numberedMarker.test(l)).length > 1;
+
+  if (hasMultipleMarkers) {
+    const blocks: string[] = [];
+    let current: string[] = [];
+    for (const line of lines) {
+      if (numberedMarker.test(line)) {
+        if (current.length > 0) blocks.push(current.join('\n').trim());
+        current = [line.replace(numberedMarker, '')];
+      } else {
+        current.push(line);
+      }
+    }
+    if (current.length > 0) blocks.push(current.join('\n').trim());
+    return blocks.filter((b) => b.length > 0);
+  }
+
+  // Nothing multi-item detected — treat the whole paste as one item,
+  // exactly like the original single-item-only version did.
+  return [trimmed];
+}
+
 function guessPrice(text: string): string {
   const kMatch = text.match(/(\d+(?:\.\d+)?)\s*k\b/i);
   if (kMatch) {
@@ -71,22 +116,16 @@ function guessPrice(text: string): string {
     if (digitsOnly) return digitsOnly;
   }
 
-  // NEW: a line that is ENTIRELY a number (± currency symbol / commas /
-  // internal spaces) is a much stronger price signal than "first number
-  // anywhere in the text", since titles/descriptions containing numbers
-  // (model names, years, storage sizes) are rarely a whole line by
-  // themselves.
   const lines = text.split('\n');
   for (const line of lines) {
-    const trimmed = line.trim();
-    if (!trimmed) continue;
-    if (/^[R$]?\s?\d[\d,.\s]*$/.test(trimmed)) {
-      const digitsOnly = trimmed.replace(/[^\d.]/g, '');
+    const trimmedLine = line.trim();
+    if (!trimmedLine) continue;
+    if (/^[R$]?\s?\d[\d,.\s]*$/.test(trimmedLine)) {
+      const digitsOnly = trimmedLine.replace(/[^\d.]/g, '');
       if (digitsOnly.length >= 2) return digitsOnly;
     }
   }
 
-  // Last resort — unchanged from before, only reached if nothing above matched.
   const plainNumberMatch = text.match(/\b\d{2,}(?:[.,]\d+)?\b/);
   if (plainNumberMatch) {
     return plainNumberMatch[0].replace(/,/g, '');
@@ -95,21 +134,16 @@ function guessPrice(text: string): string {
   return '';
 }
 
-// Guess a title: first non-empty line of the pasted text, trimmed of
-// leading emoji/symbols and truncated to a reasonable length.
 function guessTitle(text: string): string {
   const firstLine = text.split('\n').map((l) => l.trim()).find((l) => l.length > 0) || '';
   const cleaned = firstLine.replace(/^[^\w]+/, '').trim();
   return cleaned.length > 60 ? cleaned.slice(0, 60).trim() : cleaned;
 }
 
-// Guess a description: the full pasted text minus the guessed title line
-// and the guessed price line, trimmed up.
 function guessDescription(text: string, title: string, price: string): string {
   const lines = text.split('\n').map((l) => l.trim());
   const withoutTitleAndPrice = lines.filter((l) => {
     if (!l || l === title) return false;
-    // Drop lines that are just the price (with optional currency symbol/spacing)
     const digitsOnly = l.replace(/[^\d.]/g, '');
     if (price && digitsOnly === price && l.replace(/[\d.,\s R$]/gi, '') === '') return false;
     return true;
@@ -117,54 +151,109 @@ function guessDescription(text: string, title: string, price: string): string {
   return withoutTitleAndPrice.join('\n').trim();
 }
 
+type ParsedItem = {
+  key: string;
+  title: string;
+  price: string;
+  description: string;
+  location: string;
+  category: string;
+  include: boolean;
+};
+
 export default function WhatsAppImportScreen() {
   const router = useRouter();
 
   const [rawText, setRawText] = useState('');
   const [parsed, setParsed] = useState(false);
 
-  const [title, setTitle] = useState('');
-  const [description, setDescription] = useState('');
-  const [price, setPrice] = useState('');
-  const [location, setLocation] = useState('');
-  const [category, setCategory] = useState('Phones');
+  // NEW: single shared location, applied to every item at once —
+  // sellers doing a bulk catalog import are overwhelmingly selling
+  // from one place, so asking for it once instead of per-item removes
+  // real repetitive friction from exactly the workflow this feature
+  // is meant to speed up.
+  const [sharedLocation, setSharedLocation] = useState('');
+
+  // NEW: an array now, instead of individual title/price/description/
+  // category fields — holds one or many parsed items depending on
+  // what splitIntoItems() found. The single-item case is just this
+  // array with length 1, rendered as the same review form as before.
+  const [items, setItems] = useState<ParsedItem[]>([]);
 
   const [posting, setPosting] = useState(false);
+  const [postProgress, setPostProgress] = useState({ done: 0, total: 0 });
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
+  const [successCount, setSuccessCount] = useState(0);
 
   function handleParse() {
     setError('');
     if (!rawText.trim()) {
-      setError('Paste a WhatsApp message first.');
+      setError('Paste one or more WhatsApp messages first.');
       return;
     }
 
-    const guessedTitle = guessTitle(rawText);
-    const guessedPrice = guessPrice(rawText);
-    const guessedDescription = guessDescription(rawText, guessedTitle, guessedPrice);
+    const blocks = splitIntoItems(rawText);
+    if (blocks.length === 0) {
+      setError('Couldn\'t find anything to import in that text.');
+      return;
+    }
 
-    setTitle(guessedTitle);
-    setPrice(guessedPrice);
-    setDescription(guessedDescription);
+    const parsedItems: ParsedItem[] = blocks.map((block, i) => {
+      const guessedTitle = guessTitle(block);
+      const guessedPrice = guessPrice(block);
+      const guessedDescription = guessDescription(block, guessedTitle, guessedPrice);
+      return {
+        key: `${Date.now()}-${i}`,
+        title: guessedTitle,
+        price: guessedPrice,
+        description: guessedDescription,
+        location: '',
+        category: 'Phones',
+        include: true,
+      };
+    });
+
+    setItems(parsedItems);
     setParsed(true);
   }
 
-  async function handlePost() {
+  function updateItem(key: string, field: keyof ParsedItem, value: string | boolean) {
+    setItems((prev) => prev.map((it) => (it.key === key ? { ...it, [field]: value } : it)));
+  }
+
+  function removeItem(key: string) {
+    setItems((prev) => prev.filter((it) => it.key !== key));
+  }
+
+  async function handlePostAll() {
     setError('');
 
-    if (!title || !price || !location) {
-      setError('Please fill in title, price, and location.');
+    const toPost = items.filter((it) => it.include);
+    if (toPost.length === 0) {
+      setError('Nothing selected to import.');
       return;
     }
 
-    const priceNum = parseFloat(price);
-    if (isNaN(priceNum) || priceNum <= 0) {
-      setError('Enter a valid price.');
-      return;
+    // Validate every item before posting any of them — a bulk import
+    // failing halfway through, with some listings created and others
+    // silently skipped, would be a confusing, hard-to-diagnose result
+    // for someone importing a real catalog. All-or-nothing is the
+    // safer behavior here.
+    for (const it of toPost) {
+      const loc = it.location.trim() || sharedLocation.trim();
+      if (!it.title.trim() || !it.price.trim() || !loc) {
+        setError(`"${it.title || 'One item'}" is missing a title, price, or location — fix it before importing.`);
+        return;
+      }
+      if (isNaN(parseFloat(it.price)) || parseFloat(it.price) <= 0) {
+        setError(`"${it.title}" has an invalid price.`);
+        return;
+      }
     }
 
     setPosting(true);
+    setPostProgress({ done: 0, total: toPost.length });
 
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) {
@@ -173,25 +262,33 @@ export default function WhatsAppImportScreen() {
       return;
     }
 
-    const { error: insertError } = await supabase.from('listings').insert({
-      user_id: user.id,
-      title: title.trim(),
-      description: description.trim(),
-      price: priceNum,
-      location: location.trim(),
-      category,
-      image_url: null,
-      image_urls: [],
-      badge: 'New',
-    });
+    let completed = 0;
+    for (const it of toPost) {
+      const loc = it.location.trim() || sharedLocation.trim();
+      const { error: insertError } = await supabase.from('listings').insert({
+        user_id: user.id,
+        title: it.title.trim(),
+        description: it.description.trim(),
+        price: parseFloat(it.price),
+        location: loc,
+        category: it.category,
+        image_url: null,
+        image_urls: [],
+        badge: 'New',
+      });
 
-    setPosting(false);
+      if (insertError) {
+        setPosting(false);
+        setError(`Failed on "${it.title}": ${insertError.message}. ${completed} of ${toPost.length} were already imported successfully.`);
+        return;
+      }
 
-    if (insertError) {
-      setError(insertError.message);
-      return;
+      completed++;
+      setPostProgress({ done: completed, total: toPost.length });
     }
 
+    setPosting(false);
+    setSuccessCount(completed);
     setSuccess(true);
   }
 
@@ -199,9 +296,13 @@ export default function WhatsAppImportScreen() {
     return (
       <View style={styles.successScreen}>
         <Text style={styles.successEmoji}>🎉</Text>
-        <Text style={styles.successTitle}>Listing imported!</Text>
+        <Text style={styles.successTitle}>
+          {successCount === 1 ? 'Listing imported!' : `${successCount} listings imported!`}
+        </Text>
         <Text style={styles.successBody}>
-          Your item is now live on ImbizoHub. Add photos any time by editing the listing.
+          {successCount === 1
+            ? 'Your item is now live on ImbizoHub. Add photos any time by editing the listing.'
+            : 'Your catalog is now live on ImbizoHub. Add photos to each listing any time by editing it.'}
         </Text>
         <TouchableOpacity style={styles.successBtn} onPress={() => router.replace('/')}>
           <Text style={styles.successBtnText}>Back to home</Text>
@@ -222,7 +323,8 @@ export default function WhatsAppImportScreen() {
 
         <Text style={styles.heading}>Import from WhatsApp</Text>
         <Text style={styles.subheading}>
-          Paste a product message you've already sent on WhatsApp — we'll guess the details for you.
+          Paste your whole WhatsApp catalog at once — one item or twenty. Separate each product with a
+          blank line and we'll split them out automatically.
         </Text>
 
         {error ? (
@@ -232,37 +334,70 @@ export default function WhatsAppImportScreen() {
         ) : null}
 
         <View style={styles.card}>
-          <Text style={styles.label}>Paste WhatsApp message</Text>
+          <Text style={styles.label}>Paste WhatsApp message(s)</Text>
           <TextInput
             style={[styles.input, styles.pasteArea]}
-            placeholder={'e.g.\niPhone 13 Pro 256GB\nR8500\nExcellent condition, barely used, comes with box and charger'}
+            placeholder={'e.g.\niPhone 13 Pro 256GB\nR8500\nExcellent condition, barely used\n\nSamsung Galaxy S21\nR6000\nGood condition, small crack on back'}
             placeholderTextColor="#666"
             value={rawText}
             onChangeText={(t) => { setRawText(t); setParsed(false); }}
             multiline
-            numberOfLines={6}
+            numberOfLines={8}
           />
 
-          {/* FIX: "Parse message" → "Extract details" — clearer, plain-
-              language label for what this button actually does. */}
           <TouchableOpacity style={styles.parseBtn} onPress={handleParse}>
             <Text style={styles.parseBtnText}>✨ Extract details</Text>
           </TouchableOpacity>
         </View>
 
-        {parsed && (
+        {parsed && items.length > 1 && (
           <View style={styles.card}>
             <Text style={styles.reviewNote}>
-              We've guessed the details below — please review and fix anything that's wrong.
+              Found {items.length} items — review each one below, uncheck any you don't want to import.
             </Text>
+            <Text style={styles.label}>Location (applies to all, unless overridden below)</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="e.g. Harare"
+              placeholderTextColor="#666"
+              value={sharedLocation}
+              onChangeText={setSharedLocation}
+            />
+          </View>
+        )}
+
+        {parsed && items.map((item, idx) => (
+          <View key={item.key} style={styles.card}>
+            {items.length > 1 && (
+              <View style={styles.itemHeader}>
+                <TouchableOpacity
+                  style={styles.includeToggle}
+                  onPress={() => updateItem(item.key, 'include', !item.include)}
+                >
+                  <View style={[styles.checkbox, item.include && styles.checkboxChecked]}>
+                    {item.include && <Text style={styles.checkmark}>✓</Text>}
+                  </View>
+                  <Text style={styles.itemHeaderText}>Item {idx + 1} of {items.length}</Text>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={() => removeItem(item.key)}>
+                  <Text style={styles.removeText}>Remove</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+
+            {items.length === 1 && (
+              <Text style={styles.reviewNote}>
+                We've guessed the details below — please review and fix anything that's wrong.
+              </Text>
+            )}
 
             <Text style={styles.label}>Title *</Text>
             <TextInput
               style={styles.input}
               placeholder="e.g. iPhone 13 Pro, 256GB"
               placeholderTextColor="#666"
-              value={title}
-              onChangeText={setTitle}
+              value={item.title}
+              onChangeText={(v) => updateItem(item.key, 'title', v)}
             />
 
             <Text style={styles.label}>Price (USD) *</Text>
@@ -270,29 +405,45 @@ export default function WhatsAppImportScreen() {
               style={styles.input}
               placeholder="e.g. 320"
               placeholderTextColor="#666"
-              value={price}
-              onChangeText={setPrice}
+              value={item.price}
+              onChangeText={(v) => updateItem(item.key, 'price', v)}
               keyboardType="decimal-pad"
             />
 
-            <Text style={styles.label}>Location *</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="e.g. Harare"
-              placeholderTextColor="#666"
-              value={location}
-              onChangeText={setLocation}
-            />
+            {items.length === 1 && (
+              <>
+                <Text style={styles.label}>Location *</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder="e.g. Harare"
+                  placeholderTextColor="#666"
+                  value={item.location}
+                  onChangeText={(v) => updateItem(item.key, 'location', v)}
+                />
+              </>
+            )}
+            {items.length > 1 && (
+              <>
+                <Text style={styles.label}>Location override (optional)</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder={sharedLocation || 'Uses the shared location above'}
+                  placeholderTextColor="#666"
+                  value={item.location}
+                  onChangeText={(v) => updateItem(item.key, 'location', v)}
+                />
+              </>
+            )}
 
             <Text style={styles.label}>Category</Text>
             <RNScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 4 }}>
               {categories.map((cat) => (
                 <TouchableOpacity
                   key={cat}
-                  style={[styles.categoryChip, category === cat && styles.categoryChipActive]}
-                  onPress={() => setCategory(cat)}
+                  style={[styles.categoryChip, item.category === cat && styles.categoryChipActive]}
+                  onPress={() => updateItem(item.key, 'category', cat)}
                 >
-                  <Text style={[styles.categoryChipText, category === cat && styles.categoryChipTextActive]}>
+                  <Text style={[styles.categoryChipText, item.category === cat && styles.categoryChipTextActive]}>
                     {cat}
                   </Text>
                 </TouchableOpacity>
@@ -304,20 +455,33 @@ export default function WhatsAppImportScreen() {
               style={[styles.input, styles.textArea]}
               placeholder="Describe the item's condition, features..."
               placeholderTextColor="#666"
-              value={description}
-              onChangeText={setDescription}
+              value={item.description}
+              onChangeText={(v) => updateItem(item.key, 'description', v)}
               multiline
               numberOfLines={4}
             />
-
-            <TouchableOpacity
-              style={[styles.postBtn, posting && { opacity: 0.6 }]}
-              onPress={handlePost}
-              disabled={posting}
-            >
-              {posting ? <ActivityIndicator color="#fff" /> : <Text style={styles.postBtnText}>Create listing</Text>}
-            </TouchableOpacity>
           </View>
+        ))}
+
+        {parsed && items.length > 0 && (
+          <TouchableOpacity
+            style={[styles.postBtn, posting && { opacity: 0.6 }]}
+            onPress={handlePostAll}
+            disabled={posting}
+          >
+            {posting ? (
+              <>
+                <ActivityIndicator color="#fff" />
+                <Text style={styles.postBtnSub}>{postProgress.done} of {postProgress.total} imported…</Text>
+              </>
+            ) : (
+              <Text style={styles.postBtnText}>
+                {items.filter((i) => i.include).length === 1
+                  ? 'Create listing'
+                  : `Create ${items.filter((i) => i.include).length} listings`}
+              </Text>
+            )}
+          </TouchableOpacity>
         )}
       </ScrollView>
     </KeyboardAvoidingView>
@@ -331,10 +495,10 @@ const styles = StyleSheet.create({
   backBtn: { marginBottom: 16 },
   backText: { color: GREY, fontSize: 14 },
   heading: { fontSize: 24, fontWeight: '800', color: '#fff', marginBottom: 6 },
-  subheading: { fontSize: 13, color: GREY, marginBottom: 20 },
+  subheading: { fontSize: 13, color: GREY, marginBottom: 20, lineHeight: 19 },
 
   errorBox: { backgroundColor: '#3a1a1a', borderRadius: 10, padding: 12, marginBottom: 16 },
-  errorText: { color: '#ff8a8a', fontSize: 13 },
+  errorText: { color: RED, fontSize: 13 },
 
   label: { fontSize: 13, fontWeight: '700', color: '#fff', marginBottom: 8, marginTop: 14 },
 
@@ -344,7 +508,7 @@ const styles = StyleSheet.create({
     paddingVertical: Platform.OS === 'ios' ? 13 : 10, fontSize: 14, color: '#fff',
     borderWidth: 0.5, borderColor: '#333',
   },
-  pasteArea: { height: 130, textAlignVertical: 'top', paddingTop: 10 },
+  pasteArea: { height: 160, textAlignVertical: 'top', paddingTop: 10 },
   textArea: { height: 90, textAlignVertical: 'top', paddingTop: 10 },
 
   parseBtn: { backgroundColor: GOLD, borderRadius: 12, paddingVertical: 13, alignItems: 'center', marginTop: 14 },
@@ -352,17 +516,26 @@ const styles = StyleSheet.create({
 
   reviewNote: { color: GREY, fontSize: 12, marginBottom: 6, lineHeight: 17 },
 
+  itemHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
+  includeToggle: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  checkbox: { width: 20, height: 20, borderRadius: 5, borderWidth: 1.5, borderColor: '#555', alignItems: 'center', justifyContent: 'center' },
+  checkboxChecked: { backgroundColor: GOLD, borderColor: GOLD },
+  checkmark: { color: BLACK, fontSize: 12, fontWeight: '800' },
+  itemHeaderText: { color: '#fff', fontSize: 13, fontWeight: '700' },
+  removeText: { color: RED, fontSize: 12, fontWeight: '600' },
+
   categoryChip: { backgroundColor: DARK, borderRadius: 20, paddingHorizontal: 14, paddingVertical: 8, marginRight: 8, borderWidth: 0.5, borderColor: '#333' },
   categoryChipActive: { backgroundColor: GOLD, borderColor: GOLD },
   categoryChipText: { color: GREY, fontSize: 12 },
   categoryChipTextActive: { color: BLACK, fontWeight: '700' },
 
-  postBtn: { backgroundColor: GOLD, borderRadius: 14, paddingVertical: 16, alignItems: 'center', marginTop: 24 },
+  postBtn: { backgroundColor: GOLD, borderRadius: 14, paddingVertical: 16, alignItems: 'center', marginTop: 24, flexDirection: 'row', justifyContent: 'center', gap: 10 },
   postBtnText: { color: BLACK, fontSize: 16, fontWeight: '800' },
+  postBtnSub: { color: BLACK, fontSize: 13, fontWeight: '700' },
 
   successScreen: { flex: 1, backgroundColor: '#111', alignItems: 'center', justifyContent: 'center', padding: 32 },
   successEmoji: { fontSize: 64, marginBottom: 20 },
-  successTitle: { fontSize: 24, fontWeight: '800', color: '#fff', marginBottom: 10 },
+  successTitle: { fontSize: 24, fontWeight: '800', color: '#fff', marginBottom: 10, textAlign: 'center' },
   successBody: { fontSize: 15, color: GREY, textAlign: 'center', marginBottom: 32 },
   successBtn: { backgroundColor: GOLD, borderRadius: 12, paddingVertical: 14, paddingHorizontal: 40 },
   successBtnText: { color: BLACK, fontSize: 16, fontWeight: '700' },

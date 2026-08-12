@@ -240,6 +240,31 @@ export default function HomeScreen() {
           <Text style={styles.vanBannerArrow}>›</Text>
         </TouchableOpacity>
 
+        {/* NEW: real, prominent entry point for WhatsApp import —
+            leaning harder into this specifically because it's the
+            strongest acquisition wedge available (meets sellers where
+            they already sell, rather than asking them to start from
+            zero). Previously the ONLY way to find this screen was a
+            small link buried inside post.tsx, easy to miss entirely if
+            someone never opens the regular listing form first. Styled
+            with WhatsApp's own recognizable green for instant
+            recognition, distinct from the gold/green-tinted Wanted
+            banners above. */}
+        <TouchableOpacity
+          style={styles.whatsappBanner}
+          onPress={() => router.push('/whatsapp-import')}
+          activeOpacity={0.85}
+        >
+          <View style={styles.vanBannerLeft}>
+            <Text style={styles.vanBannerEmoji}>💬</Text>
+            <View style={styles.vanBannerTextCol}>
+              <Text style={styles.vanBannerTitle}>Selling on WhatsApp?</Text>
+              <Text style={styles.vanBannerSub}>Paste your whole catalog — import it all at once</Text>
+            </View>
+          </View>
+          <Text style={styles.vanBannerArrow}>›</Text>
+        </TouchableOpacity>
+
         {featuredListing && (
           <View style={styles.section}>
             <TouchableOpacity
@@ -442,6 +467,11 @@ const styles = StyleSheet.create({
   // (gold-tinted, matching the app's primary accent) since this is the
   // BROWSE counterpart, not another "post" action.
   browseWantedBanner: { backgroundColor: '#2e2a1a', borderRadius: 14, marginHorizontal: 16, marginTop: 4, marginBottom: 4, paddingHorizontal: 18, paddingVertical: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderWidth: 0.5, borderColor: '#5e5a3a' },
+  // NEW: WhatsApp's own recognizable green (#25D366-derived dark tint,
+  // matching the same dark-tinted-background treatment as the other
+  // two banners) — instant visual recognition for exactly the seller
+  // this banner is trying to reach.
+  whatsappBanner: { backgroundColor: '#1a2e22', borderRadius: 14, marginHorizontal: 16, marginTop: 4, marginBottom: 4, paddingHorizontal: 18, paddingVertical: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderWidth: 0.5, borderColor: '#25D366' },
   vanBannerLeft: { flexDirection: 'row', alignItems: 'center', gap: 14, flex: 1, minWidth: 0 },
   // NEW: fixes a real overflow bug — this View wrapping the title+
   // subtitle text previously had no style at all, so it took its

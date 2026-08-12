@@ -75,6 +75,15 @@ const UNLOCK_FEE_CAP = 15; // never charge more than this, regardless of listed 
 // same reasoning as the cap, just the opposite direction.
 const UNLOCK_FEE_MIN = 1.50;
 
+// NEW: launch promotion — the unlock fee is free until Jan 31, 2027,
+// same window as every other promo built today. Deliberately checked
+// BEFORE hasFreeUnlock below — during the promo, unlocking is free
+// for everyone regardless of the separate "5 free unlocks" allowance,
+// and importantly doesn't CONSUME that allowance either, so it's still
+// fully intact for buyers once February's real pricing begins.
+const FREE_PROMO_END = new Date('2027-01-31T23:59:59Z');
+const isPromoActive = () => new Date() < FREE_PROMO_END;
+
 // How long to poll payment_intents after the checkout browser closes,
 // waiting for the paynow-webhook to have marked it paid.
 const POLL_INTERVAL_MS = 2000;
@@ -170,6 +179,36 @@ export default function DepositScreen() {
     setFreeUnlocksRemaining(remaining ?? 0);
 
     setLoading(false);
+  }
+
+  // NEW: promo unlock path — calls unlock-free-promo directly, no
+  // Paynow checkout, and deliberately does NOT touch the separate
+  // claim_free_unlock/my_free_unlocks_remaining allowance at all,
+  // since this is a different rule (date-bound for everyone) from
+  // that one (a fixed count per buyer). Kept fully separate from
+  // handleClaimFreeUnlock and handlePayUnlockFee below for the same
+  // reasoning used throughout today's promo work — each flow stays
+  // simple and isolated, nothing to accidentally cross-contaminate.
+  async function handleUnlockFreePromo() {
+    setError('');
+    setClaimingFree(true);
+
+    const { data, error: fnError } = await supabase.functions.invoke('unlock-free-promo', {
+      body: {
+        listing_id: parseInt(listing_id),
+        buyer_id: myId,
+        seller_id,
+      },
+    });
+
+    setClaimingFree(false);
+
+    if (fnError || data?.error) {
+      setError(fnError?.message || data?.error || 'Could not unlock. Please try again.');
+      return;
+    }
+
+    router.replace(`/chat?listing_id=${listing_id}&receiver_id=${seller_id}&openDeal=1`);
   }
 
   async function handleClaimFreeUnlock() {
@@ -302,14 +341,16 @@ export default function DepositScreen() {
           <Text style={styles.summaryLabelBold}>
             {isCapped ? 'Arrange-deal fee (capped)' : isMinimum ? 'Arrange-deal fee (minimum)' : 'Arrange-deal fee (5%)'}
           </Text>
-          {hasFreeUnlock ? (
+          {isPromoActive() || hasFreeUnlock ? (
             <Text style={styles.summaryValueFree}>FREE</Text>
           ) : (
             <Text style={styles.summaryValueGold}>${unlockFeeAmount}</Text>
           )}
         </View>
         <Text style={styles.summaryNote}>
-          {hasFreeUnlock
+          {isPromoActive()
+            ? `Free for everyone through Jan 31, 2027 \u2014 launch promotion. Normally ${isCapped ? `capped at $${UNLOCK_FEE_CAP}` : isMinimum ? `a minimum of $${UNLOCK_FEE_MIN.toFixed(2)}` : `$${unlockFeeAmount}`}.`
+            : hasFreeUnlock
             ? `Normally ${isCapped ? `capped at $${UNLOCK_FEE_CAP}` : isMinimum ? `a minimum of $${UNLOCK_FEE_MIN.toFixed(2)}` : `$${unlockFeeAmount}`} — this one's on us.`
             : isCapped
             ? `Capped at $${UNLOCK_FEE_CAP} regardless of listed price. Non-refundable and not credited toward the final price.`
@@ -317,7 +358,7 @@ export default function DepositScreen() {
             ? `Minimum fee of $${UNLOCK_FEE_MIN.toFixed(2)} applies regardless of listed price. Non-refundable and not credited toward the final price.`
             : 'Non-refundable. This is not credited toward the final price.'}
         </Text>
-        {!hasFreeUnlock && freeUnlocksRemaining === 0 && (
+        {!isPromoActive() && !hasFreeUnlock && freeUnlocksRemaining === 0 && (
           <Text style={styles.usedUpNote}>You've used your 5 free unlocks — this one's paid.</Text>
         )}
       </View>
@@ -328,7 +369,18 @@ export default function DepositScreen() {
         <InfoStep icon="✅" text="Use Meet & Pay to confirm once you've inspected the item" />
       </View>
 
-      {hasFreeUnlock ? (
+      {isPromoActive() ? (
+        <TouchableOpacity
+          style={[styles.freeBtn, claimingFree && { opacity: 0.6 }]}
+          onPress={handleUnlockFreePromo}
+          disabled={claimingFree}
+        >
+          {claimingFree
+            ? <ActivityIndicator color={BLACK} />
+            : <Text style={styles.payBtnText}>Unlock free — launch promo</Text>
+          }
+        </TouchableOpacity>
+      ) : hasFreeUnlock ? (
         <TouchableOpacity
           style={[styles.freeBtn, claimingFree && { opacity: 0.6 }]}
           onPress={handleClaimFreeUnlock}

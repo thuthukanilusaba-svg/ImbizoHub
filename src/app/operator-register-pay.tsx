@@ -1,43 +1,16 @@
 // app/operator-register-pay.tsx
 // Transport operator (van-hire trip bidding) pays a $10/year registration
-// fee before they can browse open trip requests and submit quotes in
-// operator-requests.tsx. Mirrors delivery-operator-register-pay.tsx (the
-// delivery-job registration fee), but writes to `profiles` instead of
-// `delivery_operators` — this is a SEPARATE registration/role from
-// delivery operator. See operator-requests.tsx's checkStatus() for the
-// exact gating logic this screen needs to satisfy:
-//   profile.account_type === 'transport_operator'
-//   && profile.operator_status === 'active'
-//   && profile.registration_expires_at > now
+// fee before they can browse open trip requests and submit quotes.
 //
-// FIX: this file previously contained a duplicate of
-// delivery-operator-register-pay.tsx — same header comment, same
-// delivery_operators reads/writes, same 'delivery_operator_registration'
-// kind. That meant a transport operator paying here would never actually
-// get gated into operator-requests.tsx, since nothing here ever touched
-// profiles.operator_status. Rewritten to target the correct table/kind.
-//
-// ASSUMPTION FLAGGED: this rewrite assumes registering as a transport
-// operator (setting account_type = 'transport_operator') happens at the
-// moment payment is confirmed, same as the account's operator_status and
-// registration_expires_at. If account_type is actually set earlier by a
-// separate "become an operator" onboarding step (before this payment
-// screen is ever reached), remove the account_type write from the
-// webhook branch below and confirm this screen's init() check still
-// makes sense for that flow.
-//
-// REAL PAYNOW INTEGRATION: handlePay() calls the create-payment Edge
-// Function with kind: 'transport_operator_registration', opens the real
-// Paynow checkout, and polls payment_intents for confirmation — same
-// pattern as unlock.tsx and delivery-operator-register-pay.tsx. The
-// actual profiles update is performed by the paynow-webhook Edge
-// Function once Paynow confirms payment, never by this screen directly.
+// NEW: real Operator Terms link + required checkbox before paying —
+// previously "terms" were only ever mentioned in plain, non-clickable
+// footer text with no actual document behind them.
 
 import { useRouter } from 'expo-router';
 import * as WebBrowser from 'expo-web-browser';
 import { useEffect, useState } from 'react';
 import {
-  ActivityIndicator, Platform, ScrollView, StyleSheet,
+  ActivityIndicator, Linking, Platform, ScrollView, StyleSheet,
   Text, TouchableOpacity, View,
 } from 'react-native';
 import { supabase } from '../../lib/supabase';
@@ -49,10 +22,15 @@ const GREY = '#AAAAAA';
 const GREEN = '#4fc96e';
 const REG_FEE = 10;
 
+// NEW: launch promotion — same free-until-Jan-31-2027 treatment as
+// delivery-operator-register-pay.tsx. See free-operator-registration-promo.sql.
+const FREE_PROMO_END = new Date('2027-01-31T23:59:59Z');
+const isPromoActive = () => new Date() < FREE_PROMO_END;
+
+const OPERATOR_TERMS_URL = 'https://thuthukanilusaba-svg.github.io/imbizohub-legal/operator-terms.html';
+
 const POLL_INTERVAL_MS = 2000;
-const POLL_MAX_ATTEMPTS = 20; // ~40 seconds total — was 15 (~30s); widened
-// after a real trip_deposit payment on quotes.tsx took 32s to confirm
-// and got missed under the old window. Same webhook path, same fix.
+const POLL_MAX_ATTEMPTS = 20;
 
 export default function OperatorRegisterPayScreen() {
   const router = useRouter();
@@ -64,6 +42,8 @@ export default function OperatorRegisterPayScreen() {
   const [myId, setMyId] = useState('');
   const [myEmail, setMyEmail] = useState('');
   const [profileRow, setProfileRow] = useState<any>(null);
+  // NEW: real, required Operator Terms acceptance.
+  const [agreedToTerms, setAgreedToTerms] = useState(false);
 
   useEffect(() => { init(); }, []);
 
@@ -82,8 +62,6 @@ export default function OperatorRegisterPayScreen() {
 
     if (fetchError) { setError(fetchError.message); setLoading(false); return; }
 
-    // Already active and not expired — skip straight to trip requests.
-    // Same gating logic as operator-requests.tsx's checkStatus().
     const isActive = profile?.account_type === 'transport_operator' &&
       profile?.operator_status === 'active' &&
       profile?.registration_expires_at &&
@@ -98,7 +76,41 @@ export default function OperatorRegisterPayScreen() {
     setLoading(false);
   }
 
+  // NEW: free-promo registration path — see delivery-operator-register-pay.tsx
+  // for the full reasoning behind keeping this as a fully separate
+  // function from handlePay() rather than branching inside it.
+  async function handleFreeRegister() {
+    if (!agreedToTerms) {
+      setError('Please agree to the Operator Terms to continue.');
+      return;
+    }
+
+    setPaying(true);
+    setError('');
+
+    const { error: rpcError } = await supabase.rpc('register_operator_free_promo', {
+      p_operator_type: 'transport_operator',
+    });
+
+    setPaying(false);
+
+    if (rpcError) {
+      setError(rpcError.message);
+      return;
+    }
+
+    setDone(true);
+  }
+
   async function handlePay() {
+    // NEW: genuinely blocks payment — same validation tier as any
+    // other required check, shown as an inline error rather than
+    // silently doing nothing.
+    if (!agreedToTerms) {
+      setError('Please agree to the Operator Terms to continue.');
+      return;
+    }
+
     setPaying(true);
     setError('');
 
@@ -173,15 +185,8 @@ export default function OperatorRegisterPayScreen() {
           <Text style={styles.successCardTitle}>What happens next</Text>
           <Step n="1" text="Browse open trip requests from customers" />
           <Step n="2" text="Submit a quote with your price and vehicle" />
-          <Step n="3" text="If accepted, the customer's commitment fee (7%, capped at $30) reveals your contact details" />
+          <Step n="3" text="If accepted, the customer's commitment fee (7%, capped at $15) reveals your contact details" />
           <Step n="4" text="Agree on how the remaining balance gets paid" />
-          {/* UPDATED (pricing model simplified, and this line was never
-              accurate to begin with — the 3% was only ever tracked as
-              a debt on profiles.commission_owed, nothing was ever
-              actually "deducted automatically"). The separate 3%
-              commission no longer exists at all — operators keep their
-              full quoted price, ImbizoHub's entire take is the
-              customer's commitment fee (7%, capped at $30). */}
           <Step n="5" text="You keep 100% of your quoted fare — no additional commission" />
         </View>
         <TouchableOpacity style={styles.startBtn} onPress={() => router.replace('/become-operator?type=operator')}>
@@ -211,36 +216,54 @@ export default function OperatorRegisterPayScreen() {
         <View style={styles.errorBox}><Text style={styles.errorText}>⚠️ {error}</Text></View>
       ) : null}
 
-      {/* What you get */}
       <View style={styles.benefitsCard}>
         <Text style={styles.benefitsTitle}>What you get</Text>
         <Benefit icon="🔓" text="Instant access to all open trip requests" />
         <Benefit icon="🚐" text="Submit unlimited quotes to customers" />
-        <Benefit icon="💵" text="Keep 97% of every completed job" />
+        <Benefit icon="💵" text="Keep 100% of every completed job" />
         <Benefit icon="⭐" text="Build your rating and reputation on ImbizoHub" />
       </View>
 
-      {/* Pricing */}
       <View style={styles.pricingCard}>
         <View style={styles.pricingRow}>
           <View>
             <Text style={styles.pricingLabel}>Registration fee</Text>
-            <Text style={styles.pricingNote}>Renews yearly</Text>
+            <Text style={styles.pricingNote}>
+              {isPromoActive()
+                ? 'Free until Jan 31, 2027 \u2014 then $10/year'
+                : 'Renews yearly'}
+            </Text>
           </View>
-          <Text style={styles.pricingAmount}>${REG_FEE}</Text>
+          {isPromoActive() ? (
+            <Text style={[styles.pricingAmount, { color: GREEN }]}>FREE</Text>
+          ) : (
+            <Text style={styles.pricingAmount}>${REG_FEE}</Text>
+          )}
         </View>
-        {/* REMOVED: the "Commission per job — 3%, deducted automatically"
-            row — I'd missed this third instance of the same claim
-            already fixed twice elsewhere in this file. That commission
-            no longer exists, and this line was never accurate anyway
-            (nothing was ever actually "deducted automatically" — it was
-            only tracked as an unpaid debt before being removed
-            entirely). Operators now keep 100% of their quoted fare. */}
       </View>
+
+      {/* NEW: real Operator Terms acceptance — visible link to the
+          actual document, checkbox genuinely blocks payment (see
+          handlePay's check above). */}
+      <TouchableOpacity
+        style={styles.termsRow}
+        onPress={() => setAgreedToTerms((prev) => !prev)}
+        activeOpacity={0.7}
+      >
+        <View style={[styles.checkbox, agreedToTerms && styles.checkboxChecked]}>
+          {agreedToTerms && <Text style={styles.checkmark}>✓</Text>}
+        </View>
+        <Text style={styles.termsText}>
+          I agree to ImbizoHub's{' '}
+          <Text style={styles.termsLink} onPress={() => Linking.openURL(OPERATOR_TERMS_URL)}>
+            Operator Terms
+          </Text>
+        </Text>
+      </TouchableOpacity>
 
       <TouchableOpacity
         style={[styles.payBtn, (paying || verifying) && { opacity: 0.6 }]}
-        onPress={handlePay}
+        onPress={isPromoActive() ? handleFreeRegister : handlePay}
         disabled={paying || verifying}
         activeOpacity={0.85}
       >
@@ -251,6 +274,11 @@ export default function OperatorRegisterPayScreen() {
             <ActivityIndicator color={BLACK} />
             <Text style={styles.payBtnSub}>Confirming your payment…</Text>
           </>
+        ) : isPromoActive() ? (
+          <>
+            <Text style={styles.payBtnText}>Register free and start bidding</Text>
+            <Text style={styles.payBtnSub}>Free until January 31, 2027</Text>
+          </>
         ) : (
           <>
             <Text style={styles.payBtnText}>Pay ${REG_FEE} and start bidding</Text>
@@ -258,10 +286,6 @@ export default function OperatorRegisterPayScreen() {
           </>
         )}
       </TouchableOpacity>
-
-      <Text style={styles.footerNote}>
-        By paying you agree to ImbizoHub's transport operator terms. Your registration is valid for 12 months from today.
-      </Text>
     </ScrollView>
   );
 }
@@ -310,13 +334,21 @@ const styles = StyleSheet.create({
   pricingLabel: { fontSize: 14, fontWeight: '600', color: '#fff' },
   pricingNote: { fontSize: 11, color: GREY, marginTop: 2 },
   pricingAmount: { fontSize: 20, fontWeight: '800', color: '#fff' },
-  divider: { height: 0.5, backgroundColor: '#2a2a2a', marginVertical: 12 },
+
+  // NEW: terms checkbox row styles, matching register.tsx's pattern
+  termsRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 16, gap: 10 },
+  checkbox: {
+    width: 20, height: 20, borderRadius: 5, borderWidth: 1.5, borderColor: '#666',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  checkboxChecked: { backgroundColor: GOLD, borderColor: GOLD },
+  checkmark: { color: BLACK, fontSize: 13, fontWeight: '900' },
+  termsText: { color: '#ccc', fontSize: 13, flex: 1 },
+  termsLink: { color: GOLD, textDecorationLine: 'underline' },
 
   payBtn: { backgroundColor: GOLD, borderRadius: 14, paddingVertical: 18, alignItems: 'center', marginBottom: 16, flexDirection: 'row', justifyContent: 'center', gap: 10 },
   payBtnText: { color: BLACK, fontSize: 16, fontWeight: '800' },
   payBtnSub: { color: '#5a4400', fontSize: 12, marginTop: 4 },
-
-  footerNote: { fontSize: 11, color: '#666', textAlign: 'center', lineHeight: 16 },
 
   successScreen: { flex: 1, backgroundColor: '#111', padding: 28, paddingTop: 60 },
   successEmoji: { fontSize: 56, marginBottom: 16 },

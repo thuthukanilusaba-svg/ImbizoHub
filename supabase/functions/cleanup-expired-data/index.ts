@@ -5,7 +5,7 @@
 // past their retention windows, dispatch/Wanted-response/listing
 // photos past 1 year (post.tsx confirmed the listings schema:
 // image_url + image_urls, same listing-photos bucket as the others),
-// and payment records past 7 years.
+// and payment records past 5 years.
 //
 // IMPORTANT — what this does NOT do: delete verification_requests
 // rows for approved submissions, or touch profiles.is_verified /
@@ -193,14 +193,14 @@ Deno.serve(async (req) => {
       }
     }
 
-    // 6. Payment records — 7 years (the conservative end of the
-    // 5-7 year range financial/tax regulation typically requires,
-    // pending confirmation of Zimbabwe's specific statutory period —
-    // see the retention policy document). Full row deletion, not
-    // anonymization: by 7 years out, even the tax-retention need has
+    // 6. Payment records — 5 years. CONFIRMED: Zimbabwe's statutory
+    // financial record retention period is 3-5 years; 5 is used here
+    // as the safer end of that confirmed range, replacing the earlier
+    // unconfirmed 7-year placeholder. Full row deletion, not
+    // anonymization: by 5 years out, the tax-retention need has
     // expired, so there's no remaining purpose to keep a stripped
     // version around either.
-    const PAYMENT_RECORD_DAYS = 365 * 7;
+    const PAYMENT_RECORD_DAYS = 365 * 5;
 
     const { error: intentsError, count: intentsCount } = await supabase
       .from('payment_intents')

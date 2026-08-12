@@ -59,9 +59,6 @@ export default function PostScreen() {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
 
-  // Returns true if there's a real, non-anonymous session. Redirects to
-  // /register and returns false otherwise — callers should bail out
-  // immediately when this returns false.
   async function requireRealAccount(): Promise<boolean> {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user || user.is_anonymous) {
@@ -78,8 +75,6 @@ export default function PostScreen() {
     }
     setError('');
 
-    // Checked here, before any photo picking/uploading starts — see file
-    // header comment for why this can't wait until final submit.
     const ok = await requireRealAccount();
     if (!ok) return;
 
@@ -101,18 +96,11 @@ export default function PostScreen() {
     const newImages = result.assets.map((asset) => ({ uri: asset.uri, uploading: true }));
     setImages((prev) => [...prev, ...newImages]);
 
-    // Upload each new image
     for (const asset of result.assets) {
       uploadImage(asset.uri);
     }
   }
 
-  // NEW: camera capture, alongside the existing multi-select gallery
-  // picker. Camera and photo-library permissions are SEPARATE on both
-  // iOS and Android, so this needs its own permission request. Camera
-  // can only capture one photo at a time (no multi-select equivalent),
-  // so this adds exactly one image per tap rather than sharing
-  // pickImages()'s multi-select logic.
   async function takePhoto() {
     if (images.length >= MAX_PHOTOS) {
       setError(`Maximum ${MAX_PHOTOS} photos allowed.`);
@@ -146,12 +134,6 @@ export default function PostScreen() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not logged in');
 
-      // FIX (real bug, not the earlier deprecation warning): this used
-      // to be fetch(uri).then(r => r.blob()) — a well-known failure
-      // mode on React Native/Expo where the Blob polyfill can throw
-      // "Creating blobs from 'ArrayBuffer' and 'ArrayBufferView' are
-      // not supported". Replaced with the approach Supabase's own docs
-      // recommend — see lib/uploadHelpers.ts.
       const { data: uploadData, contentType, extension } = await prepareUpload(uri);
       const fileName = `${user.id}/${Date.now()}-${Math.random().toString(36).slice(2)}.${extension}`;
 
@@ -205,9 +187,6 @@ export default function PostScreen() {
 
     setPosting(true);
 
-    // Defensive re-check — see file header comment. pickImages() already
-    // guards this at the point photos are picked, but session state
-    // could in principle change between then and submitting.
     const { data: { user } } = await supabase.auth.getUser();
     if (!user || user.is_anonymous) {
       setPosting(false);
@@ -217,15 +196,6 @@ export default function PostScreen() {
 
     const imageUrls = images.map((img) => img.url).filter(Boolean) as string[];
 
-    // NEW: Dealer Pro benefit — a listing posted by an active Pro
-    // subscriber gets the 'Dealer' badge instead of 'New', making their
-    // listings visually stand out across the app (index.tsx and
-    // explore.tsx both already render this badge style for any value
-    // other than 'Verified' — this was previously hardcoded to 'New'
-    // for absolutely everyone, so the badge rendering existed but
-    // nothing ever actually triggered it). Same "paid boolean + expires_at
-    // checked against now()" pattern already used everywhere else in the
-    // app (dealer.tsx, analytics.tsx, explore.tsx's Pro-sorting check).
     const { data: posterProfile } = await supabase
       .from('profiles')
       .select('dealer_pro_active, dealer_pro_expires_at')
@@ -245,8 +215,8 @@ export default function PostScreen() {
       price: priceNum,
       location: location.trim(),
       category,
-      image_url: imageUrls[0] || null, // backwards compatible — first photo
-      image_urls: imageUrls,            // full gallery
+      image_url: imageUrls[0] || null,
+      image_urls: imageUrls,
       badge: posterIsDealerPro ? 'Dealer' : 'New',
     });
 
@@ -283,14 +253,28 @@ export default function PostScreen() {
         <Text style={styles.heading}>Post a listing</Text>
         <Text style={styles.subheading}>Add photos and details to attract buyers.</Text>
 
+        {/* NEW: elevated from a small plain-text link into a genuinely
+            prominent card — leaning harder into WhatsApp import as the
+            real acquisition wedge it is, per today's strategy work.
+            Same WhatsApp-green treatment as the new Home screen banner,
+            so the visual language stays consistent wherever someone
+            encounters this option. Placed as a real "which way do you
+            want to do this?" choice right at the top, not a footnote
+            easy to scroll past before reaching the form. */}
         <TouchableOpacity
-          style={styles.whatsappImportLink}
+          style={styles.whatsappImportCard}
           onPress={() => router.push('/whatsapp-import')}
+          activeOpacity={0.85}
         >
-          <Text style={styles.whatsappImportLinkText}>
-            💬 Already selling on WhatsApp? Import a listing instead →
-          </Text>
+          <Text style={styles.whatsappImportEmoji}>💬</Text>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.whatsappImportTitle}>Already selling on WhatsApp?</Text>
+            <Text style={styles.whatsappImportSub}>Paste your whole catalog and import it all at once</Text>
+          </View>
+          <Text style={styles.whatsappImportArrow}>›</Text>
         </TouchableOpacity>
+
+        <Text style={styles.orDivider}>— or fill in the details yourself —</Text>
 
         {error ? (
           <View style={styles.errorBox}>
@@ -409,8 +393,19 @@ const styles = StyleSheet.create({
   heading: { fontSize: 24, fontWeight: '800', color: '#fff', marginBottom: 6 },
   subheading: { fontSize: 13, color: GREY, marginBottom: 20 },
 
-  whatsappImportLink: { backgroundColor: DARK, borderRadius: 12, padding: 12, marginBottom: 16, borderWidth: 0.5, borderColor: GOLD },
-  whatsappImportLinkText: { color: GOLD, fontSize: 12, fontWeight: '700', textAlign: 'center' },
+  // NEW: prominent WhatsApp import card, replacing the old plain-text
+  // link — same WhatsApp-green treatment as the Home screen banner.
+  whatsappImportCard: {
+    backgroundColor: '#1a2e22', borderRadius: 14, marginBottom: 4,
+    paddingHorizontal: 18, paddingVertical: 16,
+    flexDirection: 'row', alignItems: 'center', gap: 14,
+    borderWidth: 0.5, borderColor: '#25D366',
+  },
+  whatsappImportEmoji: { fontSize: 22 },
+  whatsappImportTitle: { color: '#fff', fontSize: 15, fontWeight: '700', marginBottom: 3 },
+  whatsappImportSub: { color: GREY, fontSize: 12 },
+  whatsappImportArrow: { color: '#25D366', fontSize: 24, fontWeight: '300' },
+  orDivider: { color: '#555', fontSize: 11, textAlign: 'center', marginTop: 14, marginBottom: 6 },
 
   errorBox: { backgroundColor: '#3a1a1a', borderRadius: 10, padding: 12, marginBottom: 16 },
   errorText: { color: '#ff8a8a', fontSize: 13 },
