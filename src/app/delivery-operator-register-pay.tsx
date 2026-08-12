@@ -55,7 +55,21 @@ export default function DeliveryOperatorRegisterPayScreen() {
   async function init() {
     setLoading(true);
     const { data: { user } } = await supabase.auth.getUser();
-    if (!user) { router.replace('/login'); return; }
+    // FIX (real bug, found during a final pre-submission review): was
+    // `if (!user)`, missing the same `user.is_anonymous` check found
+    // wrong or missing in unlock.tsx, quotes.tsx, and
+    // wanted-responses.tsx today. Arguably the most consequential
+    // instance of this pattern — this screen lets someone register as
+    // a DELIVERY OPERATOR, someone real users trust with their
+    // physical parcels and contact details. An anonymous session
+    // slipping through here creates a delivery_operators row for
+    // someone with zero recoverable identity. This is the only real
+    // gate this screen has (neither handleFreeRegister() nor
+    // handlePay() has its own separate check), so fixing it here is
+    // sufficient — a user who fails this redirects to /register before
+    // ever seeing the form. Redirects to /register now, not /login,
+    // matching the correct pattern used everywhere else.
+    if (!user || user.is_anonymous) { router.replace('/register'); return; }
     setMyId(user.id);
     setMyEmail(user.email ?? '');
 

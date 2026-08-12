@@ -141,6 +141,24 @@ export default function WantedResponsesScreen() {
   async function handleAcceptFree(response: any) {
     if (!request || request.user_id !== myId) return;
 
+    // FIX (real bug, found during a final pre-submission review):
+    // neither this function nor handleAccept() below had ANY check
+    // for user.is_anonymous — only an ownership check. Given
+    // post-wanted.tsx deliberately allows posting a want anonymously,
+    // an anonymous session could legitimately reach this screen to
+    // view their own responses (fine, matches the rest of the app),
+    // but could then go on to actually accept a response and commit
+    // to a real financial relationship — paying a real commission, or
+    // claiming this free-promo path — while still fully anonymous.
+    // That's exactly the scenario every other payment/accept flow in
+    // the app explicitly guards against (unlock.tsx, quotes.tsx,
+    // feature-listing-pay.tsx, etc.). Added the same check here.
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user || user.is_anonymous) {
+      router.push('/register');
+      return;
+    }
+
     setError('');
     setAcceptingId(response.id);
 
@@ -165,6 +183,14 @@ export default function WantedResponsesScreen() {
 
   async function handleAccept(response: any) {
     if (!request || request.user_id !== myId) return;
+
+    // FIX: same missing check as handleAcceptFree() above — see that
+    // function's comment for the full reasoning.
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user || user.is_anonymous) {
+      router.push('/register');
+      return;
+    }
 
     setError('');
     setAcceptingId(response.id);

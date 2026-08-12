@@ -493,7 +493,16 @@ export default function QuotesScreen() {
                     fiction — removed entirely rather than reworded,
                     since there's nothing accurate left to say about it. */}
                 <View style={styles.paymentOptionsBox}>
-                  <Text style={styles.paymentOptionsTitle}>How to pay the ${balance} balance</Text>
+                  {/* FIX: same bug as the two just found below (revealed
+                      step's balance text and the Meet & Pay amount
+                      param) — was showing the unbranched `balance`
+                      here too, which would have displayed a DIFFERENT,
+                      lower figure than the "Balance remaining" summary
+                      row directly above it on this exact same screen
+                      during the promo. Two different balance numbers
+                      on one screen would look broken regardless of
+                      which one was "right." */}
+                  <Text style={styles.paymentOptionsTitle}>How to pay the ${isPromoActive() ? chosenQuote.price : balance} balance</Text>
                   <View style={styles.paymentOption}>
                     <Text style={styles.paymentOptionIcon}>💵</Text>
                     <View style={{ flex: 1 }}>
@@ -545,21 +554,19 @@ export default function QuotesScreen() {
                 </View>
 
                 <View style={styles.balanceReminder}>
-                  {/* FIX: previously said "ask your operator about paying
-                      through the app for added security" — this was
-                      never true. There's no in-app payment mechanism for
-                      the balance at all (no create-payment call
-                      anywhere in this flow), and even if there were,
-                      ImbizoHub has no payout/disbursement system to
-                      actually get that money to the operator — Paynow
-                      only moves money IN, never back out. A passenger
-                      acting on this claim and asking their operator to
-                      "pay through the app" would find nothing there.
-                      Same class of fix as the paymentOptionsBox comment
-                      above — an honest description instead of a
-                      selectable-sounding option that doesn't exist. */}
+                  {/* FIX (real bug, found during a final pre-submission
+                      review): this always showed `balance`, computed as
+                      price minus the real 7%-capped commitment fee —
+                      even when accepted for free during the launch
+                      promo, when nothing was actually deducted. That
+                      understated what the buyer actually owes their
+                      driver by up to $15 (the fee cap), on the one
+                      screen a buyer would actually look at before
+                      paying in person. The confirm step's summary row
+                      already correctly branched on isPromoActive() for
+                      this same value; this one didn't. */}
                   <Text style={styles.balanceReminderText}>
-                    💡 Remaining balance: <Text style={{ fontWeight: '700' }}>${balance}</Text>{'\n'}
+                    💡 Remaining balance: <Text style={{ fontWeight: '700' }}>${isPromoActive() ? chosenQuote.price : balance}</Text>{'\n'}
                     Pay your driver directly — cash, EcoCash, or however you agree — once the trip is complete.
                   </Text>
                 </View>
@@ -568,8 +575,14 @@ export default function QuotesScreen() {
                   style={styles.meetPayBtn}
                   onPress={() => {
                     setModalVisible(false);
+                    // FIX: same bug as the balance display just above —
+                    // was passing `balance` unconditionally, which
+                    // understates the real amount owed during the
+                    // promo. Meet & Pay's own screen would then show
+                    // the wrong amount too, since it just displays
+                    // whatever this param says.
                     router.push(
-                      `/meetpay?type=van_hire&reference_id=${chosenQuote.id}&seller_id=${chosenQuote.operator_id}&amount=${balance}`
+                      `/meetpay?type=van_hire&reference_id=${chosenQuote.id}&seller_id=${chosenQuote.operator_id}&amount=${isPromoActive() ? chosenQuote.price : balance}`
                     );
                   }}
                 >

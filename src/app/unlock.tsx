@@ -123,7 +123,21 @@ export default function DepositScreen() {
   async function checkExisting() {
     setLoading(true);
     const { data: { user } } = await supabase.auth.getUser();
-    if (!user) { router.replace('/login'); return; }
+    // FIX (real bug, found during a final pre-submission review): was
+    // `if (!user)`, which is false for anonymous sessions — they have
+    // a real user object from signInAnonymously(), just flagged
+    // is_anonymous: true. That meant an anonymous browser (used
+    // throughout the app for free chat/browsing) could sail straight
+    // past this check and actually attempt to pay, claim a free
+    // unlock, or use the promo — directly contradicting this file's
+    // own header reasoning about why arranging a deal needs a real,
+    // recoverable identity. Every other payment screen built today
+    // (post.tsx, feature-listing-pay.tsx, the operator registration
+    // screens) already checks both conditions correctly; this one
+    // didn't. Also redirects to /register now instead of /login —
+    // someone who's only ever browsed anonymously has no account to
+    // log into in the first place.
+    if (!user || user.is_anonymous) { router.replace('/register'); return; }
     setMyId(user.id);
     setMyEmail(user.email ?? '');
 

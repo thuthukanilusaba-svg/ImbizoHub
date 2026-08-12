@@ -50,7 +50,12 @@ export default function OperatorRegisterPayScreen() {
   async function init() {
     setLoading(true);
     const { data: { user } } = await supabase.auth.getUser();
-    if (!user) { router.replace('/login'); return; }
+    // FIX: same bug as delivery-operator-register-pay.tsx, its exact
+    // twin file — was `if (!user)`, missing user.is_anonymous. Same
+    // reasoning applies here too: this is the only real gate on
+    // registering as a transport operator, someone real customers
+    // trust with their trip and contact details.
+    if (!user || user.is_anonymous) { router.replace('/register'); return; }
     setMyId(user.id);
     setMyEmail(user.email ?? '');
 
