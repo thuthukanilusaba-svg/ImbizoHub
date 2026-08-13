@@ -35,6 +35,7 @@ import {
   Text, TextInput, TouchableOpacity,
   View,
 } from 'react-native';
+import { normalizeImageOrientation } from '../../lib/imageOrientation';
 import { supabase } from '../../lib/supabase';
 import { prepareUpload } from '../../lib/uploadHelpers';
 
@@ -89,15 +90,25 @@ export default function PostScreen() {
       allowsMultipleSelection: true,
       quality: 0.7,
       selectionLimit: MAX_PHOTOS - images.length,
+      exif: true,
     });
 
     if (result.canceled) return;
 
-    const newImages = result.assets.map((asset) => ({ uri: asset.uri, uploading: true }));
+    // FIX: photos from a phone's gallery/camera carry an EXIF
+    // orientation tag that this app's Image rendering and Supabase
+    // Storage both ignore — see lib/imageOrientation.ts. Normalize
+    // before ever showing a thumbnail, so what the seller sees in this
+    // grid always matches what actually gets uploaded.
+    const normalizedUris = await Promise.all(
+      result.assets.map((asset) => normalizeImageOrientation(asset.uri, asset.exif))
+    );
+
+    const newImages = normalizedUris.map((uri) => ({ uri, uploading: true }));
     setImages((prev) => [...prev, ...newImages]);
 
-    for (const asset of result.assets) {
-      uploadImage(asset.uri);
+    for (const uri of normalizedUris) {
+      uploadImage(uri);
     }
   }
 
@@ -120,13 +131,15 @@ export default function PostScreen() {
     const result = await ImagePicker.launchCameraAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       quality: 0.7,
+      exif: true,
     });
 
     if (result.canceled || !result.assets?.[0]) return;
 
     const asset = result.assets[0];
-    setImages((prev) => [...prev, { uri: asset.uri, uploading: true }]);
-    uploadImage(asset.uri);
+    const normalizedUri = await normalizeImageOrientation(asset.uri, asset.exif);
+    setImages((prev) => [...prev, { uri: normalizedUri, uploading: true }]);
+    uploadImage(normalizedUri);
   }
 
   async function uploadImage(uri: string) {

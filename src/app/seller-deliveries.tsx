@@ -20,6 +20,7 @@ import {
   ActivityIndicator, Alert, Image, Platform, ScrollView, StyleSheet,
   Text, TouchableOpacity, View,
 } from 'react-native';
+import { normalizeImageOrientation } from '../../lib/imageOrientation';
 import { supabase } from '../../lib/supabase';
 import { prepareUpload } from '../../lib/uploadHelpers';
 
@@ -145,10 +146,12 @@ export default function SellerDeliveriesScreen() {
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       allowsEditing: true,
       quality: 0.7,
+      exif: true,
     });
 
     if (result.canceled) return;
-    await uploadDispatchUri(bookingId, result.assets[0].uri);
+    const asset = result.assets[0];
+    await uploadDispatchUri(bookingId, await normalizeImageOrientation(asset.uri, asset.exif));
   }
 
   async function takeDispatchPhoto(bookingId: string) {
@@ -164,10 +167,12 @@ export default function SellerDeliveriesScreen() {
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       allowsEditing: true,
       quality: 0.7,
+      exif: true,
     });
 
     if (result.canceled) return;
-    await uploadDispatchUri(bookingId, result.assets[0].uri);
+    const asset = result.assets[0];
+    await uploadDispatchUri(bookingId, await normalizeImageOrientation(asset.uri, asset.exif));
   }
 
   function chooseDispatchPhotoSource(bookingId: string) {

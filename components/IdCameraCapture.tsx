@@ -30,6 +30,7 @@ import { useRef, useState } from 'react';
 import {
     ActivityIndicator, Modal, StyleSheet, Text, TouchableOpacity, View,
 } from 'react-native';
+import { normalizeImageOrientation } from '../lib/imageOrientation';
 
 const GOLD = '#B8860B';
 const BLACK = '#1A1A18';
@@ -54,9 +55,18 @@ export default function IdCameraCapture({ visible, onCapture, onClose }: Props) 
     if (!cameraRef.current || capturing) return;
     setCapturing(true);
     try {
-      const photo = await cameraRef.current.takePictureAsync({ quality: 0.8 });
+      // FIX: same EXIF-orientation issue as every other photo upload
+      // flow in the app (see lib/imageOrientation.ts) — an ID photo
+      // captured while holding the phone in portrait, the normal way
+      // anyone would photograph an ID card, can otherwise come out
+      // sideways once uploaded. Normalized once, here, so both callers
+      // of this shared component (operator-id-verify.tsx and
+      // verified-seller-pay.tsx) get a correctly-oriented uri without
+      // needing to handle it themselves.
+      const photo = await cameraRef.current.takePictureAsync({ quality: 0.8, exif: true });
       if (photo?.uri) {
-        onCapture(photo.uri);
+        const normalizedUri = await normalizeImageOrientation(photo.uri, photo.exif);
+        onCapture(normalizedUri);
       }
     } catch (err) {
       // Silently fall through — the person can just try the shutter

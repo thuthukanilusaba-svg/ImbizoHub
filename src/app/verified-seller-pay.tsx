@@ -36,6 +36,7 @@ import {
   ActivityIndicator, Image, Platform, ScrollView, StyleSheet,
   Text, TouchableOpacity, View,
 } from 'react-native';
+import { normalizeImageOrientation } from '../../lib/imageOrientation';
 import { supabase } from '../../lib/supabase';
 import { prepareUpload } from '../../lib/uploadHelpers';
 
@@ -179,10 +180,12 @@ export default function VerifiedSellerPayScreen() {
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       quality: 0.8,
+      exif: true,
     });
 
     if (!result.canceled && result.assets?.[0]) {
-      setPickedImageUri(result.assets[0].uri);
+      const asset = result.assets[0];
+      setPickedImageUri(await normalizeImageOrientation(asset.uri, asset.exif));
     }
   }
 
@@ -201,10 +204,12 @@ export default function VerifiedSellerPayScreen() {
     const result = await ImagePicker.launchCameraAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       quality: 0.8,
+      exif: true,
     });
 
     if (!result.canceled && result.assets?.[0]) {
-      setPickedImageUri(result.assets[0].uri);
+      const asset = result.assets[0];
+      setPickedImageUri(await normalizeImageOrientation(asset.uri, asset.exif));
     }
   }
 

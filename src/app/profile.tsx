@@ -82,6 +82,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import BottomNav from '../../components/BottomNav';
+import { normalizeImageOrientation } from '../../lib/imageOrientation';
 import { supabase } from '../../lib/supabase';
 import { prepareUpload } from '../../lib/uploadHelpers';
 
@@ -238,10 +239,12 @@ export default function ProfileScreen() {
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       allowsEditing: true, aspect: [1, 1], quality: 0.7,
+      exif: true,
     });
 
     if (result.canceled) return;
-    await uploadAvatarUri(result.assets[0].uri);
+    const asset = result.assets[0];
+    await uploadAvatarUri(await normalizeImageOrientation(asset.uri, asset.exif));
   }
 
   async function takeAvatarPhoto() {
@@ -252,10 +255,12 @@ export default function ProfileScreen() {
     const result = await ImagePicker.launchCameraAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       allowsEditing: true, aspect: [1, 1], quality: 0.7,
+      exif: true,
     });
 
     if (result.canceled) return;
-    await uploadAvatarUri(result.assets[0].uri);
+    const asset = result.assets[0];
+    await uploadAvatarUri(await normalizeImageOrientation(asset.uri, asset.exif));
   }
 
   function startEditing() {

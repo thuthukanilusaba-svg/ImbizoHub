@@ -39,6 +39,7 @@ import {
   Text, TouchableOpacity, View,
 } from 'react-native';
 import IdCameraCapture from '../../components/IdCameraCapture';
+import { normalizeImageOrientation } from '../../lib/imageOrientation';
 import { supabase } from '../../lib/supabase';
 import { prepareUpload } from '../../lib/uploadHelpers';
 
@@ -51,6 +52,15 @@ const RED = '#ff8a8a';
 
 type OperatorType = 'delivery_operator' | 'transport_operator';
 type ReviewStatus = 'not_submitted' | 'pending_review' | 'approved' | 'rejected';
+
+// FIX: `type` used to silently default to 'delivery_operator' whenever it
+// was missing or malformed (`type === 'transport_operator' ? ... :
+// 'delivery_operator'`), with no validation at all. This screen handles
+// real government ID photos — the most sensitive data category in the
+// app — so a malformed/stale deep link could silently submit someone's ID
+// under the wrong verification category with no warning. Now an invalid
+// `type` renders an explicit error screen instead of guessing.
+const VALID_TYPES: OperatorType[] = ['delivery_operator', 'transport_operator'];
 
 const COPY: Record<OperatorType, { title: string; benefit: string; emoji: string }> = {
   delivery_operator: {
@@ -67,8 +77,9 @@ const COPY: Record<OperatorType, { title: string; benefit: string; emoji: string
 
 export default function OperatorIdVerifyScreen() {
   const router = useRouter();
-  const { type } = useLocalSearchParams<{ type: OperatorType }>();
-  const operatorType: OperatorType = type === 'transport_operator' ? 'transport_operator' : 'delivery_operator';
+  const { type } = useLocalSearchParams<{ type: string }>();
+  const isValidType = VALID_TYPES.includes(type as OperatorType);
+  const operatorType: OperatorType = isValidType ? (type as OperatorType) : 'delivery_operator';
   const copy = COPY[operatorType];
 
   const [loading, setLoading] = useState(true);
@@ -82,7 +93,10 @@ export default function OperatorIdVerifyScreen() {
   const [error, setError] = useState('');
   const [showCamera, setShowCamera] = useState(false);
 
-  useEffect(() => { init(); }, [operatorType]);
+  useEffect(() => {
+    if (!isValidType) { setLoading(false); return; }
+    init();
+  }, [operatorType, isValidType]);
 
   async function init() {
     setLoading(true);
@@ -138,10 +152,12 @@ export default function OperatorIdVerifyScreen() {
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       quality: 0.8,
+      exif: true,
     });
 
     if (!result.canceled && result.assets?.[0]) {
-      setPickedImageUri(result.assets[0].uri);
+      const asset = result.assets[0];
+      setPickedImageUri(await normalizeImageOrientation(asset.uri, asset.exif));
     }
   }
 
@@ -198,6 +214,26 @@ export default function OperatorIdVerifyScreen() {
     return (
       <View style={styles.center}>
         <ActivityIndicator size="large" color={GOLD} />
+      </View>
+    );
+  }
+
+  if (!isValidType) {
+    return (
+      <View style={styles.container}>
+        <ScrollView contentContainerStyle={styles.content}>
+          <View style={styles.pendingCard}>
+            <Text style={styles.pendingEmoji}>⚠️</Text>
+            <Text style={styles.pendingTitle}>This verification link isn't valid</Text>
+            <Text style={styles.pendingBody}>
+              We couldn't tell what kind of verification this link was for, so we stopped before
+              submitting anything. Please go back and try again from your dashboard.
+            </Text>
+            <TouchableOpacity style={[styles.doneBtn, { marginTop: 20 }]} onPress={() => router.replace('/dealer')}>
+              <Text style={styles.doneBtnText}>Back to Dashboard</Text>
+            </TouchableOpacity>
+          </View>
+        </ScrollView>
       </View>
     );
   }
