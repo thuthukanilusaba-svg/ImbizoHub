@@ -23,8 +23,16 @@
 
 import { useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
-import { Animated, LayoutChangeEvent, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Animated, LayoutChangeEvent, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
+// FIX: useNativeDriver: true does not reliably animate Animated.Text on
+// the web target (react-native-web either warns and no-ops, or silently
+// skips the transform depending on version) — confirmed by real testing:
+// the highlight animation played on native but never appeared on web.
+// Native driver isn't needed for a single small scale transform anyway,
+// so just disable it on web and keep it on native where it's cheap.
+const USE_NATIVE_DRIVER = Platform.OS !== 'web';
 
 const GOLD = '#B8860B';
 const BLACK = '#1A1A18';
@@ -89,17 +97,21 @@ export default function BottomNav({ active, showDashboardTab, isAdmin }: BottomN
   function handlePress(entry: TabEntry) {
     setPressedKey(entry.key);
     scaleAnim.setValue(1);
-    Animated.spring(scaleAnim, {
-      toValue: 1.22,
-      useNativeDriver: true,
-      speed: 30,
-      bounciness: 10,
-    }).start();
+    // FIX: previously a single Animated.spring straight to 1.22 with no
+    // way back down — combined with only a 110ms delay before navigating,
+    // the spring rarely got far enough to actually read as a visible
+    // "pop" before the screen changed out from under it. Now an explicit
+    // quick pop-up followed by a settle-back, and the navigation delay
+    // below is long enough for both halves to actually be seen.
+    Animated.sequence([
+      Animated.timing(scaleAnim, { toValue: 1.28, duration: 90, useNativeDriver: USE_NATIVE_DRIVER }),
+      Animated.spring(scaleAnim, { toValue: 1, useNativeDriver: USE_NATIVE_DRIVER, speed: 20, bounciness: 8 }),
+    ]).start();
     scrollToKey(entry.key, true);
 
     setTimeout(() => {
       router.push(entry.route as any);
-    }, 110);
+    }, 200);
   }
 
   return (
@@ -176,5 +188,13 @@ const styles = StyleSheet.create({
     width: 44, height: 44, backgroundColor: GOLD, borderRadius: 22,
     alignItems: 'center', justifyContent: 'center', marginHorizontal: 20,
   },
-  navPostText: { color: BLACK, fontSize: 24, fontWeight: '700', lineHeight: 28 },
+  // FIX: an explicit lineHeight taller than the glyph itself (28 vs a 24pt
+  // font) pushed the "+" visibly above center inside the circle — a common
+  // RN text-centering quirk. Dropping lineHeight and disabling Android's
+  // extra font padding lets the surrounding flex centering (alignItems/
+  // justifyContent: 'center' on navPost) actually center it.
+  navPostText: {
+    color: BLACK, fontSize: 24, fontWeight: '700',
+    includeFontPadding: false, textAlign: 'center', textAlignVertical: 'center',
+  },
 });
