@@ -219,35 +219,25 @@ export default function DealerScreen() {
     setAcceptingId(bookingId);
     setAcceptError('');
 
-    // FIX: added .select() and now checks whether any row actually
-    // came back — see top-of-file comment. Without this, a losing
-    // operator in a race against another operator accepting the same
-    // job would see a false "success."
-    const { data, error } = await supabase
-      .from('delivery_bookings')
-      .update({
-        operator_id: deliveryOperator.id,
-        status: 'accepted',
-        accepted_at: new Date().toISOString(),
-      })
-      .eq('id', bookingId)
-      .eq('status', 'requested')
-      .select();
+    // FIX (real bug, found during a full RLS/schema review): this used
+    // to be a direct .update() guarded only by .eq('status','requested')
+    // — a real guard against the race between two drivers, but one that
+    // only existed because THIS QUERY happened to include it. A
+    // participant bypassing the app and calling the REST API directly
+    // could send an update with no such condition at all, since nothing
+    // in the database itself required it. Now calls accept_delivery_job(),
+    // a SECURITY DEFINER RPC that re-derives the caller's operator id
+    // server-side and enforces the same atomic "still requested" check
+    // as a real database constraint, not just a query convention.
+    const { error } = await supabase.rpc('accept_delivery_job', { p_booking_id: bookingId });
 
     setAcceptingId(null);
 
     if (error) {
-      setAcceptError(error.message);
-      return;
-    }
-
-    if (!data || data.length === 0) {
-      // Someone else already accepted this job in the time between it
-      // loading and this tap — remove it from the open list so it
-      // doesn't look falsely still available, and say so plainly
-      // rather than silently doing nothing.
+      // The RPC raises a specific exception for the lost-race case —
+      // same UX as before, just driven by a real server-side check now.
       setOpenJobs(prev => prev.filter(j => j.id !== bookingId));
-      setAcceptError('This job was just accepted by another driver.');
+      setAcceptError(error.message);
       return;
     }
 
@@ -259,10 +249,12 @@ export default function DealerScreen() {
   }
 
   async function markDispatched(bookingId: string) {
-    const { error } = await supabase
-      .from('delivery_bookings')
-      .update({ status: 'dispatched', dispatched_at: new Date().toISOString() })
-      .eq('id', bookingId);
+    // FIX: now calls mark_delivery_dispatched(), which verifies
+    // server-side that the caller is genuinely the assigned operator
+    // and that the booking is actually in 'accepted' state — see
+    // acceptJob()'s comment for why this replaced the old direct
+    // .update() call.
+    const { error } = await supabase.rpc('mark_delivery_dispatched', { p_booking_id: bookingId });
 
     if (!error) {
       setMyJobs(prev => prev.map(j => j.id === bookingId ? { ...j, status: 'dispatched' } : j));
@@ -270,10 +262,9 @@ export default function DealerScreen() {
   }
 
   async function markDelivered(bookingId: string) {
-    const { error } = await supabase
-      .from('delivery_bookings')
-      .update({ status: 'delivered', delivered_at: new Date().toISOString() })
-      .eq('id', bookingId);
+    // FIX: now calls mark_delivery_delivered() — same reasoning as
+    // markDispatched() above.
+    const { error } = await supabase.rpc('mark_delivery_delivered', { p_booking_id: bookingId });
 
     if (!error) {
       setMyJobs(prev => prev.map(j => j.id === bookingId ? { ...j, status: 'delivered' } : j));
@@ -308,28 +299,24 @@ export default function DealerScreen() {
 
     setConfirmingId(job.id);
 
-    // FIX: added .select() and now checks whether any row came back —
-    // same reasoning as acceptJob() above. If the buyer regenerated
-    // their PIN in the moment between this screen loading job.pin and
-    // this submit, the .eq('pin', entered) guard would correctly
-    // reject the stale PIN by matching zero rows — but the old code
-    // only checked for a query ERROR, which this isn't, so it would
-    // have shown "confirmed" without anything actually being confirmed.
-    const { data, error } = await supabase
-      .from('delivery_bookings')
-      .update({ status: 'confirmed', confirmed_at: new Date().toISOString() })
-      .eq('id', job.id)
-      .eq('pin', entered)
-      .select();
+    // FIX (real bug, found during a full RLS/schema review): this used
+    // to be a direct .update() guarded by .eq('pin', entered) — real
+    // protection against the buyer regenerating their PIN mid-race, but
+    // only because this specific query included that condition. A
+    // participant bypassing the app could send an update with no PIN
+    // condition at all and mark the delivery confirmed unconditionally.
+    // Now calls confirm_delivery_pin(), a SECURITY DEFINER RPC that
+    // re-checks the caller is the assigned operator, the booking is
+    // actually 'delivered', and the PIN both matches AND hasn't expired
+    // — all as real server-side conditions, not query conventions.
+    const { error } = await supabase.rpc('confirm_delivery_pin', {
+      p_booking_id: job.id,
+      p_entered_pin: entered,
+    });
 
     setConfirmingId(null);
 
     if (error) {
-      setPinErrors(prev => ({ ...prev, [job.id]: error.message }));
-      return;
-    }
-
-    if (!data || data.length === 0) {
       setPinErrors(prev => ({
         ...prev,
         [job.id]: 'That PIN no longer matches — ask the buyer for their current PIN and try again.',

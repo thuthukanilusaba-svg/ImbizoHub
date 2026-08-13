@@ -75,10 +75,6 @@ const BLACK = '#1A1A18';
 const DARK = '#2a2a2a';
 const GREY = '#AAAAAA';
 
-function generatePin(): string {
-  return Math.floor(1000 + Math.random() * 9000).toString();
-}
-
 function parsePgTimestamp(value: string): number {
   const normalized = value
     .replace(' ', 'T')
@@ -571,23 +567,21 @@ export default function ChatScreen() {
     setMeetPayModal(true);
 
     if (isBuyerRole && !session) {
-      const pin = generatePin();
-      const expiresAt = new Date(Date.now() + 15 * 60 * 1000);
-
-      const { data, error } = await supabase
-        .from('meetpay_sessions')
-        .insert({
-          type: isItemRequestChat ? 'item_request' : 'listing',
-          reference_id: isItemRequestChat ? String(item_request_id) : String(listing_id),
-          buyer_id: myId,
-          seller_id: receiver_id,
-          pin,
-          pin_expires_at: expiresAt.toISOString(),
-          amount: isItemRequestChat ? null : listingPrice,
-          status: 'pending',
-        })
-        .select()
-        .maybeSingle();
+      // FIX (part of the delivery_bookings/meetpay_sessions RPC
+      // redesign): this used to insert the session directly from the
+      // client, generating and setting the PIN itself and trusting its
+      // own buyer_id/seller_id params. That direct insert path had no
+      // restriction preventing a buyer from inserting a session
+      // pre-marked status='confirmed', or fabricating buyer_id/seller_id
+      // entirely. create_meetpay_session() now derives both parties
+      // server-side from the real listing/item_request/quote records
+      // and generates the PIN itself — the client just asks for a
+      // session to exist.
+      const { data, error } = await supabase.rpc('create_meetpay_session', {
+        p_type: isItemRequestChat ? 'item_request' : 'listing',
+        p_reference_id: isItemRequestChat ? String(item_request_id) : String(listing_id),
+        p_amount: isItemRequestChat ? null : listingPrice,
+      });
 
       if (error) { setPinError(error.message); return; }
       setSession(data);
@@ -598,15 +592,14 @@ export default function ChatScreen() {
 
   async function regeneratePin() {
     if (!session) return;
-    const pin = generatePin();
-    const expiresAt = new Date(Date.now() + 15 * 60 * 1000);
 
-    const { data, error } = await supabase
-      .from('meetpay_sessions')
-      .update({ pin, pin_generated_at: new Date().toISOString(), pin_expires_at: expiresAt.toISOString() })
-      .eq('id', session.id)
-      .select()
-      .maybeSingle();
+    // FIX: was a direct, unguarded update to `pin`/`pin_expires_at` —
+    // regenerate_meetpay_pin() now checks server-side that the caller is
+    // genuinely this session's buyer and that the session is still
+    // pending before generating a new PIN.
+    const { data, error } = await supabase.rpc('regenerate_meetpay_pin', {
+      p_session_id: session.id,
+    });
 
     if (error) { setPinError(error.message); return; }
     setSession(data);
@@ -620,33 +613,24 @@ export default function ChatScreen() {
     if (enteredPin !== session.pin) { setPinError('Incorrect PIN.'); return; }
 
     setConfirming(true);
-    // FIX (real bug, same class already caught and fixed in dealer.tsx's
-    // confirmDelivery()): the PIN match above was checked only against
-    // the STALE `session` value held in local state — but the update
-    // itself was guarded solely by `.eq('id', session.id)`, with no PIN
-    // condition and no `.select()` to verify a row actually matched. If
-    // the buyer taps regeneratePin() in the moment between this screen
-    // loading its session and this submit, `session.pin` here is already
-    // out of date; the client-side check above would still "pass" against
-    // that stale value, and this update would then mark the session
-    // confirmed unconditionally — even though the PIN just entered no
-    // longer matches the real, current one. Added `.eq('pin', enteredPin)`
-    // as a server-side optimistic-concurrency guard, plus a `.select()`
-    // + row-count check so a guard failure surfaces as an error rather
-    // than a silent false "success".
-    const { data, error } = await supabase
-      .from('meetpay_sessions')
-      .update({ status: 'confirmed', confirmed_at: new Date().toISOString(), confirmed_by: myId })
-      .eq('id', session.id)
-      .eq('pin', enteredPin)
-      .select();
+    // FIX (part of the delivery_bookings/meetpay_sessions RPC redesign):
+    // this used to be a direct .update() guarded only by whatever
+    // .eq()s this specific query happened to include — real protection,
+    // but only as strong as "the official app always sends this exact
+    // query." confirm_meetpay_pin() now makes the seller-only + PIN
+    // match + not-expired checks the database's own problem, the same
+    // pattern confirm_delivery_pin() already uses in dealer.tsx.
+    const { data, error } = await supabase.rpc('confirm_meetpay_pin', {
+      p_session_id: session.id,
+      p_entered_pin: enteredPin,
+    });
     setConfirming(false);
 
-    if (error) { setPinError(error.message); return; }
-    if (!data || data.length === 0) {
-      setPinError('This PIN just changed — ask the buyer for the current one and try again.');
+    if (error) {
+      setPinError(error.message || 'This PIN just changed — ask the buyer for the current one and try again.');
       return;
     }
+    setSession(data);
     setConfirmed(true);
 
     notifyTransactionConfirmed('this listing');

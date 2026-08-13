@@ -192,18 +192,21 @@ export default function MeetPayScreen() {
   }
 
   async function createSession(userId: string, isSeller: boolean, verifiedOperatorId: string) {
-    const { data, error: createError } = await supabase
-      .from('meetpay_sessions')
-      .insert({
-        type: type || 'van_hire',
-        reference_id,
-        buyer_id: isSeller ? null : userId,
-        seller_id: isSeller ? userId : verifiedOperatorId,
-        amount: amount ? parseFloat(amount) : null,
-        status: 'pending',
-      })
-      .select()
-      .single();
+    // FIX (part of the delivery_bookings/meetpay_sessions RPC redesign):
+    // this used to insert directly, and had the buyer_id:null gap
+    // documented at the top of this file when the operator reached the
+    // screen first. create_meetpay_session() derives buyer_id/seller_id
+    // itself server-side from quotes/requests (the exact same cross-check
+    // this screen's own init() already performs), so there's no ordering
+    // gap and no null buyer_id regardless of who calls it first — the
+    // isSeller/verifiedOperatorId params here are no longer needed since
+    // the RPC re-derives everything, but init() still does its own
+    // participant check up front for the friendly error screen.
+    const { data, error: createError } = await supabase.rpc('create_meetpay_session', {
+      p_type: type || 'van_hire',
+      p_reference_id: reference_id,
+      p_amount: amount ? parseFloat(amount) : null,
+    });
 
     if (createError) {
       setError(createError.message);
@@ -218,22 +221,22 @@ export default function MeetPayScreen() {
     setError('');
     setConfirming(true);
 
-    const now = new Date().toISOString();
-    // FIX: also set buyer_id here when the confirming party is the
-    // buyer — see top-of-file comment. Harmless if it was already
-    // correctly set (operator wasn't first); actually necessary if it
-    // was null (operator reached this screen first, with no buyer_id
-    // URL param available to have set it at creation time).
-    const updatePayload: Record<string, any> = role === 'buyer'
-      ? { buyer_confirmed_at: now, buyer_id: myId }
-      : { operator_confirmed_at: now };
-
-    const { data, error: updateError } = await supabase
-      .from('meetpay_sessions')
-      .update(updatePayload)
-      .eq('id', session.id)
-      .select()
-      .single();
+    // FIX (part of the delivery_bookings/meetpay_sessions RPC redesign):
+    // this used to be two separate client-driven updates — one to set
+    // this caller's own confirmation timestamp, and (if the local `data`
+    // showed both sides now confirmed) a second update to flip
+    // status='confirmed'. That gap between reading and re-writing was a
+    // real race: both parties confirming at nearly the same moment could
+    // each read the other's confirmation as not-yet-set and never issue
+    // the finalizing update. It also still carried the buyer_id:null gap
+    // (a client update payload, only fixed reactively per confirming
+    // party, not derived from real trip data). confirm_meetpay_trip()
+    // sets the caller's own confirmation timestamp AND finalizes to
+    // 'confirmed' atomically in the same server-side call whenever both
+    // sides are now in, closing the race entirely.
+    const { data, error: updateError } = await supabase.rpc('confirm_meetpay_trip', {
+      p_session_id: session.id,
+    });
 
     if (updateError) {
       setConfirming(false);
@@ -241,23 +244,7 @@ export default function MeetPayScreen() {
       return;
     }
 
-    if (data.buyer_confirmed_at && data.operator_confirmed_at && data.status !== 'confirmed') {
-      const { data: finalData, error: confirmError } = await supabase
-        .from('meetpay_sessions')
-        .update({ status: 'confirmed', confirmed_at: new Date().toISOString(), confirmed_by: myId })
-        .eq('id', session.id)
-        .select()
-        .single();
-
-      if (!confirmError && finalData) {
-        setSession(finalData);
-      } else {
-        setSession(data);
-      }
-    } else {
-      setSession(data);
-    }
-
+    setSession(data);
     setConfirming(false);
   }
 

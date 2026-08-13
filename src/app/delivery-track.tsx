@@ -139,21 +139,29 @@ export default function DeliveryTrackScreen() {
     setGenerating(true);
     setError('');
 
-    const pin = generatePin();
-    const expiresAt = new Date(Date.now() + 15 * 60 * 1000);
+    // FIX (real bug, found during a full RLS/schema review): this used
+    // to be a direct .update() guarded by .eq('buyer_id', myId) — real
+    // protection, but only because this specific query included that
+    // condition; nothing in the database itself required it. Now calls
+    // generate_delivery_pin(), a SECURITY DEFINER RPC that generates the
+    // PIN itself server-side (never trusting a client-supplied value)
+    // and re-verifies ownership as a real database check.
+    const { data, error: rpcError } = await supabase.rpc('generate_delivery_pin', {
+      p_booking_id: booking.id,
+    });
 
-    const { data, error: updateError } = await supabase
-      .from('delivery_bookings')
-      .update({ pin, pin_expires_at: expiresAt.toISOString() })
-      .eq('id', booking.id)
-      .eq('buyer_id', myId)
-      .select('*, listings(title, price), item_requests(title), delivery_operators(full_name, vehicle_type, rating, rating_count)')
-      .maybeSingle();
+    if (rpcError) {
+      setGenerating(false);
+      setError(rpcError.message);
+      return;
+    }
 
+    // The RPC returns only the bare delivery_bookings row, not the
+    // joined listings/item_requests/delivery_operators fields this
+    // screen also needs — merge rather than replace so those stay
+    // intact (they don't change here anyway).
+    setBooking((prev: any) => (prev ? { ...prev, ...data } : data));
     setGenerating(false);
-
-    if (updateError) { setError(updateError.message); return; }
-    setBooking(data);
   }
 
   function formatTime(s: number) {
