@@ -44,8 +44,29 @@ const BLACK = '#1A1A18';
 const DARK = '#2a2a2a';
 const GREY = '#AAAAAA';
 const MAX_PHOTOS = 6;
+// NEW: thumbnails used to be a fixed 90x90 square, cropping every photo
+// to fit — now each thumbnail's WIDTH varies to roughly match its real
+// aspect ratio (height stays fixed so the row itself stays tidy), clamped
+// so a very tall/thin or short/wide photo doesn't produce an unusably
+// small or huge thumbnail.
+const PHOTO_THUMB_HEIGHT = 90;
+const PHOTO_THUMB_MIN_WIDTH = 55;
+const PHOTO_THUMB_MAX_WIDTH = 160;
 
 const categories = ['Phones', 'Vehicles', 'Furniture', 'Clothing', 'Appliances', 'Building', 'Baby', 'Other'];
+
+// Real dimensions aren't known synchronously for either a freshly-picked
+// local file or a normalized/rotated copy of one — read them the same
+// way listing.tsx reads them for remote photos.
+function getAspectRatio(uri: string): Promise<number> {
+  return new Promise((resolve) => {
+    Image.getSize(
+      uri,
+      (w, h) => resolve(h > 0 ? w / h : 1),
+      () => resolve(1)
+    );
+  });
+}
 
 export default function PostScreen() {
   const router = useRouter();
@@ -55,7 +76,7 @@ export default function PostScreen() {
   const [price, setPrice] = useState('');
   const [location, setLocation] = useState('');
   const [category, setCategory] = useState('Phones');
-  const [images, setImages] = useState<{ uri: string; uploading: boolean; url?: string }[]>([]);
+  const [images, setImages] = useState<{ uri: string; uploading: boolean; url?: string; aspectRatio: number }[]>([]);
   const [posting, setPosting] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
@@ -99,15 +120,21 @@ export default function PostScreen() {
     // orientation tag that this app's Image rendering and Supabase
     // Storage both ignore — see lib/imageOrientation.ts. Normalize
     // before ever showing a thumbnail, so what the seller sees in this
-    // grid always matches what actually gets uploaded.
-    const normalizedUris = await Promise.all(
-      result.assets.map((asset) => normalizeImageOrientation(asset.uri, asset.exif))
+    // grid always matches what actually gets uploaded. Also grab each
+    // photo's real aspect ratio here so the thumbnail can be shaped to
+    // match it instead of a fixed square (see PHOTO_THUMB_* above).
+    const normalizedAssets = await Promise.all(
+      result.assets.map(async (asset) => {
+        const uri = await normalizeImageOrientation(asset.uri, asset.exif);
+        const aspectRatio = await getAspectRatio(uri);
+        return { uri, aspectRatio };
+      })
     );
 
-    const newImages = normalizedUris.map((uri) => ({ uri, uploading: true }));
+    const newImages = normalizedAssets.map(({ uri, aspectRatio }) => ({ uri, uploading: true, aspectRatio }));
     setImages((prev) => [...prev, ...newImages]);
 
-    for (const uri of normalizedUris) {
+    for (const { uri } of normalizedAssets) {
       uploadImage(uri);
     }
   }
@@ -138,7 +165,8 @@ export default function PostScreen() {
 
     const asset = result.assets[0];
     const normalizedUri = await normalizeImageOrientation(asset.uri, asset.exif);
-    setImages((prev) => [...prev, { uri: normalizedUri, uploading: true }]);
+    const aspectRatio = await getAspectRatio(normalizedUri);
+    setImages((prev) => [...prev, { uri: normalizedUri, uploading: true, aspectRatio }]);
     uploadImage(normalizedUri);
   }
 
@@ -298,9 +326,14 @@ export default function PostScreen() {
         {/* Photo gallery */}
         <Text style={styles.label}>Photos ({images.length}/{MAX_PHOTOS})</Text>
         <RNScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.photoScroll}>
-          {images.map((img) => (
-            <View key={img.uri} style={styles.photoThumb}>
-              <Image source={{ uri: img.uri }} style={styles.photoImage} />
+          {images.map((img) => {
+            const thumbWidth = Math.min(
+              PHOTO_THUMB_MAX_WIDTH,
+              Math.max(PHOTO_THUMB_MIN_WIDTH, PHOTO_THUMB_HEIGHT * img.aspectRatio)
+            );
+            return (
+            <View key={img.uri} style={[styles.photoThumb, { width: thumbWidth }]}>
+              <Image source={{ uri: img.uri }} style={styles.photoImage} resizeMode="contain" />
               {img.uploading && (
                 <View style={styles.photoUploadingOverlay}>
                   <ActivityIndicator color="#fff" />
@@ -312,7 +345,8 @@ export default function PostScreen() {
                 </TouchableOpacity>
               )}
             </View>
-          ))}
+            );
+          })}
 
           {images.length < MAX_PHOTOS && (
             <>
@@ -426,7 +460,10 @@ const styles = StyleSheet.create({
   label: { fontSize: 13, fontWeight: '700', color: '#fff', marginBottom: 8, marginTop: 14 },
 
   photoScroll: { marginBottom: 8 },
-  photoThumb: { width: 90, height: 90, borderRadius: 12, marginRight: 10, overflow: 'hidden', position: 'relative' },
+  // width is now set inline per-photo (see PHOTO_THUMB_* / thumbWidth) to
+  // roughly match each photo's real aspect ratio — height stays fixed so
+  // the row itself stays a tidy, uniform strip.
+  photoThumb: { height: PHOTO_THUMB_HEIGHT, borderRadius: 12, marginRight: 10, overflow: 'hidden', position: 'relative', backgroundColor: DARK },
   photoImage: { width: '100%', height: '100%' },
   photoUploadingOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.5)', alignItems: 'center', justifyContent: 'center' },
   photoRemoveBtn: { position: 'absolute', top: 4, right: 4, width: 22, height: 22, borderRadius: 11, backgroundColor: 'rgba(0,0,0,0.7)', alignItems: 'center', justifyContent: 'center' },

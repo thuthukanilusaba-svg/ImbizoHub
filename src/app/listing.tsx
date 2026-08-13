@@ -63,6 +63,7 @@ import { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator, Alert, Dimensions,
   Image,
+  LayoutAnimation,
   NativeScrollEvent,
   NativeSyntheticEvent,
   Platform,
@@ -70,6 +71,7 @@ import {
   StyleSheet,
   Text,
   TouchableOpacity,
+  UIManager,
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -83,11 +85,28 @@ const GREY = '#AAAAAA';
 const GREEN = '#4fc96e';
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
+// Old architecture on Android needs this opt-in for LayoutAnimation to
+// do anything; the New Architecture (default on recent Expo SDKs)
+// doesn't have — and may not export — this method at all, so guard
+// against it simply not existing rather than assuming either way.
+if (Platform.OS === 'android' && (UIManager as any).setLayoutAnimationEnabledExperimental) {
+  (UIManager as any).setLayoutAnimationEnabledExperimental(true);
+}
+
 // NEW: same launch promo window used consistently elsewhere today —
 // needed here so the Feature-listing button reflects the current
 // real price, matching what feature-listing-pay.tsx itself shows.
 const FREE_PROMO_END = new Date('2027-01-31T23:59:59Z');
 const isPromoActive = () => new Date() < FREE_PROMO_END;
+
+// NEW: the photo carousel box used to be a fixed square, cropping every
+// photo to fit regardless of whether it was actually taken portrait or
+// landscape. Now it resizes to roughly match the currently-active
+// photo's real aspect ratio instead — clamped so an unusually
+// tall/thin or short/wide photo can't blow the layout out to something
+// absurd.
+const CAROUSEL_MIN_HEIGHT = SCREEN_WIDTH * 0.6;
+const CAROUSEL_MAX_HEIGHT = SCREEN_WIDTH * 1.5;
 
 export default function ListingScreen() {
   const router = useRouter();
@@ -101,9 +120,46 @@ export default function ListingScreen() {
   const [statusError, setStatusError] = useState('');
   const [sellerVerified, setSellerVerified] = useState(false);
   const [zoomVisible, setZoomVisible] = useState(false);
+  // NEW: width/height ratio (w/h) for each photo, keyed by its index in
+  // the carousel — fetched once per photo via Image.getSize() below,
+  // since remote images don't expose their real dimensions any other
+  // way before they're actually loaded.
+  const [photoAspectRatios, setPhotoAspectRatios] = useState<Record<number, number>>({});
   const scrollRef = useRef<ScrollView>(null);
 
   useEffect(() => { fetchListing(); fetchMe(); }, [id]);
+
+  useEffect(() => {
+    const urls: string[] =
+      listing?.image_urls && listing.image_urls.length > 0
+        ? listing.image_urls
+        : listing?.image_url
+          ? [listing.image_url]
+          : [];
+
+    urls.forEach((url, i) => {
+      if (photoAspectRatios[i] !== undefined) return;
+      Image.getSize(
+        url,
+        (w, h) => {
+          if (h > 0) {
+            // Animate the resize rather than snapping instantly —
+            // matters most for the first photo, whose ratio arrives
+            // after the initial fixed-square render.
+            if (i === activeIndex) LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+            setPhotoAspectRatios((prev) => ({ ...prev, [i]: w / h }));
+          }
+        },
+        () => {
+          // Couldn't read real dimensions (e.g. a transient network
+          // error) — fall back to a square box for this one photo
+          // rather than leaving it permanently unsized.
+          setPhotoAspectRatios((prev) => ({ ...prev, [i]: 1 }));
+        }
+      );
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [listing?.image_urls, listing?.image_url]);
 
   async function fetchMe() {
     const { data: { user } } = await supabase.auth.getUser();
@@ -190,7 +246,10 @@ export default function ListingScreen() {
 
   function onScroll(e: NativeSyntheticEvent<NativeScrollEvent>) {
     const index = Math.round(e.nativeEvent.contentOffset.x / SCREEN_WIDTH);
-    setActiveIndex(index);
+    if (index !== activeIndex) {
+      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+      setActiveIndex(index);
+    }
   }
 
   if (loading) {
@@ -222,12 +281,21 @@ export default function ListingScreen() {
   const isOwner = myId === listing.user_id;
   const isSold = listing.status === 'sold';
 
+  // Ratio for whichever photo is currently active/centered — 1 (square)
+  // until its real dimensions arrive from Image.getSize(), so there's
+  // never a moment with no box at all.
+  const activeRatio = photoAspectRatios[activeIndex] ?? 1;
+  const carouselHeight = Math.min(
+    CAROUSEL_MAX_HEIGHT,
+    Math.max(CAROUSEL_MIN_HEIGHT, SCREEN_WIDTH / activeRatio)
+  );
+
   return (
     <View style={styles.container}>
       <ScrollView showsVerticalScrollIndicator={false}>
 
         {/* Photo carousel */}
-        <View style={styles.carouselWrap}>
+        <View style={[styles.carouselWrap, { height: carouselHeight }]}>
           {photos.length > 0 ? (
             <>
               <ScrollView
@@ -244,7 +312,18 @@ export default function ListingScreen() {
                     activeOpacity={0.95}
                     onPress={() => { setActiveIndex(i); setZoomVisible(true); }}
                   >
-                    <Image source={{ uri: url }} style={styles.carouselImage} resizeMode="cover" />
+                    {/* FIX: switched from resizeMode="cover" (crops to
+                        fill a fixed square) to "contain" (shows the
+                        whole photo, uncropped) now that the wrapping
+                        box itself resizes to roughly match the active
+                        photo's real shape — the two changes only make
+                        sense together; contain alone would just add
+                        letterboxing to the old fixed square. */}
+                    <Image
+                      source={{ uri: url }}
+                      style={[styles.carouselImage, { height: carouselHeight }]}
+                      resizeMode="contain"
+                    />
                   </TouchableOpacity>
                 ))}
               </ScrollView>
@@ -423,9 +502,11 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#111111' },
   center: { flex: 1, backgroundColor: '#111', alignItems: 'center', justifyContent: 'center' },
 
-  carouselWrap: { width: SCREEN_WIDTH, height: SCREEN_WIDTH, backgroundColor: DARK, position: 'relative' },
-  carouselImage: { width: SCREEN_WIDTH, height: SCREEN_WIDTH },
-  noPhoto: { width: SCREEN_WIDTH, height: SCREEN_WIDTH, alignItems: 'center', justifyContent: 'center' },
+  // height is now set inline per-render (see carouselHeight) — width and
+  // background stay fixed here since those never change per-photo.
+  carouselWrap: { width: SCREEN_WIDTH, backgroundColor: DARK, position: 'relative' },
+  carouselImage: { width: SCREEN_WIDTH },
+  noPhoto: { width: SCREEN_WIDTH, height: '100%', alignItems: 'center', justifyContent: 'center' },
 
   soldOverlay: {
     position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
