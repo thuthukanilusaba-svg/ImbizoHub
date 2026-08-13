@@ -641,11 +641,17 @@ const styles = StyleSheet.create({
   infoBar: { backgroundColor: '#1a1a2e', borderRadius: 10, padding: 10, marginBottom: 8, borderWidth: 0.5, borderColor: '#3a3a5e' },
   infoBarText: { color: '#8888ff', fontSize: 12, textAlign: 'center' },
 
-  list: { padding: 16, gap: 14, paddingBottom: 40 },
+  // FIX (same bug class already caught in my-wanted-posts.tsx /
+  // browse-wanted.tsx): a FlatList's contentContainerStyle used
+  // `gap: 14` — a documented cross-platform reliability quirk at list
+  // boundaries, not something to trust for vertical spacing here.
+  // Replaced with marginBottom on the card style itself, matching the
+  // already-established, proven fix.
+  list: { padding: 16, paddingBottom: 40 },
 
   card: {
     backgroundColor: BLACK, borderRadius: 14, padding: 16,
-    borderWidth: 1.5, borderColor: '#333',
+    borderWidth: 1.5, borderColor: '#333', marginBottom: 14,
   },
   cardBest: { borderColor: GREEN },
   cardAccepted: { borderColor: BLUE },

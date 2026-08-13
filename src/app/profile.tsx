@@ -13,16 +13,11 @@
 // fallback displayed the raw unformatted word "delivery" in the profile
 // badge instead of a proper label like every other role gets.
 //
-// FLAGGED, NOT FIXED HERE — a real gap, not a quick patch: the "My
-// deliveries" quick-link below always routes to seller-deliveries.tsx,
-// which only shows bookings where this user is the SELLER
-// (eq('seller_id', userId)). There is currently no screen anywhere in
-// this app for a BUYER to track a delivery they booked as the
-// purchaser — despite delivery-booking.tsx explicitly telling buyers
-// "You'll receive a PIN to confirm receipt when the item is delivered."
-// Needs an actual new screen (querying eq('buyer_id', userId) instead),
-// not a quick redirect fix — left as-is pending a product decision on
-// scope, rather than guessed at here.
+// RESOLVED (comment was stale): the gap noted here previously — no
+// screen for a BUYER to track a delivery they booked — is closed by
+// buyer-deliveries.tsx (queries eq('buyer_id', userId)), linked below
+// as "Deliveries to me". seller-deliveries.tsx remains the SELLER-side
+// list ("Deliveries from my listings"), so both directions are covered.
 //
 // ALSO WORTH NOTING: "My trip requests" links to quotes.tsx, which only
 // ever shows the single most recent OPEN trip request
@@ -42,6 +37,27 @@
 // sibling outside the KeyboardAvoidingView means it stays fixed at the
 // real screen bottom regardless of keyboard state, while the scrollable
 // form content above it still shifts to keep the focused field visible.
+//
+// FIX (found during a full-codebase sweep): loadProfile() only checked
+// `!user`, missing the same `user.is_anonymous` gap found on roughly a
+// dozen other account-gated screens — anonymous sessions have a real
+// `user` object, so `!user` alone doesn't exclude them. This let an
+// anonymous browsing session reach the full profile editor, upload an
+// avatar under its (throwaway) ID, and reach "Become a Delivery
+// Operator" / "Become a Transport Operator", which write real rows.
+// Now redirects to /register like every other account screen.
+//
+// FIX (same pass): handleBecomeDeliveryOperator() unconditionally
+// upserted verification_tier: 'unverified' / status: 'active' on every
+// tap. Supabase upsert updates whatever columns you pass on conflict —
+// so a user who had already been ID-verified via operator-id-verify.tsx
+// before finishing registration payment (account_type only flips to
+// 'delivery' after payment, in become-operator.tsx, so this button
+// stays visible and re-tappable until then) would have their
+// verification_tier silently reset back to 'unverified' just by
+// revisiting this screen and tapping the button again. Now only inserts
+// the starter row when one doesn't exist yet; an existing row's
+// verification_tier/status is never touched here.
 //
 // NEW: "Earn with ImbizoHub" card given a genuine highlight treatment —
 // a gold border on the card itself plus a small "💰 Earn" tag on each
@@ -107,7 +123,10 @@ export default function ProfileScreen() {
   async function loadProfile() {
     setLoading(true);
     const { data: { user } } = await supabase.auth.getUser();
-    if (!user) { router.replace('/login'); return; }
+    // FIX: was `if (!user)`, missing user.is_anonymous — see top-of-file
+    // comment. Redirect to /register (not /login) to match the pattern
+    // used everywhere else in the app for account-gated screens.
+    if (!user || user.is_anonymous) { router.replace('/register'); return; }
 
     setUserId(user.id);
     setEmail(user.email ?? '');
@@ -257,14 +276,26 @@ export default function ProfileScreen() {
 
   async function handleBecomeDeliveryOperator() {
     const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
+    if (!user || user.is_anonymous) { router.push('/register'); return; }
 
-    await supabase.from('delivery_operators').upsert({
-      user_id: user.id,
-      full_name: fullName || '',
-      verification_tier: 'unverified',
-      status: 'active',
-    }, { onConflict: 'user_id' });
+    // FIX: see top-of-file comment — only insert the starter row when
+    // one doesn't exist yet. Never overwrite verification_tier/status on
+    // an existing row here; that's operator-id-verify.tsx and admin
+    // approval's job.
+    const { data: existing } = await supabase
+      .from('delivery_operators')
+      .select('id')
+      .eq('user_id', user.id)
+      .maybeSingle();
+
+    if (!existing) {
+      await supabase.from('delivery_operators').insert({
+        user_id: user.id,
+        full_name: fullName || '',
+        verification_tier: 'unverified',
+        status: 'active',
+      });
+    }
 
     router.push('/delivery-operator-register-pay');
   }

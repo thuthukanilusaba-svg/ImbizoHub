@@ -620,13 +620,33 @@ export default function ChatScreen() {
     if (enteredPin !== session.pin) { setPinError('Incorrect PIN.'); return; }
 
     setConfirming(true);
-    const { error } = await supabase
+    // FIX (real bug, same class already caught and fixed in dealer.tsx's
+    // confirmDelivery()): the PIN match above was checked only against
+    // the STALE `session` value held in local state — but the update
+    // itself was guarded solely by `.eq('id', session.id)`, with no PIN
+    // condition and no `.select()` to verify a row actually matched. If
+    // the buyer taps regeneratePin() in the moment between this screen
+    // loading its session and this submit, `session.pin` here is already
+    // out of date; the client-side check above would still "pass" against
+    // that stale value, and this update would then mark the session
+    // confirmed unconditionally — even though the PIN just entered no
+    // longer matches the real, current one. Added `.eq('pin', enteredPin)`
+    // as a server-side optimistic-concurrency guard, plus a `.select()`
+    // + row-count check so a guard failure surfaces as an error rather
+    // than a silent false "success".
+    const { data, error } = await supabase
       .from('meetpay_sessions')
       .update({ status: 'confirmed', confirmed_at: new Date().toISOString(), confirmed_by: myId })
-      .eq('id', session.id);
+      .eq('id', session.id)
+      .eq('pin', enteredPin)
+      .select();
     setConfirming(false);
 
     if (error) { setPinError(error.message); return; }
+    if (!data || data.length === 0) {
+      setPinError('This PIN just changed — ask the buyer for the current one and try again.');
+      return;
+    }
     setConfirmed(true);
 
     notifyTransactionConfirmed('this listing');

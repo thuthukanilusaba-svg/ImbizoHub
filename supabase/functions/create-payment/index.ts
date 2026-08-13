@@ -38,6 +38,39 @@
 //   supabase secrets set PAYNOW_PROXY_URL=http://<droplet-ip>:3939/relay
 //   supabase secrets set PAYNOW_PROXY_SECRET=xxxx
 //
+// ⚠️ SECURITY FIX (found during a full-codebase sweep, most critical
+// finding of the sweep): this function had NO authentication check at
+// all (config.toml has verify_jwt = false, and the code never called
+// supabase.auth.getUser() or looked at the Authorization header), and
+// NO server-side validation that `amount` actually matched the correct
+// price for the claimed `kind` — confirmPaymentIntent() trusts
+// intent.amount completely, for every single payment kind. Together
+// this meant literally anyone with the project's public API URL (no
+// login required) could POST directly to this function with an
+// arbitrary low `amount` and a `buyer_id`/`operator_user_id` of their
+// choosing, and receive back a genuinely valid Paynow checkout link —
+// e.g. requesting kind: 'verified_seller' with amount: 0.01 instead of
+// the real $15 would, once actually paid via that link, grant full
+// Verified Seller status for a cent once the webhook confirms it,
+// since nothing anywhere re-derives or re-checks the correct price.
+// The same gap let a caller attribute a payment to ANY buyer_id/
+// operator_user_id, not just their own account.
+//
+// Now: requires a real (non-anonymous) authenticated user via the
+// Authorization header, requires the identity-bound field in the body
+// (buyer_id / operator_user_id, whichever applies for that kind) to
+// match the authenticated caller, and re-derives/validates the correct
+// price server-side for every kind before ever generating a Paynow
+// checkout — flat fees are compared directly; percentage/capped fees
+// (unlock_fee, wanted_request_match, trip_deposit) are recomputed here
+// from the real listing/response/quote row, not trusted from the
+// client. config.toml's verify_jwt for this function should also be
+// flipped to true — kept as `false` there only because this in-function
+// check is a stricter superset (it also validates identity match, which
+// platform-level JWT verification alone would not), so redeploying with
+// this file change alone already closes the hole even before that
+// config change ships.
+//
 // Request body expected from the app:
 // {
 //   kind: 'unlock_fee' | 'delivery_operator_registration' | 'transport_operator_registration' | 'wanted_request_match' | 'trip_deposit' | 'dealer_pro_subscription' | 'featured_listing' | 'verified_seller' | 'delivery_booking_fee',
@@ -151,6 +184,29 @@ Deno.serve(async (req) => {
   }
 
   try {
+    // FIX: see top-of-file comment — verify the caller is a real,
+    // non-anonymous, logged-in user before doing anything else. Passing
+    // the token explicitly to getUser() validates THIS specific bearer
+    // token against GoTrue regardless of the client's own configured
+    // key, the standard pattern for edge functions that need to
+    // identify their caller.
+    const authHeader = req.headers.get('Authorization') ?? '';
+    const callerToken = authHeader.replace(/^Bearer\s+/i, '');
+    if (!callerToken) {
+      return new Response(JSON.stringify({ error: 'Not authenticated' }), {
+        status: 401,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+    const { data: callerData, error: callerError } = await supabase.auth.getUser(callerToken);
+    if (callerError || !callerData?.user || callerData.user.is_anonymous) {
+      return new Response(JSON.stringify({ error: 'Not authenticated' }), {
+        status: 401,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+    const callerId = callerData.user.id;
+
     const body = await req.json();
     const { kind, amount, email } = body;
 
@@ -167,6 +223,37 @@ Deno.serve(async (req) => {
       });
     }
 
+    // FIX: identity-bound fields must match the authenticated caller —
+    // otherwise anyone could attribute a payment's benefit to someone
+    // else's account (or pay for a registration under a different
+    // operator's identity). Checked per-kind below once each field is
+    // destructured; this covers buyer_id (all kinds that have one) and
+    // operator_user_id (registration kinds).
+    function requireOwn(id: unknown, label: string): Response | null {
+      if (id !== callerId) {
+        return new Response(JSON.stringify({ error: `${label} must match the authenticated user` }), {
+          status: 403,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+      return null;
+    }
+
+    // FIX: server-side price validation — see top-of-file comment.
+    // Recomputes or looks up the correct price for the claimed kind and
+    // rejects if the client-supplied `amount` doesn't match, instead of
+    // trusting it outright. A small epsilon absorbs floating-point
+    // rounding, not meaningful under/over-payment.
+    async function validateAmount(expected: number, label: string): Promise<Response | null> {
+      if (Math.abs(Number(amount) - expected) > 0.01) {
+        return new Response(JSON.stringify({ error: `Incorrect amount for ${label}` }), {
+          status: 400,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+      return null;
+    }
+
     const intentRow: Record<string, unknown> = {
       kind,
       amount,
@@ -181,6 +268,23 @@ Deno.serve(async (req) => {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         });
       }
+      const ownErr = requireOwn(buyer_id, 'buyer_id');
+      if (ownErr) return ownErr;
+
+      // FIX: recomputes the real fee from the listing's actual price —
+      // 5%, min $1.50, max $15, same formula as unlock.tsx — instead of
+      // trusting the client's `amount`. See top-of-file comment.
+      const { data: listingRow } = await supabase.from('listings').select('price').eq('id', listing_id).maybeSingle();
+      if (!listingRow) {
+        return new Response(JSON.stringify({ error: 'Listing not found' }), {
+          status: 400,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+      const expectedUnlockFee = Math.max(Math.min(listingRow.price * 0.05, 15), 1.5);
+      const amountErr = await validateAmount(parseFloat(expectedUnlockFee.toFixed(2)), 'unlock fee');
+      if (amountErr) return amountErr;
+
       intentRow.listing_id = listing_id;
       intentRow.buyer_id = buyer_id;
       intentRow.seller_id = seller_id;
@@ -192,6 +296,14 @@ Deno.serve(async (req) => {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         });
       }
+      const ownErr = requireOwn(operator_user_id, 'operator_user_id');
+      if (ownErr) return ownErr;
+
+      // FIX: flat $10 registration fee, same constant (REG_FEE) both
+      // registration screens use client-side.
+      const amountErr = await validateAmount(10, 'operator registration fee');
+      if (amountErr) return amountErr;
+
       intentRow.operator_user_id = operator_user_id;
     } else if (kind === 'wanted_request_match') {
       const { item_request_id, item_response_id, buyer_id, seller_id } = body;
@@ -201,6 +313,23 @@ Deno.serve(async (req) => {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         });
       }
+      const ownErr = requireOwn(buyer_id, 'buyer_id');
+      if (ownErr) return ownErr;
+
+      // FIX: recomputes the real 5% commission from the response's
+      // actual negotiated price, same formula as wanted-responses.tsx
+      // (response.price * 0.05), instead of trusting the client.
+      const { data: responseRow } = await supabase.from('item_responses').select('price').eq('id', item_response_id).maybeSingle();
+      if (!responseRow) {
+        return new Response(JSON.stringify({ error: 'Response not found' }), {
+          status: 400,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+      const expectedCommission = parseFloat((responseRow.price * 0.05).toFixed(2));
+      const amountErr = await validateAmount(expectedCommission, 'commission');
+      if (amountErr) return amountErr;
+
       intentRow.item_request_id = item_request_id;
       intentRow.item_response_id = item_response_id;
       intentRow.buyer_id = buyer_id;
@@ -213,6 +342,23 @@ Deno.serve(async (req) => {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         });
       }
+      const ownErr = requireOwn(buyer_id, 'buyer_id');
+      if (ownErr) return ownErr;
+
+      // FIX: recomputes the real 7%-capped-at-$15 commitment fee from
+      // the quote's actual price, same formula quotes.tsx uses
+      // (calculateDeposit), instead of trusting the client.
+      const { data: quoteRow } = await supabase.from('quotes').select('price').eq('id', trip_quote_id).maybeSingle();
+      if (!quoteRow) {
+        return new Response(JSON.stringify({ error: 'Quote not found' }), {
+          status: 400,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+      const expectedDeposit = Math.min(parseFloat((quoteRow.price * 0.07).toFixed(2)), 15);
+      const amountErr = await validateAmount(expectedDeposit, 'commitment fee');
+      if (amountErr) return amountErr;
+
       intentRow.trip_request_id = trip_request_id;
       intentRow.trip_quote_id = trip_quote_id;
       intentRow.buyer_id = buyer_id;
@@ -225,6 +371,12 @@ Deno.serve(async (req) => {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         });
       }
+      const ownErr = requireOwn(buyer_id, 'buyer_id');
+      if (ownErr) return ownErr;
+      // FIX: flat $30 fee, same PRICE constant dealer-pro-pay.tsx uses.
+      const amountErr = await validateAmount(30, 'Dealer Pro subscription fee');
+      if (amountErr) return amountErr;
+
       intentRow.buyer_id = buyer_id;
     } else if (kind === 'featured_listing') {
       const { listing_id, buyer_id } = body;
@@ -234,6 +386,12 @@ Deno.serve(async (req) => {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         });
       }
+      const ownErr = requireOwn(buyer_id, 'buyer_id');
+      if (ownErr) return ownErr;
+      // FIX: flat $5 fee, same PRICE constant feature-listing-pay.tsx uses.
+      const amountErr = await validateAmount(5, 'featured listing fee');
+      if (amountErr) return amountErr;
+
       intentRow.listing_id = listing_id;
       intentRow.buyer_id = buyer_id;
     } else if (kind === 'verified_seller') {
@@ -244,6 +402,12 @@ Deno.serve(async (req) => {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         });
       }
+      const ownErr = requireOwn(buyer_id, 'buyer_id');
+      if (ownErr) return ownErr;
+      // FIX: flat $15 fee, same PRICE constant verified-seller-pay.tsx uses.
+      const amountErr = await validateAmount(15, 'Verified Seller fee');
+      if (amountErr) return amountErr;
+
       intentRow.buyer_id = buyer_id;
     } else if (kind === 'delivery_booking_fee') {
       const {
@@ -266,6 +430,15 @@ Deno.serve(async (req) => {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         });
       }
+      const ownErr = requireOwn(buyer_id, 'buyer_id');
+      if (ownErr) return ownErr;
+      // FIX: flat $2 platform booking fee (BOOKING_FEE in
+      // delivery-booking.tsx) — separate from delivery_fee, which is
+      // cash-on-collection paid to the driver directly and never
+      // charged through Paynow, so it's intentionally NOT validated
+      // here beyond the presence check above.
+      const amountErr = await validateAmount(2, 'delivery booking fee');
+      if (amountErr) return amountErr;
 
       intentRow.listing_id = hasListing ? listing_id : null;
       intentRow.item_request_id = hasWantedMatch ? item_request_id : null;

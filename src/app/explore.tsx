@@ -352,9 +352,16 @@ const styles = StyleSheet.create({
   catIcon: { fontSize: 20, marginBottom: 4 },
   catLabel: { color: '#ccc', fontSize: 10 },
   catLabelActive: { color: GOLD },
-  listingGridContainer: { paddingHorizontal: 16, gap: 10 },
+  // FIX (same bug class already caught in my-wanted-posts.tsx /
+  // browse-wanted.tsx): the vertical `gap: 10` on this FlatList's
+  // contentContainerStyle (row-to-row spacing) is the same unreliable
+  // pattern already fixed elsewhere — replaced with marginBottom on
+  // the card itself. listingRow's `gap: 10` is untouched: that's a
+  // normal flexDirection row View (columnWrapperStyle, not the
+  // contentContainer), where gap has always been reliable.
+  listingGridContainer: { paddingHorizontal: 16 },
   listingRow: { gap: 10 },
-  listingCard: { backgroundColor: '#222', borderRadius: 12, overflow: 'hidden', flex: 1 },
+  listingCard: { backgroundColor: '#222', borderRadius: 12, overflow: 'hidden', flex: 1, marginBottom: 10 },
   listingImg: { height: 120, width: '100%' },
   listingBody: { padding: 8 },
   listingTitle: { color: '#fff', fontSize: 12, fontWeight: '700', marginBottom: 2 },

@@ -1,46 +1,58 @@
-// Follow this setup guide to integrate the Deno language server with your editor:
-// https://deno.land/manual/getting_started/setup_your_environment
-// This enables autocomplete, go to definition, etc.
+// supabase/functions/whats-my-ip/index.ts
+//
+// Diagnostic-only endpoint: reports the IP this Edge Function makes
+// OUTBOUND requests from, plus whatever inbound IP headers the
+// platform sets on the request itself. Exists because direct calls
+// from Supabase's own datacenter IPs get reset by Paynow — payments
+// are routed through a VPS proxy instead (see create-payment /
+// paynow-webhook). This endpoint is how that was originally
+// diagnosed, and stays deployed so the same check can be re-run any
+// time the proxy IP needs re-verifying (e.g. after a Supabase infra
+// change moves the runtime to a new outbound address).
+//
+// ⚠️ FIX (real bug, found during a full-codebase sweep): this file was
+// still the unmodified `supabase functions new` scaffold template — it
+// just echoed back a `name` field from the request body ("Hello
+// {name}!") and never reported any IP information at all. It was
+// registered in config.toml, deployed, and callable, but functionally
+// useless for the one thing its name and header comment promised.
+// Replaced with a real implementation below.
+//
+// Deliberately verify_jwt = false (see config.toml) — this returns no
+// user or business data, only network diagnostics, so it's safe to
+// leave open for a quick check from a browser or curl without a token.
 
-// Setup type definitions for built-in Supabase Runtime APIs
-import "@supabase/functions-js/edge-runtime.d.ts";
-import { withSupabase } from "@supabase/server";
+const OUTBOUND_IP_CHECK_URL = 'https://api.ipify.org?format=json';
 
-console.log("Hello from Functions!");
+Deno.serve(async (req) => {
+  const headers = req.headers;
 
-// This endpoint uses 'publishable' | 'secret' access, apiKey is required.
-// Use publishable for Client-facing, key-validated endpoints
-// Use secret for Server-to-server, internal calls
-export default {
-  fetch: withSupabase({ auth: ["publishable", "secret"] }, async (req, ctx) => {
-    // Called by another service with a secret key
-    // ctx.supabaseAdmin bypasses RLS — use for privileged operations
-    /*
-    if (ctx.authMode === "secret") {
-      const { user_id } = await req.json();
-      const { data } = await ctx.supabaseAdmin.auth.admin.getUserById(user_id);
+  // Inbound: whatever this platform/proxy hop tells us about the
+  // caller. Useful context, but NOT what Paynow's allowlist cares
+  // about — that's the outbound address below.
+  const inbound = {
+    'x-forwarded-for': headers.get('x-forwarded-for'),
+    'x-real-ip': headers.get('x-real-ip'),
+    'cf-connecting-ip': headers.get('cf-connecting-ip'),
+  };
 
-      return Response.json({
-        email: data?.user?.email,
-      });
-    }
-    */
+  // Outbound: the IP this function itself is seen FROM when it makes
+  // its own requests — the one that actually matters for Paynow/VPS
+  // proxy allowlisting, since that's what a downstream server sees
+  // when this function calls out (exactly what create-payment /
+  // paynow-webhook do against Paynow's API).
+  let outboundIp: string | null = null;
+  let outboundError: string | null = null;
+  try {
+    const resp = await fetch(OUTBOUND_IP_CHECK_URL);
+    const data = await resp.json();
+    outboundIp = data?.ip ?? null;
+  } catch (err) {
+    outboundError = String(err);
+  }
 
-    const { name } = await req.json();
-
-    return Response.json({
-      message: `Hello ${name}!`,
-    });
-  }),
-};
-
-/* To invoke locally:
-
-  1. Run `supabase start` (see: https://supabase.com/docs/reference/cli/supabase-start)
-  2. Make an HTTP request:
-
-  curl -i --location --request POST 'http://127.0.0.1:54321/functions/v1/whats-my-ip' \
-    --header 'apiKey: sb_publishable_ACJWlzQHlZjBrEguHvfOxg_3BJgxAaH' \
-    --data '{"name":"Functions"}'
-
-*/
+  return new Response(
+    JSON.stringify({ inbound, outbound_ip: outboundIp, outbound_error: outboundError }, null, 2),
+    { status: 200, headers: { 'Content-Type': 'application/json' } }
+  );
+});

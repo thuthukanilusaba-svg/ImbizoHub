@@ -415,7 +415,15 @@ enabled = true
 
 [functions.create-payment]
 enabled = true
-verify_jwt = false
+# FIX (found during a full-codebase sweep): this was false with no
+# in-function auth check at all, making create-payment fully
+# unauthenticated — see the security-fix comment at the top of
+# functions/create-payment/index.ts for the full explanation. That file
+# now also checks the caller's JWT explicitly (a stricter check than
+# this flag alone would provide, since it also validates identity match
+# on buyer_id/operator_user_id), so the code-level fix is effective
+# regardless of this setting — but the platform-level gate should match.
+verify_jwt = true
 import_map = "./functions/create-payment/deno.json"
 # Uncomment to specify a custom file path to the entrypoint.
 # Supported file extensions are: .ts, .js, .mjs, .jsx, .tsx

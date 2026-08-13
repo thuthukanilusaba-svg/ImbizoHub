@@ -65,7 +65,12 @@ export default function OperatorRequestsScreen() {
 
   async function checkStatus() {
     const { data: { user } } = await supabase.auth.getUser();
-    if (!user) { setOperatorActive(false); return; }
+    // FIX: was `if (!user)`, missing user.is_anonymous — see the same
+    // pattern fixed across the app. In practice account_type only ever
+    // becomes 'transport_operator' via a real (non-anonymous) account,
+    // so this was defense-in-depth rather than a live hole, but kept
+    // consistent with every other account-gated screen regardless.
+    if (!user || user.is_anonymous) { setOperatorActive(false); return; }
 
     const { data: profile } = await supabase
       .from('profiles')
@@ -145,7 +150,7 @@ export default function OperatorRequestsScreen() {
 
     setSubmitting(true);
     const { data: { user } } = await supabase.auth.getUser();
-    if (!user) { setSubmitting(false); return; }
+    if (!user || user.is_anonymous) { setSubmitting(false); setSubmitError('You need to be signed in to submit a quote.'); return; }
 
     // UPDATED (pricing model simplified): commission_amount no longer
     // set here — the separate 3% commission was removed entirely, see
@@ -388,10 +393,16 @@ const styles = StyleSheet.create({
   heading: { color: '#fff', fontSize: 22, fontWeight: '800' },
   subheading: { color: GREY, fontSize: 13, marginTop: 4 },
 
-  list: { padding: 16, gap: 14 },
+  // FIX (same bug class already caught in my-wanted-posts.tsx /
+  // browse-wanted.tsx): a FlatList's contentContainerStyle used
+  // `gap: 14` — a documented cross-platform reliability quirk at list
+  // boundaries, not something to trust for vertical spacing here.
+  // Replaced with marginBottom on the card style itself, matching the
+  // already-established, proven fix.
+  list: { padding: 16 },
   card: {
     backgroundColor: BLACK, borderRadius: 14, padding: 16,
-    borderWidth: 0.5, borderColor: '#333',
+    borderWidth: 0.5, borderColor: '#333', marginBottom: 14,
   },
   routeRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   dotGreen: { width: 10, height: 10, borderRadius: 5, backgroundColor: GREEN },

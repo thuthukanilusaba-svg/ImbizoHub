@@ -26,6 +26,17 @@
 // FIX: wrapped the whole screen in KeyboardAvoidingView — the keyboard
 // was covering whichever field was focused, on this screen and every
 // other screen with text inputs app-wide.
+//
+// FIX (real bug, found during a full-codebase sweep): this screen
+// creates real `listings` rows — functionally identical to post.tsx —
+// but was missing post.tsx's explicit "requires a REAL (non-anonymous)
+// account" check entirely (only checked `!user`, not
+// `user.is_anonymous`). post.tsx's own header comment lays out exactly
+// why that matters: a listing is persistent inventory an anonymous,
+// unrecoverable session could never manage again. That reasoning
+// applies at least as strongly here, since this screen can create many
+// listings in one bulk import rather than just one. Now requires a real
+// account before posting, same as post.tsx.
 
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
@@ -256,9 +267,12 @@ export default function WhatsAppImportScreen() {
     setPostProgress({ done: 0, total: toPost.length });
 
     const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
-      setError('Not logged in.');
+    // FIX: was `if (!user)`, missing user.is_anonymous — see top-of-file
+    // comment. Matches post.tsx's requirement of a real account before
+    // creating listings.
+    if (!user || user.is_anonymous) {
       setPosting(false);
+      router.push('/register');
       return;
     }
 

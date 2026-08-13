@@ -11,12 +11,25 @@
 //
 // Called directly by feature-listing-pay.tsx during the promo window,
 // replacing the normal create-payment + Paynow checkout entirely.
+//
+// ⚠️ FIX (real bug, found during a full-codebase sweep): this checked
+// an `X-Notify-Secret` header against NOTIFY_SHARED_SECRET — a
+// server-to-server auth mechanism — but is "called directly by
+// feature-listing-pay.tsx", a CLIENT screen, via the standard
+// supabase.functions.invoke(), which never sets that header. Every real
+// call from the app was therefore rejected with 401 — the "feature a
+// listing free" launch-promo path was non-functional. Same wrong
+// pattern copy-pasted into unlock-free-promo, accept-quote-free-promo,
+// and accept-response-free-promo — all four fixed the same way in this
+// pass. This function's existing listing.user_id === buyer_id check was
+// good, but buyer_id itself was still just a self-reported body field
+// with nothing tying it to a real caller — now cross-checked against a
+// verified JWT too, closing that gap completely.
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-const NOTIFY_SHARED_SECRET = Deno.env.get('NOTIFY_SHARED_SECRET')!;
 
 const PROMO_END = new Date('2027-01-31T23:59:59Z');
 
@@ -25,11 +38,15 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 Deno.serve(async (req) => {
   if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
 
-  const providedSecret = req.headers.get('X-Notify-Secret');
-  if (!NOTIFY_SHARED_SECRET || providedSecret !== NOTIFY_SHARED_SECRET) {
-    console.error('feature-listing-free-promo: invalid or missing shared secret');
+  // FIX: real caller identity check — see top-of-file comment.
+  const authHeader = req.headers.get('Authorization') ?? '';
+  const callerToken = authHeader.replace(/^Bearer\s+/i, '');
+  if (!callerToken) return new Response('Unauthorized', { status: 401 });
+  const { data: callerData, error: callerError } = await supabase.auth.getUser(callerToken);
+  if (callerError || !callerData?.user || callerData.user.is_anonymous) {
     return new Response('Unauthorized', { status: 401 });
   }
+  const callerId = callerData.user.id;
 
   if (new Date() > PROMO_END) {
     return new Response(JSON.stringify({ error: 'The free launch promotion has ended. Please use the normal payment flow.' }), { status: 400 });
@@ -39,6 +56,11 @@ Deno.serve(async (req) => {
     const { listing_id, buyer_id } = await req.json();
     if (!listing_id || !buyer_id) {
       return new Response(JSON.stringify({ error: 'Missing required fields' }), { status: 400 });
+    }
+    // FIX: buyer_id must be the authenticated caller — see top-of-file
+    // comment.
+    if (buyer_id !== callerId) {
+      return new Response(JSON.stringify({ error: 'buyer_id must match the authenticated user' }), { status: 403 });
     }
 
     // Ownership check — same guard feature-listing-pay.tsx itself

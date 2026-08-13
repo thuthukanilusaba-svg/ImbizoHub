@@ -17,12 +17,28 @@
 //
 // Called directly by unlock.tsx during the promo window, replacing
 // the normal create-payment + Paynow checkout entirely.
+//
+// ⚠️ FIX (real bug, found during a full-codebase sweep): this checked
+// an `X-Notify-Secret` header against NOTIFY_SHARED_SECRET — a
+// server-to-server auth mechanism — but is "called directly by
+// unlock.tsx", a CLIENT screen, via the standard
+// supabase.functions.invoke(), which never sets that header (it sends
+// the user's own session JWT automatically instead). Every real call
+// from the app was therefore rejected with 401 before ever reaching the
+// promo logic below — the entire "free unlock during launch promo"
+// feature was non-functional. The same wrong pattern was copy-pasted
+// into accept-quote-free-promo, accept-response-free-promo, and
+// feature-listing-free-promo — all four are fixed the same way in this
+// pass. Also added: none of these functions previously verified the
+// caller's identity against the `buyer_id` they claimed to be — anyone
+// who got past the (broken) secret check could have unlocked ANY
+// listing for free under ANY buyer_id. Now verifies a real JWT and
+// requires buyer_id to match the authenticated caller.
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-const NOTIFY_SHARED_SECRET = Deno.env.get('NOTIFY_SHARED_SECRET')!;
 
 const EXPO_PUSH_URL = 'https://exp.host/--/api/v2/push/send';
 const PROMO_END = new Date('2027-01-31T23:59:59Z');
@@ -79,11 +95,15 @@ async function notifyUnlockFeeReceived(sellerId: string, listingId: number) {
 Deno.serve(async (req) => {
   if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
 
-  const providedSecret = req.headers.get('X-Notify-Secret');
-  if (!NOTIFY_SHARED_SECRET || providedSecret !== NOTIFY_SHARED_SECRET) {
-    console.error('unlock-free-promo: invalid or missing shared secret');
+  // FIX: real caller identity check — see top-of-file comment.
+  const authHeader = req.headers.get('Authorization') ?? '';
+  const callerToken = authHeader.replace(/^Bearer\s+/i, '');
+  if (!callerToken) return new Response('Unauthorized', { status: 401 });
+  const { data: callerData, error: callerError } = await supabase.auth.getUser(callerToken);
+  if (callerError || !callerData?.user || callerData.user.is_anonymous) {
     return new Response('Unauthorized', { status: 401 });
   }
+  const callerId = callerData.user.id;
 
   if (new Date() > PROMO_END) {
     return new Response(JSON.stringify({ error: 'The free launch promotion has ended. Please use the normal payment flow.' }), { status: 400 });
@@ -93,6 +113,11 @@ Deno.serve(async (req) => {
     const { listing_id, buyer_id, seller_id } = await req.json();
     if (!listing_id || !buyer_id || !seller_id) {
       return new Response(JSON.stringify({ error: 'Missing required fields' }), { status: 400 });
+    }
+    // FIX: buyer_id must be the authenticated caller — see top-of-file
+    // comment.
+    if (buyer_id !== callerId) {
+      return new Response(JSON.stringify({ error: 'buyer_id must match the authenticated user' }), { status: 403 });
     }
 
     // Same duplicate-guard the real flow already relies on elsewhere —

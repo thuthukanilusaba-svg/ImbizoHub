@@ -37,6 +37,28 @@
 // alongside the buyer's own confirmation timestamp, closing the gap
 // regardless of who reached the screen first.
 //
+// ⚠️ SECURITY FIX (found during a full-codebase sweep, serious finding):
+// init() used to derive role purely from `user.id === seller_id`, where
+// seller_id comes straight from the URL — with NO check that the
+// current user was an actual participant in this trip at all. Anyone
+// authenticated (or anonymous, since there wasn't even an is_anonymous
+// check) who knew or guessed a reference_id + seller_id pair could open
+// this screen and be treated as "the buyer":
+//   - If no session existed yet, they could create one with THEIR OWN
+//     id as buyer_id for a trip that isn't theirs.
+//   - If a real session already existed, handleConfirmMyself()'s
+//     `buyer_id: myId` write would silently OVERWRITE the real buyer's
+//     id with the impostor's — hijacking an in-progress confirmation,
+//     potentially tricking the operator into thinking the real customer
+//     confirmed, and letting the impostor become eligible to rate the
+//     operator via rating.tsx.
+// Same class of bug as delivery-track.tsx's PIN exposure earlier in
+// this sweep: trusting a URL param as an identity claim instead of
+// verifying it against the real record. Now cross-checks reference_id
+// (a quotes.id) against quotes.operator_id and, via quotes.request_id,
+// requests.user_id — the current user must genuinely match one of
+// those two to proceed at all.
+//
 // Usage: router.push(`/meetpay?type=van_hire&reference_id=${quoteId}&seller_id=${operatorId}&amount=${balance}`)
 
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -83,10 +105,44 @@ export default function MeetPayScreen() {
   async function init() {
     setLoading(true);
     const { data: { user } } = await supabase.auth.getUser();
-    if (!user) { router.replace('/login'); return; }
+    if (!user || user.is_anonymous) { router.replace('/register'); return; }
     setMyId(user.id);
 
-    const isSeller = user.id === seller_id;
+    // FIX: verify the current user is a genuine participant in this
+    // trip before doing anything else — see top-of-file comment. Only
+    // van_hire is ever routed here (from quotes.tsx), so reference_id is
+    // always a quotes.id; cross-check it against quotes.operator_id and,
+    // via quotes.request_id, requests.user_id (the real buyer).
+    const { data: quote } = await supabase
+      .from('quotes')
+      .select('operator_id, request_id')
+      .eq('id', reference_id)
+      .maybeSingle();
+
+    if (!quote) {
+      setLoading(false);
+      setError('This trip could not be found.');
+      return;
+    }
+
+    const isSeller = user.id === quote.operator_id;
+    let isRealBuyer = false;
+
+    if (!isSeller) {
+      const { data: req } = await supabase
+        .from('requests')
+        .select('user_id')
+        .eq('id', quote.request_id)
+        .maybeSingle();
+      isRealBuyer = !!req && req.user_id === user.id;
+    }
+
+    if (!isSeller && !isRealBuyer) {
+      setLoading(false);
+      setError('This isn\'t your trip.');
+      return;
+    }
+
     setRole(isSeller ? 'seller' : 'buyer');
 
     const { data: existing } = await supabase
@@ -101,7 +157,12 @@ export default function MeetPayScreen() {
       setSession(existing);
       subscribeToSession(existing.id);
     } else {
-      await createSession(user.id, isSeller);
+      // FIX: pass the DB-verified quote.operator_id, not the raw
+      // seller_id URL param — see top-of-file comment. Without this, a
+      // real buyer with a tampered seller_id in the URL could create a
+      // session pointing at an unrelated operator instead of the actual
+      // one from the quote.
+      await createSession(user.id, isSeller, quote.operator_id);
     }
 
     setLoading(false);
@@ -130,14 +191,14 @@ export default function MeetPayScreen() {
     channelRef.current = channel;
   }
 
-  async function createSession(userId: string, isSeller: boolean) {
+  async function createSession(userId: string, isSeller: boolean, verifiedOperatorId: string) {
     const { data, error: createError } = await supabase
       .from('meetpay_sessions')
       .insert({
         type: type || 'van_hire',
         reference_id,
         buyer_id: isSeller ? null : userId,
-        seller_id: isSeller ? userId : seller_id,
+        seller_id: isSeller ? userId : verifiedOperatorId,
         amount: amount ? parseFloat(amount) : null,
         status: 'pending',
       })
@@ -198,6 +259,21 @@ export default function MeetPayScreen() {
     }
 
     setConfirming(false);
+  }
+
+  // FIX: previously any early setError() (e.g. "not your trip") left
+  // role null forever, which fell into the loading spinner branch below
+  // and showed an infinite spinner instead of the actual error. Now
+  // shows the error explicitly once loading has finished.
+  if (!loading && !role && error) {
+    return (
+      <View style={styles.container}>
+        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+          <Text style={styles.backText}>← Back</Text>
+        </TouchableOpacity>
+        <View style={styles.errorBox}><Text style={styles.errorText}>⚠️ {error}</Text></View>
+      </View>
+    );
   }
 
   if (loading || !role) {

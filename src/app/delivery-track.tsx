@@ -72,7 +72,13 @@ export default function DeliveryTrackScreen() {
     setError('');
 
     const { data: { user } } = await supabase.auth.getUser();
-    if (!user) { router.replace('/login'); return; }
+    // FIX: was `if (!user)`, missing user.is_anonymous — same gap as
+    // seller-deliveries.tsx and buyer-deliveries.tsx. An anonymous
+    // session is truthy, so it fell through to a query scoped to an
+    // anon buyer_id that can never match a real booking, landing on a
+    // silent "No delivery found" error instead of being sent to
+    // register. Redirect target now matches buyer-deliveries.tsx.
+    if (!user || user.is_anonymous) { router.replace('/register'); return; }
     setMyId(user.id);
 
     if (booking_id) {

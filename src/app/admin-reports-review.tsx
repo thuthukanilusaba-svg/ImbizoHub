@@ -1,31 +1,42 @@
-// app/admin-verification-review.tsx
-// Admin screen for reviewing pending ID verification submissions —
-// covers Verified Seller, delivery operator, and transport operator
-// verification in one queue, since they now share one backend (see
-// unified-verification.sql).
+// app/admin-reports-review.tsx
 //
-// Every action here goes through admin_list_pending_verifications() /
-// admin_review_verification() — both security-definer functions that
-// check is_admin themselves, same reasoning as submit_verification()
-// being the only door for a regular user's own submission. This screen
-// never writes to profiles/delivery_operators/verification_requests
-// directly and never trusts a client-side "am I an admin" check for
-// anything beyond hiding the UI — the real gate is server-side.
+// ⚠️ FIX (serious bug, found during a full-codebase sweep): this file
+// was a byte-for-byte duplicate of admin-verification-review.tsx.
+// Because Expo Router is file-based, that meant the /admin-reports-
+// review route — the one every other admin screen cross-links to as
+// "Reports" (see admin-verification-review.tsx and
+// admin-security-incidents.tsx, both of which already assumed this
+// screen existed and worked) — actually rendered the verification
+// queue a second time. There was no way anywhere in the app for an
+// admin to actually see what had been submitted via report-user.tsx;
+// every report anyone filed just sat in the `reports` table with no
+// interface, exactly the same "table with no interface isn't usable"
+// gap admin-security-incidents.tsx's own header comment describes
+// having fixed for security_incidents.
 //
-// No nav entry point added anywhere else in the app on purpose — reach
-// this via a direct link (/admin-verification-review) for now. UPDATED:
-// now cross-links to /admin-reports-review (and that screen links back)
-// so once an admin reaches EITHER screen via a direct link, they can
-// move between the two admin areas without needing to remember two
-// separate URLs — still no entry point from the main app nav itself.
+// This is a genuine rebuild, not a tweak — built to match report-
+// user.tsx's actual insert shape (reporter_id, reported_user_id,
+// listing_id, context, reason, details) and the same admin-gating
+// pattern already used by admin-security-incidents.tsx: an explicit
+// profiles.is_admin check (not inferred from a query error, which RLS
+// can return successfully with zero rows for — see that screen's own
+// fix earlier in this sweep), with RLS on `reports` itself as the real
+// data-access gate.
 //
-// Usage: router.push('/admin-verification-review')
+// NOTE: this is intentionally READ-ONLY for now. There's no confirmed
+// `resolved`/status column on `reports` in what's been reviewed so
+// far — rather than guess at a schema column that might not exist
+// (and silently fail to update if it doesn't), this only lists reports
+// with reporter/reported/listing context resolved for readability.
+// Add a resolution workflow once that schema decision is made.
+//
+// Usage: router.push('/admin-reports-review')
 
 import { useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import {
-  ActivityIndicator, Image, Platform, RefreshControl, ScrollView, StyleSheet,
-  Text, TextInput, TouchableOpacity, View,
+  ActivityIndicator, Platform, RefreshControl, ScrollView, StyleSheet,
+  Text, TouchableOpacity, View,
 } from 'react-native';
 import { supabase } from '../../lib/supabase';
 
@@ -33,56 +44,41 @@ const GOLD = '#B8860B';
 const BLACK = '#1A1A18';
 const DARK = '#2a2a2a';
 const GREY = '#AAAAAA';
-const GREEN = '#4fc96e';
 const RED = '#ff8a8a';
 
-const SIGNED_URL_TTL_SECONDS = 300;
-
-type VerificationType = 'seller' | 'delivery_operator' | 'transport_operator';
-
-const TYPE_LABEL: Record<VerificationType, string> = {
-  seller: '🏪 Verified Seller',
-  delivery_operator: '📦 Delivery Operator',
-  transport_operator: '🚐 Transport Operator',
+type Report = {
+  id: string;
+  reporter_id: string;
+  reported_user_id: string;
+  listing_id: number | null;
+  context: string;
+  reason: string;
+  details: string | null;
+  created_at: string;
 };
 
-type PendingItem = {
-  request_id: string;
-  user_id: string;
-  verification_type: VerificationType;
-  full_name: string;
-  email: string;
-  document_path: string;
-  submitted_at: string;
-  signedUrl?: string;
+type EnrichedReport = Report & {
+  reporterName: string;
+  reportedName: string;
+  listingTitle: string | null;
 };
 
-const FILTERS: { label: string; value: VerificationType | null }[] = [
-  { label: 'All', value: null },
-  { label: 'Seller', value: 'seller' },
-  { label: 'Delivery', value: 'delivery_operator' },
-  { label: 'Transport', value: 'transport_operator' },
-];
+const CONTEXT_LABEL: Record<string, string> = {
+  listing: '🏷️ Listing',
+  chat: '💬 Chat',
+  wanted: '🔍 Wanted post',
+  other: '❓ Other',
+};
 
-export default function AdminVerificationReviewScreen() {
+export default function AdminReportsReviewScreen() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
-  const [authorized, setAuthorized] = useState(true);
-  const [items, setItems] = useState<PendingItem[]>([]);
-  const [filter, setFilter] = useState<VerificationType | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
+  const [authorized, setAuthorized] = useState(false);
+  const [reports, setReports] = useState<EnrichedReport[]>([]);
   const [error, setError] = useState('');
 
-  const [actioningId, setActioningId] = useState<string | null>(null);
-  const [rejectingId, setRejectingId] = useState<string | null>(null);
-  const [rejectReason, setRejectReason] = useState('');
-  // NEW: document signed URLs expire after SIGNED_URL_TTL_SECONDS (5
-  // minutes) — an admin who leaves this screen open longer than that
-  // would see broken images with no obvious way to fix it. Pull-to-
-  // refresh gives a direct, discoverable way to regenerate them,
-  // instead of navigating away and back.
-  const [refreshing, setRefreshing] = useState(false);
-
-  useEffect(() => { load(); }, [filter]);
+  useEffect(() => { load(); }, []);
 
   async function handleRefresh() {
     setRefreshing(true);
@@ -94,73 +90,76 @@ export default function AdminVerificationReviewScreen() {
     setLoading(true);
     setError('');
 
-    const { data, error: rpcError } = await supabase.rpc('admin_list_pending_verifications', {
-      p_verification_type: filter,
-    });
-
-    if (rpcError) {
+    // Same explicit is_admin check as admin-security-incidents.tsx —
+    // not inferred from a query error, since RLS can return an empty
+    // result set successfully instead of erroring.
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
       setAuthorized(false);
       setLoading(false);
       return;
     }
 
-    const list: PendingItem[] = data ?? [];
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('is_admin')
+      .eq('id', user.id)
+      .maybeSingle();
 
-    const withUrls = await Promise.all(
-      list.map(async (item) => {
-        const { data: signed } = await supabase.storage
-          .from('verification-documents')
-          .createSignedUrl(item.document_path, SIGNED_URL_TTL_SECONDS);
-        return { ...item, signedUrl: signed?.signedUrl };
-      })
-    );
+    if (!profile?.is_admin) {
+      setAuthorized(false);
+      setLoading(false);
+      return;
+    }
 
-    setItems(withUrls);
+    setAuthorized(true);
+
+    const { data, error: fetchError } = await supabase
+      .from('reports')
+      .select('*')
+      .order('created_at', { ascending: false });
+
+    if (fetchError) {
+      setError(fetchError.message);
+      setLoading(false);
+      return;
+    }
+
+    const list: Report[] = data ?? [];
+
+    // Resolved client-side against separate lookups (same pattern
+    // quotes.tsx uses for operator profiles), rather than guessing at
+    // Supabase embedded-resource / FK constraint names this sweep
+    // hasn't confirmed exist for the `reports` table.
+    const userIds = [...new Set(list.flatMap((r) => [r.reporter_id, r.reported_user_id]))];
+    const listingIds = [...new Set(list.map((r) => r.listing_id).filter((id): id is number => id != null))];
+
+    const [{ data: profiles }, { data: listings }] = await Promise.all([
+      userIds.length > 0
+        ? supabase.from('profiles').select('id, full_name, email').in('id', userIds)
+        : Promise.resolve({ data: [] as any[] }),
+      listingIds.length > 0
+        ? supabase.from('listings').select('id, title').in('id', listingIds)
+        : Promise.resolve({ data: [] as any[] }),
+    ]);
+
+    const profileMap: Record<string, string> = {};
+    (profiles ?? []).forEach((p: any) => { profileMap[p.id] = p.full_name || p.email || 'Unknown user'; });
+    const listingMap: Record<number, string> = {};
+    (listings ?? []).forEach((l: any) => { listingMap[l.id] = l.title; });
+
+    const enriched: EnrichedReport[] = list.map((r) => ({
+      ...r,
+      reporterName: profileMap[r.reporter_id] ?? 'Unknown user',
+      reportedName: profileMap[r.reported_user_id] ?? 'Unknown user',
+      listingTitle: r.listing_id != null ? (listingMap[r.listing_id] ?? null) : null,
+    }));
+
+    setReports(enriched);
     setLoading(false);
   }
 
-  async function handleApprove(requestId: string) {
-    setActioningId(requestId);
-    setError('');
-
-    const { error: rpcError } = await supabase.rpc('admin_review_verification', {
-      p_request_id: requestId,
-      p_approve: true,
-    });
-
-    setActioningId(null);
-
-    if (rpcError) {
-      setError(rpcError.message);
-      return;
-    }
-
-    setItems((prev) => prev.filter((i) => i.request_id !== requestId));
-  }
-
-  async function handleReject(requestId: string) {
-    setActioningId(requestId);
-    setError('');
-
-    const { error: rpcError } = await supabase.rpc('admin_review_verification', {
-      p_request_id: requestId,
-      p_approve: false,
-      p_reason: rejectReason.trim() || null,
-    });
-
-    setActioningId(null);
-
-    if (rpcError) {
-      setError(rpcError.message);
-      return;
-    }
-
-    setRejectingId(null);
-    setRejectReason('');
-    setItems((prev) => prev.filter((i) => i.request_id !== requestId));
-  }
-
-  if (loading && items.length === 0) {
+  if (loading) {
     return (
       <View style={styles.center}>
         <ActivityIndicator size="large" color={GOLD} />
@@ -190,129 +189,56 @@ export default function AdminVerificationReviewScreen() {
           <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
             <Text style={styles.backText}>← Back</Text>
           </TouchableOpacity>
-          <TouchableOpacity onPress={() => router.push('/admin-reports-review')}>
-            <Text style={styles.crossLinkText}>Reports →</Text>
-          </TouchableOpacity>
-        </View>
-
-        <Text style={styles.heading}>Verification review</Text>
-        <Text style={styles.subheading}>
-          {items.length === 0
-            ? 'No submissions waiting for review.'
-            : `${items.length} submission${items.length === 1 ? '' : 's'} waiting for review.`}
-        </Text>
-
-        <View style={styles.filterRow}>
-          {FILTERS.map((f) => (
-            <TouchableOpacity
-              key={f.label}
-              style={[styles.filterChip, filter === f.value && styles.filterChipActive]}
-              onPress={() => setFilter(f.value)}
-            >
-              <Text style={[styles.filterChipText, filter === f.value && styles.filterChipTextActive]}>
-                {f.label}
-              </Text>
+          <View style={styles.crossLinkRow}>
+            <TouchableOpacity onPress={() => router.push('/admin-verification-review')}>
+              <Text style={styles.crossLinkText}>Verification</Text>
             </TouchableOpacity>
-          ))}
+            <TouchableOpacity onPress={() => router.push('/admin-security-incidents')}>
+              <Text style={styles.crossLinkText}>Incidents</Text>
+            </TouchableOpacity>
+          </View>
         </View>
+
+        <Text style={styles.heading}>User reports</Text>
+        <Text style={styles.subheading}>
+          {reports.length === 0
+            ? 'No reports have been filed.'
+            : `${reports.length} report${reports.length === 1 ? '' : 's'} filed.`}
+        </Text>
 
         {error ? (
           <View style={styles.errorBox}><Text style={styles.errorText}>⚠️ {error}</Text></View>
         ) : null}
 
-        {items.map((item) => {
-          const isActioning = actioningId === item.request_id;
-          const isRejecting = rejectingId === item.request_id;
-
-          return (
-            <View key={item.request_id} style={styles.card}>
-              <Text style={styles.typeLabel}>{TYPE_LABEL[item.verification_type]}</Text>
-              <Text style={styles.name}>{item.full_name || 'No name on file'}</Text>
-              <Text style={styles.email}>{item.email}</Text>
-              <Text style={styles.submittedAt}>
-                Submitted {new Date(item.submitted_at).toLocaleString('en-GB', {
+        {reports.map((r) => (
+          <View key={r.id} style={styles.card}>
+            <View style={styles.cardTop}>
+              <Text style={styles.contextLabel}>{CONTEXT_LABEL[r.context] ?? `❓ ${r.context}`}</Text>
+              <Text style={styles.createdAt}>
+                {new Date(r.created_at).toLocaleDateString('en-GB', {
                   day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit',
                 })}
               </Text>
-
-              {item.signedUrl ? (
-                <Image source={{ uri: item.signedUrl }} style={styles.documentImage} resizeMode="contain" />
-              ) : (
-                <View style={styles.documentMissing}>
-                  <Text style={styles.documentMissingText}>Could not load document image</Text>
-                </View>
-              )}
-
-              {isRejecting ? (
-                <View style={styles.rejectBox}>
-                  <Text style={styles.rejectLabel}>Reason (shown to the applicant)</Text>
-                  <TextInput
-                    style={styles.rejectInput}
-                    value={rejectReason}
-                    onChangeText={setRejectReason}
-                    placeholder="e.g. Photo is blurry, please retake"
-                    placeholderTextColor="#666"
-                    multiline
-                  />
-                  <View style={styles.actionRow}>
-                    <TouchableOpacity
-                      style={[styles.rejectConfirmBtn, isActioning && { opacity: 0.6 }]}
-                      onPress={() => handleReject(item.request_id)}
-                      disabled={isActioning}
-                    >
-                      {isActioning
-                        ? <ActivityIndicator color="#fff" size="small" />
-                        : <Text style={styles.rejectConfirmBtnText}>Confirm reject</Text>
-                      }
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={styles.cancelBtn}
-                      onPress={() => { setRejectingId(null); setRejectReason(''); }}
-                      disabled={isActioning}
-                    >
-                      <Text style={styles.cancelBtnText}>Cancel</Text>
-                    </TouchableOpacity>
-                  </View>
-                </View>
-              ) : (
-                <View style={styles.actionRow}>
-                  <TouchableOpacity
-                    style={[styles.approveBtn, isActioning && { opacity: 0.6 }]}
-                    onPress={() => handleApprove(item.request_id)}
-                    disabled={isActioning}
-                  >
-                    {isActioning
-                      ? <ActivityIndicator color={BLACK} size="small" />
-                      : <Text style={styles.approveBtnText}>✓ Approve</Text>
-                    }
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={styles.rejectBtn}
-                    onPress={() => {
-                      // FIX (real bug, found during a thorough review):
-                      // rejectReason is a single shared string across
-                      // every item in this list, not per-item. Without
-                      // resetting it here, an admin who starts typing a
-                      // reason for one applicant, then taps "Reject" on
-                      // a DIFFERENT applicant instead (without
-                      // confirming the first), would carry that
-                      // still-typed text over — potentially confirming
-                      // a rejection for the second applicant using a
-                      // reason actually written about the first.
-                      // Resetting on open, not just on cancel/confirm,
-                      // closes that gap.
-                      setRejectReason('');
-                      setRejectingId(item.request_id);
-                    }}
-                    disabled={isActioning}
-                  >
-                    <Text style={styles.rejectBtnText}>✕ Reject</Text>
-                  </TouchableOpacity>
-                </View>
-              )}
             </View>
-          );
-        })}
+
+            <Text style={styles.reason}>{r.reason}</Text>
+            {r.details ? <Text style={styles.details}>{r.details}</Text> : null}
+
+            <View style={styles.partiesBox}>
+              <Text style={styles.partyLine}>
+                <Text style={styles.partyLabel}>Reported by: </Text>{r.reporterName}
+              </Text>
+              <Text style={styles.partyLine}>
+                <Text style={styles.partyLabel}>Reported user: </Text>{r.reportedName}
+              </Text>
+              {r.listingTitle ? (
+                <Text style={styles.partyLine}>
+                  <Text style={styles.partyLabel}>Listing: </Text>{r.listingTitle}
+                </Text>
+              ) : null}
+            </View>
+          </View>
+        ))}
 
         <View style={{ height: 40 }} />
       </ScrollView>
@@ -328,15 +254,10 @@ const styles = StyleSheet.create({
   topRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
   backBtn: {},
   backText: { color: GREY, fontSize: 14 },
+  crossLinkRow: { flexDirection: 'row', gap: 14 },
   crossLinkText: { color: GOLD, fontSize: 13, fontWeight: '700' },
   heading: { fontSize: 24, fontWeight: '800', color: '#fff', marginBottom: 6 },
   subheading: { fontSize: 13, color: GREY, marginBottom: 16 },
-
-  filterRow: { flexDirection: 'row', gap: 8, marginBottom: 20 },
-  filterChip: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20, backgroundColor: DARK, borderWidth: 1, borderColor: '#333' },
-  filterChipActive: { backgroundColor: GOLD, borderColor: GOLD },
-  filterChipText: { color: GREY, fontSize: 12, fontWeight: '600' },
-  filterChipTextActive: { color: BLACK },
 
   deniedTitle: { color: '#fff', fontSize: 20, fontWeight: '800', marginBottom: 10 },
   deniedBody: { color: GREY, fontSize: 13, textAlign: 'center', marginBottom: 24 },
@@ -346,27 +267,15 @@ const styles = StyleSheet.create({
   errorBox: { backgroundColor: '#3a1a1a', borderRadius: 10, padding: 12, marginBottom: 16 },
   errorText: { color: RED, fontSize: 13 },
 
-  card: { backgroundColor: BLACK, borderRadius: 14, padding: 18, marginBottom: 16, borderWidth: 0.5, borderColor: '#333' },
-  typeLabel: { color: GOLD, fontSize: 11, fontWeight: '700', marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.5 },
-  name: { color: '#fff', fontSize: 15, fontWeight: '700' },
-  email: { color: GREY, fontSize: 12, marginTop: 2 },
-  submittedAt: { color: '#666', fontSize: 11, marginTop: 4, marginBottom: 14 },
+  card: { backgroundColor: BLACK, borderRadius: 14, padding: 16, marginBottom: 14, borderWidth: 0.5, borderColor: '#333' },
+  cardTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 },
+  contextLabel: { color: GOLD, fontSize: 11, fontWeight: '700' },
+  createdAt: { color: '#666', fontSize: 11 },
 
-  documentImage: { width: '100%', height: 260, borderRadius: 10, backgroundColor: DARK, marginBottom: 16 },
-  documentMissing: { width: '100%', height: 120, borderRadius: 10, backgroundColor: DARK, alignItems: 'center', justifyContent: 'center', marginBottom: 16 },
-  documentMissingText: { color: '#666', fontSize: 12 },
+  reason: { color: '#fff', fontSize: 14, fontWeight: '700', marginBottom: 6 },
+  details: { color: GREY, fontSize: 13, lineHeight: 19, marginBottom: 12 },
 
-  actionRow: { flexDirection: 'row', gap: 10 },
-  approveBtn: { flex: 1, backgroundColor: GREEN, borderRadius: 12, paddingVertical: 14, alignItems: 'center' },
-  approveBtnText: { color: BLACK, fontSize: 14, fontWeight: '800' },
-  rejectBtn: { flex: 1, backgroundColor: DARK, borderRadius: 12, paddingVertical: 14, alignItems: 'center', borderWidth: 1, borderColor: '#553333' },
-  rejectBtnText: { color: RED, fontSize: 14, fontWeight: '700' },
-
-  rejectBox: { marginTop: 4 },
-  rejectLabel: { color: GREY, fontSize: 12, marginBottom: 8 },
-  rejectInput: { backgroundColor: DARK, borderRadius: 10, padding: 12, color: '#fff', fontSize: 13, minHeight: 70, textAlignVertical: 'top', borderWidth: 0.5, borderColor: '#444', marginBottom: 12 },
-  rejectConfirmBtn: { flex: 1, backgroundColor: '#8a2a2a', borderRadius: 12, paddingVertical: 14, alignItems: 'center' },
-  rejectConfirmBtnText: { color: '#fff', fontSize: 14, fontWeight: '800' },
-  cancelBtn: { flex: 1, backgroundColor: DARK, borderRadius: 12, paddingVertical: 14, alignItems: 'center', borderWidth: 1, borderColor: '#444' },
-  cancelBtnText: { color: GREY, fontSize: 14, fontWeight: '600' },
+  partiesBox: { paddingTop: 10, borderTopWidth: 0.5, borderTopColor: '#2a2a2a' },
+  partyLine: { color: GREY, fontSize: 12, marginBottom: 4 },
+  partyLabel: { color: '#888', fontWeight: '600' },
 });

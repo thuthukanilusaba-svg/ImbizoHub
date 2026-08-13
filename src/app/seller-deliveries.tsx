@@ -78,7 +78,14 @@ export default function SellerDeliveriesScreen() {
     setError('');
 
     const { data: { user } } = await supabase.auth.getUser();
-    if (!user) { router.replace('/login'); return; }
+    // FIX: was `if (!user)`, missing the same user.is_anonymous gap
+    // found across the app (profile.tsx, buyer-deliveries.tsx, etc.) —
+    // an anonymous session is truthy here, so it fell through to a
+    // seller-deliveries query scoped to an anon id that can never have
+    // any real deliveries, showing a silent empty list instead of
+    // sending the person to create a real account. Redirect target and
+    // check now match buyer-deliveries.tsx's established fix.
+    if (!user || user.is_anonymous) { router.replace('/register'); return; }
     setMyId(user.id);
 
     await loadBookings(user.id);

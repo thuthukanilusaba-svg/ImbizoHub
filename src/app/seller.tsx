@@ -18,6 +18,19 @@
 // hosting, DNS) beyond app code alone. That's a distinct, larger piece
 // of work, not something quietly assumed to already work here.
 //
+// FIX (real bug, found during a full-codebase sweep): handleShare()
+// built its deep link as `${DEEP_LINK_SCHEME}/${id}` — a PATH segment
+// — but this screen only ever reads `id` as a QUERY param
+// (useLocalSearchParams below), matching the "Usage" line right below
+// this comment. There's no app/seller/[id].tsx dynamic route anywhere
+// in this codebase to handle a path-based id. That meant every shared
+// link ("Check out X on ImbizoHub...") would open the app to a seller
+// screen with no id at all, hitting the notFound state — undermining
+// the entire point of this being a genuinely shareable profile, exactly
+// the outcome the file's own header comment is careful to say this
+// screen DOES deliver (for someone who already has the app installed).
+// Now matches the documented query-param format.
+//
 // Usage: router.push(`/seller?id=${sellerId}`)
 
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -98,7 +111,7 @@ export default function SellerProfileScreen() {
 
     try {
       await Share.share({
-        message: `Check out ${name} on ImbizoHub \u2014 ${ratingText}. ${DEEP_LINK_SCHEME}/${id}`,
+        message: `Check out ${name} on ImbizoHub \u2014 ${ratingText}. ${DEEP_LINK_SCHEME}?id=${id}`,
       });
     } catch (err) {
       // Share sheet dismissed or unavailable — not worth surfacing as

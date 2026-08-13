@@ -14,17 +14,37 @@
 // pattern buyer-deliveries.tsx used to close an equivalent gap on the
 // delivery side.
 //
-// Deliberately requires a real account (redirects to /login if none) —
-// posting itself stays anonymous-friendly per post-wanted.tsx, but
-// tracking "my posts over time" is the same "come back and find my
-// history" case messages.tsx already draws this line on, and an
-// anonymous session can't durably back that up.
+// Deliberately requires a real account — posting itself stays
+// anonymous-friendly per post-wanted.tsx, but tracking "my posts over
+// time" is the same "come back and find my history" case messages.tsx
+// already draws this line on, and an anonymous session can't durably
+// back that up.
+//
+// FIX (real inconsistency, found during a thorough review): this
+// file's own comment claimed to follow "the same case messages.tsx
+// already draws this line on" — but the actual check (`!user`, missing
+// is_anonymous) didn't match what messages.tsx correctly does, and
+// used a bare router.replace('/login') instead of messages.tsx's
+// friendlier inline prompt (and the wrong destination besides —
+// someone who's only ever posted anonymously has no existing account
+// to log into). Now genuinely matches messages.tsx's own pattern:
+// correct anonymous check, inline explanation instead of a jarring
+// redirect, and pointed at /register.
+//
+// FIX (same bug class already caught in browse-wanted.tsx today): the
+// FlatList's contentContainerStyle used `gap: 14` — a documented
+// cross-platform reliability quirk, not something to trust at list
+// boundaries. This screen doesn't have a footer component (so the
+// specific trigger from that earlier bug isn't present here), but it's
+// the same underlying fragile pattern, already proven unreliable
+// elsewhere in this codebase. Replaced with marginBottom on the card
+// style itself, matching the already-established, proven fix.
 
 import { useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import {
-    ActivityIndicator, FlatList, Platform, RefreshControl,
-    StyleSheet, Text, TouchableOpacity, View,
+  ActivityIndicator, FlatList, Platform, RefreshControl,
+  StyleSheet, Text, TouchableOpacity, View,
 } from 'react-native';
 import { supabase } from '../../lib/supabase';
 
@@ -58,12 +78,20 @@ export default function MyWantedPostsScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [posts, setPosts] = useState<WantedPost[]>([]);
+  // NEW: matches messages.tsx's own pattern — see top-of-file comment.
+  const [needsAccount, setNeedsAccount] = useState(false);
 
   useEffect(() => { fetchMyPosts(); }, []);
 
   async function fetchMyPosts() {
     const { data: { user } } = await supabase.auth.getUser();
-    if (!user) { router.replace('/login'); return; }
+    // FIX: was `if (!user)`, missing user.is_anonymous — see
+    // top-of-file comment.
+    if (!user || user.is_anonymous) {
+      setNeedsAccount(true);
+      setLoading(false);
+      return;
+    }
 
     const { data: requests } = await supabase
       .from('item_requests')
@@ -77,11 +105,6 @@ export default function MyWantedPostsScreen() {
       return;
     }
 
-    // Response counts fetched separately per the same reasoning already
-    // applied elsewhere today (quotes.tsx, wanted-responses.tsx) — no
-    // real foreign-key relationship to embed a count through safely, so
-    // a plain count query per request id instead of one fragile
-    // embedded select.
     const ids = requests.map((r) => r.id);
     const { data: responses } = await supabase
       .from('item_responses')
@@ -119,6 +142,35 @@ export default function MyWantedPostsScreen() {
     return (
       <View style={styles.center}>
         <ActivityIndicator size="large" color={GOLD} />
+      </View>
+    );
+  }
+
+  // NEW: inline prompt, matching messages.tsx's own pattern exactly —
+  // see top-of-file comment.
+  if (needsAccount) {
+    return (
+      <View style={styles.container}>
+        <View style={styles.header}>
+          <TouchableOpacity onPress={() => router.back()}>
+            <Text style={styles.backText}>← Back</Text>
+          </TouchableOpacity>
+          <Text style={styles.heading}>My wanted posts</Text>
+        </View>
+        <View style={styles.needsAccountCard}>
+          <Text style={styles.needsAccountIcon}>🔍</Text>
+          <Text style={styles.needsAccountTitle}>Keep track of everything you're looking for</Text>
+          <Text style={styles.needsAccountBody}>
+            You can post a want without an account — but creating a free one lets you come back
+            anytime and see all your posts and responses together, right here.
+          </Text>
+          <TouchableOpacity style={styles.needsAccountBtn} onPress={() => router.push('/register')}>
+            <Text style={styles.needsAccountBtnText}>Create free account</Text>
+          </TouchableOpacity>
+          <TouchableOpacity onPress={() => router.push('/login')}>
+            <Text style={styles.needsAccountLoginLink}>Already have an account? Sign in</Text>
+          </TouchableOpacity>
+        </View>
       </View>
     );
   }
@@ -211,10 +263,21 @@ const styles = StyleSheet.create({
   heading: { color: '#fff', fontSize: 22, fontWeight: '800' },
   subheading: { color: GREY, fontSize: 13, marginTop: 4 },
 
-  list: { padding: 16, gap: 14 },
+  needsAccountCard: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32 },
+  needsAccountIcon: { fontSize: 48, marginBottom: 20 },
+  needsAccountTitle: { color: '#fff', fontSize: 18, fontWeight: '800', textAlign: 'center', marginBottom: 12 },
+  needsAccountBody: { color: GREY, fontSize: 13, textAlign: 'center', lineHeight: 20, marginBottom: 28 },
+  needsAccountBtn: { backgroundColor: GOLD, borderRadius: 14, paddingVertical: 16, paddingHorizontal: 40, marginBottom: 16 },
+  needsAccountBtnText: { color: BLACK, fontSize: 15, fontWeight: '800' },
+  needsAccountLoginLink: { color: GREY, fontSize: 13 },
+
+  // FIX: was `gap: 14` here — see top-of-file comment. marginBottom
+  // moved onto the card style itself instead.
+  list: { padding: 16 },
   card: {
     backgroundColor: BLACK, borderRadius: 14, padding: 16,
     borderWidth: 0.5, borderColor: '#333',
+    marginBottom: 14,
   },
   cardTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10, marginBottom: 10 },
   cardTitle: { color: '#fff', fontSize: 15, fontWeight: '700', flex: 1 },
