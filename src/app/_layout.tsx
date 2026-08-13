@@ -13,6 +13,7 @@
 
 import { Inter_400Regular, Inter_600SemiBold, Inter_700Bold, Inter_800ExtraBold, useFonts } from '@expo-google-fonts/inter';
 import { Stack, useRouter } from 'expo-router';
+import * as ScreenOrientation from 'expo-screen-orientation';
 import * as SplashScreen from 'expo-splash-screen';
 import { useEffect, useRef } from 'react';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -20,16 +21,20 @@ import { registerForPushNotifications, registerNotificationListeners, savePushTo
 
 SplashScreen.preventAutoHideAsync();
 
-// NOTE: an in-progress "rotate the full-screen photo viewer with the
-// phone" feature briefly lived here (expo-screen-orientation +
-// app.json's "orientation" set to "default"). It's been pulled back out
-// for now — the expo-screen-orientation package was never actually
-// installed (npm install was missed), which broke bundling for
-// everyone, and the feature needs its own dedicated app-store build
-// cycle anyway since it's a native-level change. app.json's
-// "orientation" is back to "portrait" to match what's actually running
-// on every installed binary today. See PhotoZoomViewer.native.tsx for
-// the other half of this revert.
+// FIX (part of letting the full-screen photo viewer rotate to
+// landscape): app.json's top-level "orientation" is "default" so the
+// native app itself is no longer forbidden from rotating at all — but
+// that alone would let EVERY screen rotate freely, not just the photo
+// viewer, which isn't what was asked for and isn't how the rest of the
+// app (forms, lists, buttons) is laid out. This establishes portrait as
+// the real, enforced default for every screen; PhotoZoomViewer.native.tsx
+// is the one place that explicitly opts out of this while it's open,
+// then restores it on close — see that file for the other half of this.
+//
+// IMPORTANT: this requires expo-screen-orientation to actually be
+// installed (`npx expo install expo-screen-orientation`) AND a new
+// `eas build` + `eas submit` — this is a native-level change, an
+// `eas update` alone cannot ship it to already-installed app binaries.
 
 export default function RootLayout() {
   const router = useRouter();
@@ -47,6 +52,14 @@ export default function RootLayout() {
       SplashScreen.hideAsync();
     }
   }, [fontsLoaded]);
+
+  useEffect(() => {
+    // Best-effort — some web browsers reject orientation locks entirely
+    // (no user gesture, unsupported API, etc.), which isn't worth
+    // surfacing as an error anywhere; the app just won't lock there,
+    // which is normal/expected browser behavior anyway.
+    ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP).catch(() => {});
+  }, []);
 
   useEffect(() => {
     // Register for push notifications and save token to profile

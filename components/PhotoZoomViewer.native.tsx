@@ -18,6 +18,7 @@
 // was added to package.json, this ships as a normal JS/OTA update, not
 // a new native build.
 
+import * as ScreenOrientation from 'expo-screen-orientation';
 import { useEffect, useState } from 'react';
 import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
@@ -42,11 +43,28 @@ export default function PhotoZoomViewer({ photos, imageIndex, visible, onRequest
     }
   }, [visible, imageIndex]);
 
-  // NOTE: this used to also rotate the photo along with the phone
-  // (via expo-screen-orientation) when turned to landscape. That's been
-  // pulled back out for now — see _layout.tsx for why — and will come
-  // back in its own dedicated app-store build. The viewer itself still
-  // works normally in portrait.
+  // Rotating the phone while looking at a photo full-screen should
+  // actually rotate the photo with it — like Photos/Instagram — rather
+  // than staying locked portrait the way the rest of the app
+  // deliberately does (see _layout.tsx, which establishes that portrait
+  // lock as the app-wide default). This is the one screen that opts out
+  // of it, only while it's actually open, restoring the normal lock the
+  // moment it closes so nothing else in the app is affected.
+  useEffect(() => {
+    if (visible) {
+      ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.ALL).catch(() => {});
+    } else {
+      ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP).catch(() => {});
+    }
+    // Belt-and-braces: restore the portrait lock if this component ever
+    // unmounts while still visible (e.g. the listing screen itself gets
+    // popped off the stack mid-view), not just on the normal close path.
+    return () => {
+      if (visible) {
+        ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP).catch(() => {});
+      }
+    };
+  }, [visible]);
 
   if (!visible || photos.length === 0) return null;
 
