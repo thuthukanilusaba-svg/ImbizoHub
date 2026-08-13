@@ -162,7 +162,11 @@ export default function BottomNav({ active, showDashboardTab, isAdmin }: BottomN
               >
                 {entry.icon}
               </Animated.Text>
-              <Text style={[styles.navLabel, (isActive || isPressed) && styles.navLabelActive]}>
+              <Text
+                style={[styles.navLabel, (isActive || isPressed) && styles.navLabelActive]}
+                numberOfLines={1}
+                allowFontScaling={false}
+              >
                 {entry.label}
               </Text>
             </TouchableOpacity>
