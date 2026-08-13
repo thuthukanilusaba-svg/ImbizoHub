@@ -31,7 +31,7 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import BottomNav from '../../components/BottomNav';
 import { supabase } from '../../lib/supabase';
 
 const GOLD = '#B8860B';
@@ -60,7 +60,6 @@ function getInitials(name: string): string {
 
 export default function MessagesScreen() {
   const router = useRouter();
-  const insets = useSafeAreaInsets();
   const params = useLocalSearchParams();
   // Optional filter — set when arriving from a specific listing (e.g. a
   // seller tapping "Message buyers" on their own listing.tsx), so the
@@ -360,34 +359,7 @@ export default function MessagesScreen() {
         </ScrollView>
       )}
 
-      {/* NEW: shared bottom nav, matching Home/Explore/Dealer */}
-      <View style={[styles.bottomNav, { paddingBottom: 24 + insets.bottom }]}>
-        <TouchableOpacity style={styles.navItem} onPress={() => router.push('/')}>
-          <Text style={styles.navIcon}>🏠</Text>
-          <Text style={styles.navLabel}>Home</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.navItem} onPress={() => router.push('/explore')}>
-          <Text style={styles.navIcon}>🔍</Text>
-          <Text style={styles.navLabel}>Browse</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.navPost} onPress={() => router.push('/post')}>
-          <Text style={styles.navPostText}>+</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.navItem}>
-          <Text style={styles.navIconActive}>💬</Text>
-          <Text style={styles.navLabelActive}>Messages</Text>
-        </TouchableOpacity>
-        {showDashboardTab && (
-          <TouchableOpacity style={styles.navItem} onPress={() => router.push('/dealer')}>
-            <Text style={styles.navIcon}>🏪</Text>
-            <Text style={styles.navLabel}>Dashboard</Text>
-          </TouchableOpacity>
-        )}
-        <TouchableOpacity style={styles.navItem} onPress={() => router.push('/profile')}>
-          <Text style={styles.navIcon}>👤</Text>
-          <Text style={styles.navLabel}>Profile</Text>
-        </TouchableOpacity>
-      </View>
+      <BottomNav active="messages" showDashboardTab={showDashboardTab} />
     </View>
   );
 }
@@ -429,12 +401,4 @@ const styles = StyleSheet.create({
   convoListing: { color: GOLD, fontSize: 11, marginBottom: 2 },
   convoPreview: { color: GREY, fontSize: 12 },
 
-  bottomNav: { position: 'absolute', bottom: 0, left: 0, right: 0, backgroundColor: BLACK, borderTopWidth: 0.5, borderTopColor: DARK, paddingVertical: 10, flexDirection: 'row', justifyContent: 'space-around', alignItems: 'center' },
-  navItem: { alignItems: 'center' },
-  navIcon: { fontSize: 22, color: '#555' },
-  navIconActive: { fontSize: 22, color: GOLD },
-  navLabel: { fontSize: 9, color: '#555', marginTop: 2 },
-  navLabelActive: { fontSize: 9, color: GOLD, marginTop: 2 },
-  navPost: { width: 44, height: 44, backgroundColor: GOLD, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
-  navPostText: { color: BLACK, fontSize: 24, fontWeight: '700', lineHeight: 28 },
 });

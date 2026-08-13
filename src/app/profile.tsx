@@ -81,6 +81,7 @@ import {
   View
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import BottomNav from '../../components/BottomNav';
 import { supabase } from '../../lib/supabase';
 import { prepareUpload } from '../../lib/uploadHelpers';
 
@@ -551,33 +552,7 @@ export default function ProfileScreen() {
         </ScrollView>
       </KeyboardAvoidingView>
 
-      <View style={[styles.bottomNav, { paddingBottom: 24 + insets.bottom }]}>
-        <TouchableOpacity style={styles.navItem} onPress={() => router.push('/')}>
-          <Text style={styles.navIcon}>🏠</Text>
-          <Text style={styles.navLabel}>Home</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.navItem} onPress={() => router.push('/explore')}>
-          <Text style={styles.navIcon}>🔍</Text>
-          <Text style={styles.navLabel}>Browse</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.navPost} onPress={() => router.push('/post')}>
-          <Text style={styles.navPostText}>+</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.navItem} onPress={() => router.push('/messages')}>
-          <Text style={styles.navIcon}>💬</Text>
-          <Text style={styles.navLabel}>Messages</Text>
-        </TouchableOpacity>
-        {showDashboardTab && (
-          <TouchableOpacity style={styles.navItem} onPress={() => router.push('/dealer')}>
-            <Text style={styles.navIcon}>🏪</Text>
-            <Text style={styles.navLabel}>Dashboard</Text>
-          </TouchableOpacity>
-        )}
-        <TouchableOpacity style={styles.navItem}>
-          <Text style={styles.navIconActive}>👤</Text>
-          <Text style={styles.navLabelActive}>Profile</Text>
-        </TouchableOpacity>
-      </View>
+      <BottomNav active="profile" showDashboardTab={showDashboardTab} />
     </View>
   );
 }
@@ -705,12 +680,4 @@ const styles = StyleSheet.create({
   menuBadgeText: { color: BLACK, fontSize: 11, fontWeight: '800' },
   menuArrow: { fontSize: 18, color: GREY },
 
-  bottomNav: { position: 'absolute', bottom: 0, left: 0, right: 0, backgroundColor: BLACK, borderTopWidth: 0.5, borderTopColor: DARK, paddingVertical: 10, flexDirection: 'row', justifyContent: 'space-around', alignItems: 'center' },
-  navItem: { alignItems: 'center' },
-  navIcon: { fontSize: 22, color: '#555' },
-  navIconActive: { fontSize: 22, color: GOLD },
-  navLabel: { fontSize: 9, color: '#555', marginTop: 2 },
-  navLabelActive: { fontSize: 9, color: GOLD, marginTop: 2 },
-  navPost: { width: 44, height: 44, backgroundColor: GOLD, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
-  navPostText: { color: BLACK, fontSize: 24, fontWeight: '700', lineHeight: 28 },
 });
