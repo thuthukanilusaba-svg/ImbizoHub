@@ -1,34 +1,29 @@
 // app/admin-reports-review.tsx
 //
-// ⚠️ FIX (serious bug, found during a full-codebase sweep): this file
-// was a byte-for-byte duplicate of admin-verification-review.tsx.
-// Because Expo Router is file-based, that meant the /admin-reports-
-// review route — the one every other admin screen cross-links to as
-// "Reports" (see admin-verification-review.tsx and
-// admin-security-incidents.tsx, both of which already assumed this
-// screen existed and worked) — actually rendered the verification
-// queue a second time. There was no way anywhere in the app for an
-// admin to actually see what had been submitted via report-user.tsx;
-// every report anyone filed just sat in the `reports` table with no
-// interface, exactly the same "table with no interface isn't usable"
-// gap admin-security-incidents.tsx's own header comment describes
-// having fixed for security_incidents.
-//
-// This is a genuine rebuild, not a tweak — built to match report-
-// user.tsx's actual insert shape (reporter_id, reported_user_id,
-// listing_id, context, reason, details) and the same admin-gating
-// pattern already used by admin-security-incidents.tsx: an explicit
-// profiles.is_admin check (not inferred from a query error, which RLS
-// can return successfully with zero rows for — see that screen's own
-// fix earlier in this sweep), with RLS on `reports` itself as the real
-// data-access gate.
-//
-// NOTE: this is intentionally READ-ONLY for now. There's no confirmed
-// `resolved`/status column on `reports` in what's been reviewed so
-// far — rather than guess at a schema column that might not exist
-// (and silently fail to update if it doesn't), this only lists reports
-// with reporter/reported/listing context resolved for readability.
-// Add a resolution workflow once that schema decision is made.
+// FIX (real bug in this file's own earlier rewrite, found while
+// reviewing the actual RLS policies and RPCs for the first time this
+// sweep): this used to do a raw `supabase.from('reports').select('*')`
+// client-side, plus separate lookups against `profiles`/`listings` to
+// resolve names. That looked reasonable without visibility into the
+// database layer, but `reports` RLS only grants
+// "reporters can view their own submitted reports" — scoped to
+// `reporter_id = auth.uid()`. There's no admin-read policy on the
+// table at all. That meant this screen, even for a genuine admin,
+// would only ever show reports THEY THEMSELVES had filed as a
+// reporter — never reports filed by anyone else, which is the entire
+// point of an admin review queue. It turns out the database already
+// has exactly the right tool for this: `admin_list_reports()` and
+// `admin_review_report()`, both SECURITY DEFINER functions that check
+// `profiles.is_admin` internally and then deliberately bypass RLS to
+// return/act on every report, not just the caller's own. This rewrite
+// switches to those two RPCs, which also resolves reporter/reported
+// names and the listing title server-side (no more client-side
+// lookups needed), exposes each reported user's current
+// suspension status for context, and adds the review-status workflow
+// (open/reviewed/dismissed) the previous version explicitly avoided
+// building because it wasn't sure a status column existed — it does,
+// and `admin_review_report()` is the real, already-built way to change
+// it.
 //
 // Usage: router.push('/admin-reports-review')
 
@@ -45,22 +40,23 @@ const BLACK = '#1A1A18';
 const DARK = '#2a2a2a';
 const GREY = '#AAAAAA';
 const RED = '#ff8a8a';
+const GREEN = '#4fc96e';
+
+type StatusFilter = 'open' | 'reviewed' | 'dismissed' | 'all';
 
 type Report = {
-  id: string;
-  reporter_id: string;
+  report_id: string;
+  reporter_name: string | null;
+  reported_user_name: string | null;
   reported_user_id: string;
-  listing_id: number | null;
+  reported_user_suspended_until: string | null;
   context: string;
+  listing_id: number | null;
+  listing_title: string | null;
   reason: string;
   details: string | null;
+  status: string;
   created_at: string;
-};
-
-type EnrichedReport = Report & {
-  reporterName: string;
-  reportedName: string;
-  listingTitle: string | null;
 };
 
 const CONTEXT_LABEL: Record<string, string> = {
@@ -70,29 +66,39 @@ const CONTEXT_LABEL: Record<string, string> = {
   other: '❓ Other',
 };
 
+const FILTERS: { key: StatusFilter; label: string }[] = [
+  { key: 'open', label: 'Open' },
+  { key: 'reviewed', label: 'Reviewed' },
+  { key: 'dismissed', label: 'Dismissed' },
+  { key: 'all', label: 'All' },
+];
+
 export default function AdminReportsReviewScreen() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [authorized, setAuthorized] = useState(false);
-  const [reports, setReports] = useState<EnrichedReport[]>([]);
+  const [reports, setReports] = useState<Report[]>([]);
+  const [filter, setFilter] = useState<StatusFilter>('open');
+  const [updatingId, setUpdatingId] = useState<string | null>(null);
   const [error, setError] = useState('');
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load(filter); }, [filter]);
 
   async function handleRefresh() {
     setRefreshing(true);
-    await load();
+    await load(filter);
     setRefreshing(false);
   }
 
-  async function load() {
+  async function load(currentFilter: StatusFilter) {
     setLoading(true);
     setError('');
 
-    // Same explicit is_admin check as admin-security-incidents.tsx —
-    // not inferred from a query error, since RLS can return an empty
-    // result set successfully instead of erroring.
+    // Friendly "Not authorized" screen for non-admins, same pattern as
+    // admin-security-incidents.tsx — the RPC below independently
+    // enforces this too (raises an exception for non-admins), so this
+    // client-side check is a UX nicety, not the real security boundary.
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) {
       setAuthorized(false);
@@ -114,49 +120,41 @@ export default function AdminReportsReviewScreen() {
 
     setAuthorized(true);
 
-    const { data, error: fetchError } = await supabase
-      .from('reports')
-      .select('*')
-      .order('created_at', { ascending: false });
+    const { data, error: rpcError } = await supabase.rpc('admin_list_reports', {
+      p_status: currentFilter === 'all' ? null : currentFilter,
+    });
 
-    if (fetchError) {
-      setError(fetchError.message);
+    if (rpcError) {
+      setError(rpcError.message);
       setLoading(false);
       return;
     }
 
-    const list: Report[] = data ?? [];
-
-    // Resolved client-side against separate lookups (same pattern
-    // quotes.tsx uses for operator profiles), rather than guessing at
-    // Supabase embedded-resource / FK constraint names this sweep
-    // hasn't confirmed exist for the `reports` table.
-    const userIds = [...new Set(list.flatMap((r) => [r.reporter_id, r.reported_user_id]))];
-    const listingIds = [...new Set(list.map((r) => r.listing_id).filter((id): id is number => id != null))];
-
-    const [{ data: profiles }, { data: listings }] = await Promise.all([
-      userIds.length > 0
-        ? supabase.from('profiles').select('id, full_name, email').in('id', userIds)
-        : Promise.resolve({ data: [] as any[] }),
-      listingIds.length > 0
-        ? supabase.from('listings').select('id, title').in('id', listingIds)
-        : Promise.resolve({ data: [] as any[] }),
-    ]);
-
-    const profileMap: Record<string, string> = {};
-    (profiles ?? []).forEach((p: any) => { profileMap[p.id] = p.full_name || p.email || 'Unknown user'; });
-    const listingMap: Record<number, string> = {};
-    (listings ?? []).forEach((l: any) => { listingMap[l.id] = l.title; });
-
-    const enriched: EnrichedReport[] = list.map((r) => ({
-      ...r,
-      reporterName: profileMap[r.reporter_id] ?? 'Unknown user',
-      reportedName: profileMap[r.reported_user_id] ?? 'Unknown user',
-      listingTitle: r.listing_id != null ? (listingMap[r.listing_id] ?? null) : null,
-    }));
-
-    setReports(enriched);
+    setReports((data ?? []) as Report[]);
     setLoading(false);
+  }
+
+  async function handleReview(reportId: string, newStatus: 'reviewed' | 'dismissed') {
+    setUpdatingId(reportId);
+    const { error: rpcError } = await supabase.rpc('admin_review_report', {
+      p_report_id: reportId,
+      p_new_status: newStatus,
+    });
+    setUpdatingId(null);
+
+    if (rpcError) {
+      setError(rpcError.message);
+      return;
+    }
+
+    // Remove it from the current view if we're looking at a specific
+    // status filter it no longer matches; otherwise just patch its
+    // status in place.
+    setReports((prev) =>
+      filter !== 'all' && filter !== newStatus
+        ? prev.filter((r) => r.report_id !== reportId)
+        : prev.map((r) => (r.report_id === reportId ? { ...r, status: newStatus } : r))
+    );
   }
 
   if (loading) {
@@ -202,43 +200,88 @@ export default function AdminReportsReviewScreen() {
         <Text style={styles.heading}>User reports</Text>
         <Text style={styles.subheading}>
           {reports.length === 0
-            ? 'No reports have been filed.'
-            : `${reports.length} report${reports.length === 1 ? '' : 's'} filed.`}
+            ? 'No reports match this filter.'
+            : `${reports.length} report${reports.length === 1 ? '' : 's'}.`}
         </Text>
+
+        <View style={styles.filterRow}>
+          {FILTERS.map((f) => (
+            <TouchableOpacity
+              key={f.key}
+              style={[styles.filterChip, filter === f.key && styles.filterChipActive]}
+              onPress={() => setFilter(f.key)}
+            >
+              <Text style={[styles.filterChipText, filter === f.key && styles.filterChipTextActive]}>
+                {f.label}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
 
         {error ? (
           <View style={styles.errorBox}><Text style={styles.errorText}>⚠️ {error}</Text></View>
         ) : null}
 
-        {reports.map((r) => (
-          <View key={r.id} style={styles.card}>
-            <View style={styles.cardTop}>
-              <Text style={styles.contextLabel}>{CONTEXT_LABEL[r.context] ?? `❓ ${r.context}`}</Text>
-              <Text style={styles.createdAt}>
-                {new Date(r.created_at).toLocaleDateString('en-GB', {
-                  day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit',
-                })}
-              </Text>
-            </View>
+        {reports.map((r) => {
+          const isSuspended = !!r.reported_user_suspended_until
+            && new Date(r.reported_user_suspended_until).getTime() > Date.now();
 
-            <Text style={styles.reason}>{r.reason}</Text>
-            {r.details ? <Text style={styles.details}>{r.details}</Text> : null}
-
-            <View style={styles.partiesBox}>
-              <Text style={styles.partyLine}>
-                <Text style={styles.partyLabel}>Reported by: </Text>{r.reporterName}
-              </Text>
-              <Text style={styles.partyLine}>
-                <Text style={styles.partyLabel}>Reported user: </Text>{r.reportedName}
-              </Text>
-              {r.listingTitle ? (
-                <Text style={styles.partyLine}>
-                  <Text style={styles.partyLabel}>Listing: </Text>{r.listingTitle}
+          return (
+            <View key={r.report_id} style={styles.card}>
+              <View style={styles.cardTop}>
+                <Text style={styles.contextLabel}>{CONTEXT_LABEL[r.context] ?? `❓ ${r.context}`}</Text>
+                <Text style={styles.createdAt}>
+                  {new Date(r.created_at).toLocaleDateString('en-GB', {
+                    day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit',
+                  })}
                 </Text>
-              ) : null}
+              </View>
+
+              <Text style={styles.reason}>{r.reason}</Text>
+              {r.details ? <Text style={styles.details}>{r.details}</Text> : null}
+
+              <View style={styles.partiesBox}>
+                <Text style={styles.partyLine}>
+                  <Text style={styles.partyLabel}>Reported by: </Text>{r.reporter_name ?? 'Unknown user'}
+                </Text>
+                <Text style={styles.partyLine}>
+                  <Text style={styles.partyLabel}>Reported user: </Text>{r.reported_user_name ?? 'Unknown user'}
+                  {isSuspended ? ' (currently suspended)' : ''}
+                </Text>
+                {r.listing_title ? (
+                  <Text style={styles.partyLine}>
+                    <Text style={styles.partyLabel}>Listing: </Text>{r.listing_title}
+                  </Text>
+                ) : null}
+              </View>
+
+              {r.status === 'open' ? (
+                <View style={styles.actionRow}>
+                  <TouchableOpacity
+                    style={[styles.actionBtn, styles.reviewBtn, updatingId === r.report_id && styles.actionBtnDisabled]}
+                    disabled={updatingId === r.report_id}
+                    onPress={() => handleReview(r.report_id, 'reviewed')}
+                  >
+                    <Text style={styles.reviewBtnText}>
+                      {updatingId === r.report_id ? '...' : 'Mark reviewed'}
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.actionBtn, styles.dismissBtn, updatingId === r.report_id && styles.actionBtnDisabled]}
+                    disabled={updatingId === r.report_id}
+                    onPress={() => handleReview(r.report_id, 'dismissed')}
+                  >
+                    <Text style={styles.dismissBtnText}>
+                      {updatingId === r.report_id ? '...' : 'Dismiss'}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              ) : (
+                <Text style={styles.statusTag}>Status: {r.status}</Text>
+              )}
             </View>
-          </View>
-        ))}
+          );
+        })}
 
         <View style={{ height: 40 }} />
       </ScrollView>
@@ -259,6 +302,15 @@ const styles = StyleSheet.create({
   heading: { fontSize: 24, fontWeight: '800', color: '#fff', marginBottom: 6 },
   subheading: { fontSize: 13, color: GREY, marginBottom: 16 },
 
+  filterRow: { flexDirection: 'row', flexWrap: 'wrap', marginBottom: 16 },
+  filterChip: {
+    backgroundColor: DARK, borderRadius: 20, paddingVertical: 8, paddingHorizontal: 16,
+    marginRight: 8, marginBottom: 8,
+  },
+  filterChipActive: { backgroundColor: GOLD },
+  filterChipText: { color: GREY, fontSize: 12, fontWeight: '700' },
+  filterChipTextActive: { color: BLACK },
+
   deniedTitle: { color: '#fff', fontSize: 20, fontWeight: '800', marginBottom: 10 },
   deniedBody: { color: GREY, fontSize: 13, textAlign: 'center', marginBottom: 24 },
   backBtnCentered: { backgroundColor: DARK, borderRadius: 12, paddingVertical: 12, paddingHorizontal: 24 },
@@ -278,4 +330,13 @@ const styles = StyleSheet.create({
   partiesBox: { paddingTop: 10, borderTopWidth: 0.5, borderTopColor: '#2a2a2a' },
   partyLine: { color: GREY, fontSize: 12, marginBottom: 4 },
   partyLabel: { color: '#888', fontWeight: '600' },
+
+  actionRow: { flexDirection: 'row', gap: 10, marginTop: 14 },
+  actionBtn: { flex: 1, borderRadius: 10, paddingVertical: 10, alignItems: 'center' },
+  actionBtnDisabled: { opacity: 0.6 },
+  reviewBtn: { backgroundColor: GREEN },
+  reviewBtnText: { color: BLACK, fontSize: 12, fontWeight: '800' },
+  dismissBtn: { backgroundColor: DARK, borderWidth: 0.5, borderColor: '#444' },
+  dismissBtnText: { color: GREY, fontSize: 12, fontWeight: '800' },
+  statusTag: { color: '#666', fontSize: 11, marginTop: 12, fontStyle: 'italic' },
 });
