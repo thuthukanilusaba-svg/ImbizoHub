@@ -405,11 +405,27 @@ export default function HomeScreen() {
               style={styles.listingCard}
               onPress={() => router.push(`/listing?id=${item.id}`)}
             >
-              <Image
-                source={{ uri: item.image_url }}
-                style={[styles.listingImg, isDesktopWeb && styles.listingImgDesktop]}
-                contentFit="cover"
-              />
+              {item.image_url ? (
+                <Image
+                  source={{ uri: item.image_url }}
+                  style={[styles.listingImg, isDesktopWeb && styles.listingImgDesktop]}
+                  contentFit="cover"
+                />
+              ) : (
+                // FIX (real bug, found via a live screenshot): this used
+                // to always render <Image source={{uri: item.image_url}}/>
+                // with no fallback — a listing with no photo (image_url
+                // null) rendered as a bare, unlabeled dark box, which on
+                // the website looked exactly like something had broken.
+                // Same gap on every platform (confirmed: the listing has
+                // no photo on the phone app either), not a web-only
+                // issue, so fixed here for both. Mirrors the "No photos
+                // yet" placeholder listing.tsx's detail-page carousel
+                // already shows for the same situation.
+                <View style={[styles.listingImg, isDesktopWeb && styles.listingImgDesktop, styles.listingImgPlaceholder]}>
+                  <Text style={styles.listingImgPlaceholderText}>📦</Text>
+                </View>
+              )}
               <View style={styles.listingBody}>
                 <Text style={styles.listingTitle} numberOfLines={1}>{item.title}</Text>
                 <Text style={styles.listingPrice}>${item.price}</Text>
@@ -502,6 +518,8 @@ const styles = StyleSheet.create({
   // letterboxed relative to the extra width — taller keeps the photo
   // looking proportioned instead of like a thin strip.
   listingImgDesktop: { height: 170 },
+  listingImgPlaceholder: { backgroundColor: DARK, alignItems: 'center', justifyContent: 'center' },
+  listingImgPlaceholderText: { fontSize: 28, opacity: 0.5 },
   listingBody: { padding: 8 },
   listingTitle: { color: '#fff', fontSize: 12, fontWeight: '700', marginBottom: 2 },
   listingPrice: { color: GOLD, fontSize: 13, fontWeight: '800', marginBottom: 3 },

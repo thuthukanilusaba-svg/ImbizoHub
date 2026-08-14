@@ -298,7 +298,16 @@ export default function ExploreScreen() {
           }
           renderItem={({ item }) => (
             <TouchableOpacity style={styles.listingCard} onPress={() => router.push(`/listing?id=${item.id}`)}>
-              <Image source={{ uri: item.image_url }} style={[styles.listingImg, isDesktopWeb && styles.listingImgDesktop]} contentFit="cover" />
+              {item.image_url ? (
+                <Image source={{ uri: item.image_url }} style={[styles.listingImg, isDesktopWeb && styles.listingImgDesktop]} contentFit="cover" />
+              ) : (
+                // FIX: same gap as index.tsx — a listing with no photo
+                // used to render as a bare, unlabeled dark box. Mirrors
+                // listing.tsx's detail-page "No photos yet" placeholder.
+                <View style={[styles.listingImg, isDesktopWeb && styles.listingImgDesktop, styles.listingImgPlaceholder]}>
+                  <Text style={styles.listingImgPlaceholderText}>📦</Text>
+                </View>
+              )}
               <View style={styles.listingBody}>
                 <Text style={styles.listingTitle}>{item.title}</Text>
                 <Text style={styles.listingPrice}>${item.price}</Text>
@@ -349,6 +358,8 @@ const styles = StyleSheet.create({
   // Same reasoning as index.tsx's listingImgDesktop — wider desktop
   // cards need a taller image to avoid looking letterboxed.
   listingImgDesktop: { height: 170 },
+  listingImgPlaceholder: { backgroundColor: DARK, alignItems: 'center', justifyContent: 'center' },
+  listingImgPlaceholderText: { fontSize: 28, opacity: 0.5 },
   listingBody: { padding: 8 },
   listingTitle: { color: '#fff', fontSize: 12, fontWeight: '700', marginBottom: 2 },
   listingPrice: { color: GOLD, fontSize: 13, fontWeight: '800', marginBottom: 4 },
