@@ -51,7 +51,7 @@
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import * as WebBrowser from 'expo-web-browser';
-import { useEffect, useState } from 'react';
+import { createElement, useEffect, useState } from 'react';
 import {
   ActivityIndicator, KeyboardAvoidingView, Modal, Platform, ScrollView, StyleSheet,
   Text, TextInput, TouchableOpacity, View,
@@ -62,6 +62,19 @@ const GOLD = '#B8860B';
 const BLACK = '#1A1A18';
 const DARK = '#2a2a2a';
 const GREY = '#AAAAAA';
+
+// FIX (date picker dead on web — see the `Platform.OS === 'web'` branch
+// below): a plain object, deliberately NOT run through StyleSheet.create.
+// StyleSheet.create's return value is react-native-web's own internal
+// style representation, meant to be read by RN Views/Text — handing it
+// straight to a raw DOM <input> (which isn't wrapped by react-native-web
+// at all) risks it not being applied as real CSS. A plain inline-style
+// object sidesteps that entirely.
+const webDateInputStyle: any = {
+  backgroundColor: DARK, borderRadius: 10, paddingLeft: 14, paddingRight: 14,
+  paddingTop: 12, paddingBottom: 12, border: '0.5px solid #333',
+  color: '#fff', fontSize: 14, width: '100%', colorScheme: 'dark',
+};
 
 const POLL_INTERVAL_MS = 2000;
 const POLL_MAX_ATTEMPTS = 20;
@@ -438,18 +451,33 @@ export default function DeliveryBookingScreen() {
             </View>
 
             {deliveryTiming === 'scheduled' && (
-              <TouchableOpacity
-                style={styles.dateField}
-                onPress={() => {
-                  setDateObj(scheduledDate ? new Date(scheduledDate + 'T00:00:00') : new Date());
-                  setShowDatePicker(true);
-                }}
-              >
-                <Text style={scheduledDate ? styles.dateFieldText : styles.dateFieldPlaceholder}>
-                  {scheduledDate ? formatDateDisplay(scheduledDate) : 'Select date'}
-                </Text>
-                <Text style={styles.dateFieldIcon}>📅</Text>
-              </TouchableOpacity>
+              Platform.OS === 'web' ? (
+                // FIX: same gap as hirevan.tsx — @react-native-community/
+                // datetimepicker has no web implementation, so this field
+                // did nothing when tapped on the website and "Schedule
+                // for later" could never actually get a date picked. A
+                // real HTML date input opens the browser's own picker.
+                createElement('input', {
+                  type: 'date',
+                  value: scheduledDate,
+                  min: toIsoDate(new Date()),
+                  onChange: (e: any) => setScheduledDate(e.target.value),
+                  style: webDateInputStyle,
+                })
+              ) : (
+                <TouchableOpacity
+                  style={styles.dateField}
+                  onPress={() => {
+                    setDateObj(scheduledDate ? new Date(scheduledDate + 'T00:00:00') : new Date());
+                    setShowDatePicker(true);
+                  }}
+                >
+                  <Text style={scheduledDate ? styles.dateFieldText : styles.dateFieldPlaceholder}>
+                    {scheduledDate ? formatDateDisplay(scheduledDate) : 'Select date'}
+                  </Text>
+                  <Text style={styles.dateFieldIcon}>📅</Text>
+                </TouchableOpacity>
+              )
             )}
 
             {showDatePicker && Platform.OS === 'android' && (
