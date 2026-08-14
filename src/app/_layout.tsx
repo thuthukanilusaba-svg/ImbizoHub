@@ -16,10 +16,28 @@ import { Stack, useRouter } from 'expo-router';
 import * as ScreenOrientation from 'expo-screen-orientation';
 import * as SplashScreen from 'expo-splash-screen';
 import { useEffect, useRef } from 'react';
+import { Platform, StyleSheet, View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { registerForPushNotifications, registerNotificationListeners, savePushToken } from '../../lib/notifications';
 
 SplashScreen.preventAutoHideAsync();
+
+// FIX (website UI looking "not proportional", most visibly the bottom
+// nav bar spreading across the full browser width with icons bunched on
+// the left): this whole app was built phone-first, with every screen's
+// own layout assuming a phone-width viewport. On a wide desktop browser
+// there was nothing capping that width, so screens (and anything
+// position:'absolute' inside them, like BottomNav) stretched to fill
+// the entire window instead of staying phone-proportioned. This caps
+// the app to a phone-like width and centers it on web only — native
+// (phone) behavior is completely unchanged, since maxWidth/centering
+// below only applies when Platform.OS === 'web'.
+//
+// NOTE: this fixes anything laid out with flexbox (which is most of the
+// app, including the bottom nav), but a few screens measure
+// Dimensions.get('window').width directly (e.g. listing.tsx's photo
+// carousel) — those read the real browser window width regardless of
+// this wrapper, so they may still need their own follow-up fix.
 
 // FIX (part of letting the full-screen photo viewer rotate to
 // landscape): app.json's top-level "orientation" is "default" so the
@@ -153,12 +171,29 @@ export default function RootLayout() {
 
   return (
     <SafeAreaProvider>
-      <Stack
-        screenOptions={{
-          headerShown: false,
-          contentStyle: { backgroundColor: '#111111' }
-        }}
-      />
+      <View style={styles.webOuter}>
+        <View style={styles.webFrame}>
+          <Stack
+            screenOptions={{
+              headerShown: false,
+              contentStyle: { backgroundColor: '#111111' }
+            }}
+          />
+        </View>
+      </View>
     </SafeAreaProvider>
   );
 }
+
+const styles = StyleSheet.create({
+  webOuter: {
+    flex: 1,
+    backgroundColor: Platform.OS === 'web' ? '#000' : undefined,
+    alignItems: Platform.OS === 'web' ? 'center' : undefined,
+  },
+  webFrame: {
+    flex: 1,
+    width: '100%',
+    maxWidth: Platform.OS === 'web' ? 480 : undefined,
+  },
+});
