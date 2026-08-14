@@ -135,10 +135,14 @@ export default function LoginScreen() {
       style={{ flex: 1 }}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
+      {/* showsVerticalScrollIndicator removed — hiding the scrollbar
+          made sense as a native-mobile pattern (swipe gestures are the
+          norm there) but on a website it hides the visual cue that
+          there's more content below the fold, which is exactly what
+          this ScrollView was added to fix in the first place. */}
       <ScrollView
         style={styles.container}
         contentContainerStyle={styles.content}
-        showsVerticalScrollIndicator={false}
       >
       <View style={styles.header}>
         <Text style={styles.logo}>Imbizo<Text style={styles.gold}>Hub</Text></Text>
