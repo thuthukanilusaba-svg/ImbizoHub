@@ -15,8 +15,8 @@ import { Inter_400Regular, Inter_600SemiBold, Inter_700Bold, Inter_800ExtraBold,
 import { Stack, useRouter } from 'expo-router';
 import * as ScreenOrientation from 'expo-screen-orientation';
 import * as SplashScreen from 'expo-splash-screen';
-import { useEffect, useRef, useState } from 'react';
-import { Platform, StyleSheet, Text, TouchableOpacity, useWindowDimensions, View } from 'react-native';
+import { useEffect, useRef } from 'react';
+import { Platform, StyleSheet, useWindowDimensions, View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { useIsDesktopWeb } from '../../lib/responsive';
 import { theme } from '../../lib/theme';
@@ -106,22 +106,6 @@ export default function RootLayout() {
   // for the frame to silently render wider than intended again.
   const { width: windowWidth } = useWindowDimensions();
   const desktopFrameWidth = Math.min(windowWidth * DESKTOP_FRAME_WIDTH_RATIO, DESKTOP_MAX_WIDTH);
-
-  // MOVED (was index.tsx's Home-only header button): "outside the
-  // app" means outside webFrame entirely, in the margin — which only
-  // exists as real space on desktop web, so it only renders there.
-  // Living in the root layout also means it now shows on every page,
-  // not just Home. The Play Store listing isn't approved yet (still
-  // in eas submit/review as of this writing), so this shows a
-  // "coming soon" bubble instead of linking anywhere for real — once
-  // it's live, swap handleGetApp's body for Linking.openURL to
-  // https://play.google.com/store/apps/details?id=com.imbizohub.app
-  // (see app.json's "package").
-  const [showComingSoon, setShowComingSoon] = useState(false);
-  function handleGetApp() {
-    setShowComingSoon(true);
-    setTimeout(() => setShowComingSoon(false), 2500);
-  }
 
   const [fontsLoaded] = useFonts({
     Inter_400Regular,
@@ -267,20 +251,6 @@ export default function RootLayout() {
             ),
           ]}
         >
-          {Platform.OS === 'web' && isDesktopWeb && (
-            <View style={styles.webSideActionRow}>
-              <View style={styles.webSideAction}>
-                <TouchableOpacity style={styles.getAppBtn} onPress={handleGetApp}>
-                  <Text style={styles.getAppBtnText}>Get App</Text>
-                </TouchableOpacity>
-                {showComingSoon && (
-                  <View style={styles.comingSoonBubble}>
-                    <Text style={styles.comingSoonText}>Coming soon on Google Play</Text>
-                  </View>
-                )}
-              </View>
-            </View>
-          )}
           <View
             style={[
               styles.webFrame,
@@ -343,29 +313,4 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     overflow: 'hidden',
   },
-  // Normal layout flow, not absolute positioning — right-aligned
-  // within webColumn, so it lands flush with the frame's own right
-  // edge no matter how wide or narrow that edge's margin actually is.
-  webSideActionRow: {
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
-    paddingTop: 16,
-    paddingBottom: 4,
-  },
-  // Just wraps the button + its "coming soon" bubble so the bubble
-  // (position: absolute below) anchors to this pair, not the page.
-  webSideAction: {},
-  getAppBtn: {
-    flexDirection: 'row', alignItems: 'center',
-    // theme.text/theme.background: a coffee-dark pill on web (reads
-    // clearly against off-white), stays the original dark pill on
-    // native since theme.text is white/theme.background is dark there.
-    backgroundColor: theme.text, borderRadius: 20, paddingHorizontal: 14, paddingVertical: 7,
-  },
-  getAppBtnText: { color: theme.background, fontSize: 12, fontWeight: '700' },
-  comingSoonBubble: {
-    position: 'absolute', top: 40, right: 0, backgroundColor: theme.text,
-    borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6, minWidth: 170,
-  },
-  comingSoonText: { color: theme.background, fontSize: 11 },
 });
