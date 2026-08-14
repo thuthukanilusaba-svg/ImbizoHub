@@ -146,7 +146,16 @@ export default function BottomNav({ active, showDashboardTab, isAdmin }: BottomN
           style={styles.navPost}
           onPress={() => router.push(entry.route as any)}
         >
-          <Text style={styles.navPostText}>+</Text>
+          {/* FIX: the "+" kept reading as off-center even after the
+              earlier lineHeight fix — text-glyph centering for a "+"
+              character depends on font baseline metrics that vary by
+              platform/font and were never fully reliable. Building it
+              from two plain bars instead is immune to all of that: it's
+              centered by exact pixel math (margin: 'auto' against all
+              four 0 offsets), not by how a font happens to draw a
+              glyph, so it can't drift off-center again. */}
+          <View style={styles.plusBarHorizontal} />
+          <View style={styles.plusBarVertical} />
         </TouchableOpacity>
       );
     }
@@ -232,14 +241,17 @@ const styles = StyleSheet.create({
     width: 44, height: 44, backgroundColor: GOLD, borderRadius: 22,
     alignItems: 'center', justifyContent: 'center', marginHorizontal: 20,
   },
-  // FIX: an explicit lineHeight taller than the glyph itself (28 vs a 24pt
-  // font) pushed the "+" visibly above center inside the circle — a common
-  // RN text-centering quirk. Dropping lineHeight and disabling Android's
-  // extra font padding lets the surrounding flex centering (alignItems/
-  // justifyContent: 'center' on navPost) actually center it.
-  navPostText: {
-    color: BLACK, fontSize: 24, fontWeight: '700',
-    includeFontPadding: false, textAlign: 'center', textAlignVertical: 'center',
+  // Two plain bars instead of a "+" text glyph — see the comment above
+  // where these are used for why. Centered via margin: 'auto' against
+  // all four 0 offsets, which RN's layout engine resolves to exact
+  // pixel-centering regardless of platform.
+  plusBarHorizontal: {
+    position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, margin: 'auto',
+    width: 16, height: 3, borderRadius: 1.5, backgroundColor: BLACK,
+  },
+  plusBarVertical: {
+    position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, margin: 'auto',
+    width: 3, height: 16, borderRadius: 1.5, backgroundColor: BLACK,
   },
   // The ellipsis glyph sits visually smaller/higher than the emoji icons
   // next to it at the same fontSize, so it gets a small bump + nudge to
