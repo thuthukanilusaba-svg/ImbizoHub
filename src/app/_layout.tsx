@@ -16,9 +16,10 @@ import { Stack, useRouter } from 'expo-router';
 import * as ScreenOrientation from 'expo-screen-orientation';
 import * as SplashScreen from 'expo-splash-screen';
 import { useEffect, useRef, useState } from 'react';
-import { Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Platform, StyleSheet, Text, TouchableOpacity, useWindowDimensions, View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { useIsDesktopWeb } from '../../lib/responsive';
+import { theme } from '../../lib/theme';
 import { registerForPushNotifications, registerNotificationListeners, savePushToken } from '../../lib/notifications';
 
 SplashScreen.preventAutoHideAsync();
@@ -57,31 +58,35 @@ const MOBILE_WEB_MAX_WIDTH = 480;
 // actual goal here, not maximum width.
 const DESKTOP_MAX_WIDTH = 1200;
 
-// FIX (real bug, found by comparing an actual laptop against an
-// external monitor): the frame was `width: '100%'` capped by
-// `maxWidth: DESKTOP_MAX_WIDTH` alone — that only produces a margin
-// once the browser window is WIDER than DESKTOP_MAX_WIDTH. A laptop
-// whose window is, say, 1150-1250px (very common — most 13"-14"
-// laptops render well under 1400px of logical width) sits right at or
-// under that line, so the frame is effectively the full window width
-// with ~zero margin, and the whole centered/margin/border treatment
-// above just doesn't show up at all — it isn't "off," it's silently
-// disabled. On a 1728px+ external monitor there's plenty of width
-// past the cap, so the same code produces a large, obvious margin.
-// Same fixed pixel cap, two very different results depending on
-// screen size. DESKTOP_FRAME_WIDTH_PERCENT guarantees a margin
-// proportional to the window at every desktop width, not only past
-// one specific pixel threshold, so laptop and monitor both show the
-// same deliberately-centered look instead of one showing it and the
-// other silently not.
-const DESKTOP_FRAME_WIDTH_PERCENT = '92%';
+// FIX (real, confirmed bug — screenshotted on a 1920px-wide monitor):
+// this used to be styled with `width: '92%', maxWidth: DESKTOP_MAX_WIDTH`
+// on the same object, relying on the browser to resolve the percentage
+// against the fixed cap. In practice the frame rendered at ~92% of the
+// full window on a wide monitor instead of clamping at 1200px — nearly
+// edge-to-edge, with only a sliver of margin on each side, which read
+// as "not centered" even though the margins were technically equal.
+// Rather than keep debugging why percentage+maxWidth wasn't resolving
+// the way plain CSS normally would, this now computes an explicit
+// pixel width in JS via useWindowDimensions() and Math.min() — no
+// ambiguity, no reliance on how any particular style engine resolves
+// two competing width rules, just one guaranteed number.
+const DESKTOP_FRAME_WIDTH_RATIO = 0.92;
 
 // CHOSEN from a side-by-side comparison of six candidates ("Bronze /
 // espresso") — same GOLD-derived hue family as the app's own accent
 // color, just a visibly warmer, slightly lighter step than the
 // earlier '#201C14' pick.
-const WEB_MARGIN_COLOR = '#2A2115';
-const WEB_MARGIN_BORDER = 'rgba(255,255,255,0.08)';
+//
+// REPLACED (web redesign — cream/coffee, website only, native
+// unchanged): both this margin color AND the frame's own background
+// were near-identical shades of near-black, which was already flagged
+// as a problem and given a 1px border as a partial fix. Now sourced
+// from lib/theme.ts instead of hardcoded here: theme.card (a deeper
+// cream/tan) for the margin, theme.background (a lighter cream) for
+// the frame itself — two visibly distinct tones instead of a subtle
+// border being the only thing marking the boundary.
+const WEB_MARGIN_COLOR = theme.card;
+const WEB_MARGIN_BORDER = theme.border;
 
 // FIX (part of letting the full-screen photo viewer rotate to
 // landscape): app.json's top-level "orientation" is "default" so the
@@ -102,6 +107,11 @@ export default function RootLayout() {
   const router = useRouter();
   const unsubscribeRef = useRef<() => void>(() => {});
   const isDesktopWeb = useIsDesktopWeb();
+  // See DESKTOP_FRAME_WIDTH_RATIO's comment above — a plain computed
+  // pixel number, not a percentage/maxWidth pair, so there's no room
+  // for the frame to silently render wider than intended again.
+  const { width: windowWidth } = useWindowDimensions();
+  const desktopFrameWidth = Math.min(windowWidth * DESKTOP_FRAME_WIDTH_RATIO, DESKTOP_MAX_WIDTH);
 
   // MOVED (was index.tsx's Home-only header button): "outside the
   // app" means outside webFrame entirely, in the margin — which only
@@ -255,11 +265,10 @@ export default function RootLayout() {
             styles.webColumn,
             Platform.OS === 'web' && (
               isDesktopWeb
-                // Percentage width (capped) instead of a bare maxWidth
-                // — see DESKTOP_FRAME_WIDTH_PERCENT above for why: this
-                // is what actually keeps a visible margin on a laptop-
-                // sized window, not just on wide external monitors.
-                ? { width: DESKTOP_FRAME_WIDTH_PERCENT, maxWidth: DESKTOP_MAX_WIDTH }
+                // Explicit computed pixel width — see
+                // DESKTOP_FRAME_WIDTH_RATIO's comment above for why
+                // this replaced a percentage+maxWidth pair.
+                ? { width: desktopFrameWidth }
                 : { maxWidth: MOBILE_WEB_MAX_WIDTH }
             ),
           ]}
@@ -295,7 +304,12 @@ export default function RootLayout() {
             <Stack
               screenOptions={{
                 headerShown: false,
-                contentStyle: { backgroundColor: '#111111' }
+                // Was hardcoded '#111111' — now theme.background, which
+                // resolves to cream on web and the app's dark background
+                // on native (see lib/theme.ts). This is just the gap-
+                // filler shown briefly between screens; each screen's
+                // own container still sets its own background too.
+                contentStyle: { backgroundColor: theme.background },
               }}
             />
           </View>
@@ -350,12 +364,16 @@ const styles = StyleSheet.create({
   webSideAction: {},
   getAppBtn: {
     flexDirection: 'row', alignItems: 'center',
-    backgroundColor: '#1A1A18', borderRadius: 20, paddingHorizontal: 14, paddingVertical: 7,
+    // Was hardcoded '#1A1A18'/'#fff' — now theme.text/theme.background,
+    // so this stays a dark pill button on native (unchanged) but
+    // becomes a coffee-brown pill (dark text color, cream text) on
+    // web instead of a jarring pure-black button on a cream page.
+    backgroundColor: theme.text, borderRadius: 20, paddingHorizontal: 14, paddingVertical: 7,
   },
-  getAppBtnText: { color: '#fff', fontSize: 12, fontWeight: '700' },
+  getAppBtnText: { color: theme.background, fontSize: 12, fontWeight: '700' },
   comingSoonBubble: {
-    position: 'absolute', top: 40, right: 0, backgroundColor: '#1A1A18',
+    position: 'absolute', top: 40, right: 0, backgroundColor: theme.text,
     borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6, minWidth: 170,
   },
-  comingSoonText: { color: '#fff', fontSize: 11 },
+  comingSoonText: { color: theme.background, fontSize: 11 },
 });
