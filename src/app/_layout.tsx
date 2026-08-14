@@ -51,12 +51,23 @@ SplashScreen.preventAutoHideAsync();
 // this wrapper, so they may still need their own follow-up fix.
 
 const MOBILE_WEB_MAX_WIDTH = 480;
-// UPDATED: 1200 left a wide, flat-black margin on typical laptop
-// screens (1440-1728px wide) with nothing visually distinguishing it
-// from "unrendered" — widened to fill more of that space, while still
-// capping well short of full-bleed so the marketplace grid doesn't
-// stretch into a sparse-looking row on ultra-wide monitors.
-const DESKTOP_MAX_WIDTH = 1400;
+// REVERTED back to 1200 — 1400 read as trying to fill the screen
+// rather than as a deliberately centered layout. Paired with the
+// background/border treatment below, a clearly centered card is the
+// actual goal here, not maximum width.
+const DESKTOP_MAX_WIDTH = 1200;
+
+// Reuses the app's own established near-black brand color (same value
+// as BLACK in index.tsx/explore.tsx/hirevan.tsx, already visible today
+// in every screen's header bar) for the margin around the centered
+// frame — rather than pure '#000' (too harsh/cold, no relation to the
+// app's palette) or matching the frame's own '#111111' content
+// background exactly (blended so well the centered layout stopped
+// reading as intentional — the whole point of "centered" is that the
+// boundary is visible). This sits between the two: distinct enough to
+// see the frame clearly, but drawn from the app's own palette rather
+// than an arbitrary new color, so it still feels like part of the app.
+const WEB_MARGIN_COLOR = '#1A1A18';
 
 // FIX (part of letting the full-screen photo viewer rotate to
 // landscape): app.json's top-level "orientation" is "default" so the
@@ -224,14 +235,7 @@ export default function RootLayout() {
 const styles = StyleSheet.create({
   webOuter: {
     flex: 1,
-    // UPDATED: matches Stack's own contentStyle background ('#111111'
-    // below) instead of pure black — per the "tiktok.com" reference,
-    // the margin should read as the same cohesive surface as the app
-    // itself, not a separate, unrelated black backdrop. The thin
-    // webFrameBordered border still marks where the frame actually
-    // ends, so this doesn't undo that fix — it just means the two
-    // regions no longer clash while that boundary is still visible.
-    backgroundColor: Platform.OS === 'web' ? '#111111' : undefined,
+    backgroundColor: Platform.OS === 'web' ? WEB_MARGIN_COLOR : undefined,
     alignItems: Platform.OS === 'web' ? 'center' : undefined,
   },
   webFrame: {
