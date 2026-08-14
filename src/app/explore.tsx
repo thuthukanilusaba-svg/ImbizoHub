@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, FlatList, KeyboardAvoidingView, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import BottomNav from '../../components/BottomNav';
+import { useIsDesktopWeb } from '../../lib/responsive';
 import { supabase } from '../../lib/supabase';
 
 const GOLD = '#B8860B';
@@ -41,6 +42,12 @@ const categories = [
 export default function ExploreScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  // FIX (desktop redesign): same reasoning as index.tsx's Home grid —
+  // more columns on a wide desktop frame instead of staying stuck at a
+  // phone-style 2 columns. FlatList needs remounting (the key prop
+  // below) whenever numColumns changes.
+  const isDesktopWeb = useIsDesktopWeb();
+  const numColumns = isDesktopWeb ? 4 : 2;
   const [listings, setListings] = useState<any[]>([]);
   const [totalCount, setTotalCount] = useState<number | null>(null);
   const [search, setSearch] = useState('');
@@ -270,9 +277,10 @@ export default function ExploreScreen() {
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       >
         <FlatList
+          key={numColumns}
           data={listings}
           keyExtractor={(item) => String(item.id)}
-          numColumns={2}
+          numColumns={numColumns}
           columnWrapperStyle={styles.listingRow}
           contentContainerStyle={styles.listingGridContainer}
           showsVerticalScrollIndicator={false}
@@ -290,7 +298,7 @@ export default function ExploreScreen() {
           }
           renderItem={({ item }) => (
             <TouchableOpacity style={styles.listingCard} onPress={() => router.push(`/listing?id=${item.id}`)}>
-              <Image source={{ uri: item.image_url }} style={styles.listingImg} contentFit="cover" />
+              <Image source={{ uri: item.image_url }} style={[styles.listingImg, isDesktopWeb && styles.listingImgDesktop]} contentFit="cover" />
               <View style={styles.listingBody}>
                 <Text style={styles.listingTitle}>{item.title}</Text>
                 <Text style={styles.listingPrice}>${item.price}</Text>
@@ -338,6 +346,9 @@ const styles = StyleSheet.create({
   listingRow: { gap: 10 },
   listingCard: { backgroundColor: '#222', borderRadius: 12, overflow: 'hidden', flex: 1, marginBottom: 10 },
   listingImg: { height: 120, width: '100%' },
+  // Same reasoning as index.tsx's listingImgDesktop — wider desktop
+  // cards need a taller image to avoid looking letterboxed.
+  listingImgDesktop: { height: 170 },
   listingBody: { padding: 8 },
   listingTitle: { color: '#fff', fontSize: 12, fontWeight: '700', marginBottom: 2 },
   listingPrice: { color: GOLD, fontSize: 13, fontWeight: '800', marginBottom: 4 },

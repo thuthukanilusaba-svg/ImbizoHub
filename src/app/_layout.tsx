@@ -18,6 +18,7 @@ import * as SplashScreen from 'expo-splash-screen';
 import { useEffect, useRef } from 'react';
 import { Platform, StyleSheet, View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { useIsDesktopWeb } from '../../lib/responsive';
 import { registerForPushNotifications, registerNotificationListeners, savePushToken } from '../../lib/notifications';
 
 SplashScreen.preventAutoHideAsync();
@@ -33,11 +34,24 @@ SplashScreen.preventAutoHideAsync();
 // (phone) behavior is completely unchanged, since maxWidth/centering
 // below only applies when Platform.OS === 'web'.
 //
+// UPDATED (desktop redesign): a fixed 480px cap made sense as a first
+// fix, but on an actual desktop monitor it just reads as a phone app
+// floating in a sea of black — not a real website. Above
+// DESKTOP_BREAKPOINT (lib/responsive.ts) the frame now widens to
+// DESKTOP_MAX_WIDTH instead, giving screens like Home/Browse room to
+// lay out a proper multi-column grid (see their own files for the grid
+// changes) rather than staying stuck at phone-width. Below the
+// breakpoint — including a phone's own browser — it's still the
+// original narrow, centered phone-style column.
+//
 // NOTE: this fixes anything laid out with flexbox (which is most of the
 // app, including the bottom nav), but a few screens measure
 // Dimensions.get('window').width directly (e.g. listing.tsx's photo
 // carousel) — those read the real browser window width regardless of
 // this wrapper, so they may still need their own follow-up fix.
+
+const MOBILE_WEB_MAX_WIDTH = 480;
+const DESKTOP_MAX_WIDTH = 1200;
 
 // FIX (part of letting the full-screen photo viewer rotate to
 // landscape): app.json's top-level "orientation" is "default" so the
@@ -57,6 +71,7 @@ SplashScreen.preventAutoHideAsync();
 export default function RootLayout() {
   const router = useRouter();
   const unsubscribeRef = useRef<() => void>(() => {});
+  const isDesktopWeb = useIsDesktopWeb();
 
   const [fontsLoaded] = useFonts({
     Inter_400Regular,
@@ -172,7 +187,14 @@ export default function RootLayout() {
   return (
     <SafeAreaProvider>
       <View style={styles.webOuter}>
-        <View style={styles.webFrame}>
+        <View
+          style={[
+            styles.webFrame,
+            Platform.OS === 'web' && {
+              maxWidth: isDesktopWeb ? DESKTOP_MAX_WIDTH : MOBILE_WEB_MAX_WIDTH,
+            },
+          ]}
+        >
           <Stack
             screenOptions={{
               headerShown: false,
@@ -194,6 +216,5 @@ const styles = StyleSheet.create({
   webFrame: {
     flex: 1,
     width: '100%',
-    maxWidth: Platform.OS === 'web' ? 480 : undefined,
   },
 });

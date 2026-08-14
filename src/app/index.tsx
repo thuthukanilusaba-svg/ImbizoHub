@@ -5,6 +5,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, FlatList, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import BottomNav from '../../components/BottomNav';
+import { useIsDesktopWeb } from '../../lib/responsive';
 import { supabase } from '../../lib/supabase';
 
 const GOLD = '#B8860B';
@@ -42,6 +43,16 @@ function getGreeting(): string {
 export default function HomeScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  // FIX (desktop redesign): the listing grid was a fixed 2 columns
+  // everywhere, which looks fine at phone width but leaves a wide
+  // desktop frame (see _layout.tsx's DESKTOP_MAX_WIDTH) looking sparse
+  // — two oversized cards with empty space around them rather than an
+  // actual grid. FlatList requires remounting (via the key prop below)
+  // whenever numColumns changes, since it precomputes row layout from
+  // that number — this is the standard/documented way to change it at
+  // runtime.
+  const isDesktopWeb = useIsDesktopWeb();
+  const numColumns = isDesktopWeb ? 4 : 2;
   const [listings, setListings] = useState<any[]>([]);
   const [sellerProfiles, setSellerProfiles] = useState<Record<string, any>>({});
   const [loading, setLoading] = useState(true);
@@ -367,9 +378,10 @@ export default function HomeScreen() {
       <StatusBar style="light" />
 
       <FlatList
+        key={numColumns}
         data={listings}
         keyExtractor={(item) => String(item.id)}
-        numColumns={2}
+        numColumns={numColumns}
         columnWrapperStyle={styles.listingRow}
         contentContainerStyle={styles.listingGridContainer}
         showsVerticalScrollIndicator={false}
@@ -395,7 +407,7 @@ export default function HomeScreen() {
             >
               <Image
                 source={{ uri: item.image_url }}
-                style={styles.listingImg}
+                style={[styles.listingImg, isDesktopWeb && styles.listingImgDesktop]}
                 contentFit="cover"
               />
               <View style={styles.listingBody}>
@@ -485,6 +497,11 @@ const styles = StyleSheet.create({
   listingRow: { gap: 8 },
   listingCard: { backgroundColor: '#222', borderRadius: 12, overflow: 'hidden', borderWidth: 0.5, borderColor: '#333', flex: 1, marginBottom: 8 },
   listingImg: { height: 120, width: '100%' },
+  // Desktop cards are wider (4 columns of a ~1200px frame vs 2 of a
+  // ~480px one), so the same 120px height would look squashed/
+  // letterboxed relative to the extra width — taller keeps the photo
+  // looking proportioned instead of like a thin strip.
+  listingImgDesktop: { height: 170 },
   listingBody: { padding: 8 },
   listingTitle: { color: '#fff', fontSize: 12, fontWeight: '700', marginBottom: 2 },
   listingPrice: { color: GOLD, fontSize: 13, fontWeight: '800', marginBottom: 3 },
