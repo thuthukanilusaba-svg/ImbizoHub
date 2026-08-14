@@ -17,6 +17,14 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
     autoRefreshToken: true,
     persistSession: true,
     detectSessionInUrl: false,
+    // Every screen that handles a Supabase redirect (auth-callback.tsx,
+    // reset-password.tsx, lib/oauth.ts's native path) expects a `code`
+    // query param and calls exchangeCodeForSession(). Without this flag,
+    // the client defaults to the older implicit flow, which returns
+    // tokens as a #access_token=... URL hash fragment instead — which
+    // none of those screens read, so the exchange always silently
+    // "fails" with a missing-code error even though sign-in succeeded.
+    flowType: 'pkce',
   },
   realtime: {
     transport: ws,
