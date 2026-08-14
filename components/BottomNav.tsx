@@ -27,6 +27,18 @@
 // Profile a two-step process for the one thing it led to. Tapping "⋯" now
 // goes straight to Profile, same one-tap behavior as every other tab, just
 // with a different icon.
+//
+// UPDATED AGAIN (website review): the horizontal-scroll row is genuinely
+// the right call on a phone — swiping to reveal more tabs is a completely
+// normal, discoverable gesture there. On the website it isn't: there's no
+// visible scrollbar (showsHorizontalScrollIndicator is off, on purpose,
+// for the native look) and dragging a nav bar sideways with a mouse isn't
+// something people think to try, so the last tab was just silently cut
+// off at the frame's edge, reading as a bug rather than "scroll for
+// more." On web only, tabs now render in a plain flexed row that shares
+// the available width evenly instead — every tab fits, nothing to
+// discover, nothing cut off. Native keeps the original scrollable
+// version untouched.
 
 import { useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
@@ -40,6 +52,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 // Native driver isn't needed for a single small scale transform anyway,
 // so just disable it on web and keep it on native where it's cheap.
 const USE_NATIVE_DRIVER = Platform.OS !== 'web';
+const IS_WEB = Platform.OS === 'web';
 
 const GOLD = '#B8860B';
 const BLACK = '#1A1A18';
@@ -125,66 +138,77 @@ export default function BottomNav({ active, showDashboardTab, isAdmin }: BottomN
     }, 200);
   }
 
+  function renderEntry(entry: Entry) {
+    if (entry.type === 'post') {
+      return (
+        <TouchableOpacity
+          key="post"
+          style={styles.navPost}
+          onPress={() => router.push(entry.route as any)}
+        >
+          <Text style={styles.navPostText}>+</Text>
+        </TouchableOpacity>
+      );
+    }
+
+    const isActive = entry.key === active;
+    const isPressed = entry.key === pressedKey;
+
+    return (
+      <TouchableOpacity
+        key={entry.key}
+        style={[styles.navItem, IS_WEB && styles.navItemWeb]}
+        onLayout={(e: LayoutChangeEvent) => {
+          layoutsRef.current[entry.key] = {
+            x: e.nativeEvent.layout.x,
+            width: e.nativeEvent.layout.width,
+          };
+        }}
+        onPress={() => handlePress(entry)}
+      >
+        <Animated.Text
+          style={[
+            styles.navIcon,
+            entry.key === 'profile' && styles.navIconMore,
+            (isActive || isPressed) && styles.navIconActive,
+            isPressed && { transform: [{ scale: scaleAnim }] },
+          ]}
+        >
+          {entry.icon}
+        </Animated.Text>
+        <Text
+          style={[styles.navLabel, (isActive || isPressed) && styles.navLabelActive]}
+          numberOfLines={1}
+          allowFontScaling={false}
+        >
+          {entry.label}
+        </Text>
+      </TouchableOpacity>
+    );
+  }
+
   return (
     <View style={[styles.wrap, { paddingBottom: 24 + insets.bottom }]}>
-      <ScrollView
-        ref={scrollRef}
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        onLayout={(e: LayoutChangeEvent) => {
-          containerWidthRef.current = e.nativeEvent.layout.width;
-        }}
-        contentContainerStyle={styles.scrollContent}
-      >
-        {entries.map((entry) => {
-          if (entry.type === 'post') {
-            return (
-              <TouchableOpacity
-                key="post"
-                style={styles.navPost}
-                onPress={() => router.push(entry.route as any)}
-              >
-                <Text style={styles.navPostText}>+</Text>
-              </TouchableOpacity>
-            );
-          }
-
-          const isActive = entry.key === active;
-          const isPressed = entry.key === pressedKey;
-
-          return (
-            <TouchableOpacity
-              key={entry.key}
-              style={styles.navItem}
-              onLayout={(e: LayoutChangeEvent) => {
-                layoutsRef.current[entry.key] = {
-                  x: e.nativeEvent.layout.x,
-                  width: e.nativeEvent.layout.width,
-                };
-              }}
-              onPress={() => handlePress(entry)}
-            >
-              <Animated.Text
-                style={[
-                  styles.navIcon,
-                  entry.key === 'profile' && styles.navIconMore,
-                  (isActive || isPressed) && styles.navIconActive,
-                  isPressed && { transform: [{ scale: scaleAnim }] },
-                ]}
-              >
-                {entry.icon}
-              </Animated.Text>
-              <Text
-                style={[styles.navLabel, (isActive || isPressed) && styles.navLabelActive]}
-                numberOfLines={1}
-                allowFontScaling={false}
-              >
-                {entry.label}
-              </Text>
-            </TouchableOpacity>
-          );
-        })}
-      </ScrollView>
+      {IS_WEB ? (
+        // No scrolling on web — see the comment near IS_WEB above for why.
+        // Tabs share the available width evenly instead of a fixed
+        // minWidth, so everything fits with nothing cut off.
+        <View style={styles.webRow}>
+          {entries.map((entry) => renderEntry(entry))}
+        </View>
+      ) : (
+        <ScrollView
+          ref={scrollRef}
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          onLayout={(e: LayoutChangeEvent) => {
+            containerWidthRef.current = e.nativeEvent.layout.width;
+          }}
+          contentContainerStyle={styles.scrollContent}
+        >
+          {entries.map((entry) => renderEntry(entry))}
+        </ScrollView>
+      )}
     </View>
   );
 }
@@ -195,7 +219,11 @@ const styles = StyleSheet.create({
     backgroundColor: BLACK, borderTopWidth: 0.5, borderTopColor: DARK, paddingVertical: 10,
   },
   scrollContent: { alignItems: 'center', paddingHorizontal: 16 },
+  webRow: { flexDirection: 'row', alignItems: 'center', width: '100%', paddingHorizontal: 16 },
   navItem: { alignItems: 'center', minWidth: 84, paddingHorizontal: 6 },
+  // Web-only override: share the row evenly instead of each tab claiming
+  // a fixed minWidth — see the comment near IS_WEB at the top of the file.
+  navItemWeb: { flex: 1, minWidth: 0 },
   navIcon: { fontSize: 22, color: '#555' },
   navIconActive: { color: GOLD },
   navLabel: { fontSize: 9, color: '#555', marginTop: 2 },
