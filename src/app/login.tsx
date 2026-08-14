@@ -28,7 +28,10 @@
 
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
-import { ActivityIndicator, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import {
+  ActivityIndicator, KeyboardAvoidingView, Platform, ScrollView, StyleSheet,
+  Text, TextInput, TouchableOpacity, View,
+} from 'react-native';
 import { supabase } from '../../lib/supabase';
 import { OAuthProvider, signInWithProvider } from '../../lib/oauth';
 
@@ -118,7 +121,25 @@ export default function LoginScreen() {
   }
 
   return (
-    <View style={styles.container}>
+    // FIX (real bug — content was cut off with no way to reach it):
+    // this screen had no ScrollView at all. It fit fine back when it
+    // was just a title/email/password/button, but once the OAuth
+    // buttons were added the total content height regularly exceeds
+    // the viewport — and since the web wrapper (_layout.tsx) sets
+    // `overflow: hidden` on the page body to get the app's fixed-frame
+    // look, there was no browser-level scroll to fall back on either.
+    // The "Register" link and even the bottom of the Google button
+    // were simply unreachable. Wrapped in KeyboardAvoidingView +
+    // ScrollView now, matching the pattern register.tsx already used.
+    <KeyboardAvoidingView
+      style={{ flex: 1 }}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+    >
+      <ScrollView
+        style={styles.container}
+        contentContainerStyle={styles.content}
+        showsVerticalScrollIndicator={false}
+      >
       <View style={styles.header}>
         <Text style={styles.logo}>Imbizo<Text style={styles.gold}>Hub</Text></Text>
         <Text style={styles.tagline}>Gather. Trade. Trust.</Text>
@@ -187,13 +208,20 @@ export default function LoginScreen() {
           <Text style={styles.link}>Don't have an account? <Text style={styles.gold}>Register</Text></Text>
         </TouchableOpacity>
       </View>
-    </View>
+      </ScrollView>
+    </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: BLACK },
-  header: { alignItems: 'center', paddingTop: 80, paddingBottom: 40 },
+  // Was fixed padding directly on the outer container (paddingTop: 80,
+  // paddingBottom: 40) — now content is a proper ScrollView
+  // contentContainerStyle instead, with less wasted top padding (56
+  // vs 80) so there's more room for the actual form before the
+  // viewport runs out, on top of now being scrollable at all.
+  content: { paddingBottom: 40 },
+  header: { alignItems: 'center', paddingTop: 56, paddingBottom: 32 },
   logo: { fontSize: 36, fontWeight: '700', color: '#fff' },
   gold: { color: GOLD },
   tagline: { color: '#666', fontSize: 13, marginTop: 4 },
