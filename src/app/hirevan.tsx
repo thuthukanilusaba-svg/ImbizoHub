@@ -51,10 +51,23 @@ const GREEN = '#4fc96e';
 // straight to a raw DOM <input> (which isn't wrapped by react-native-web
 // at all) risks it not being applied as real CSS. A plain inline-style
 // object sidesteps that entirely.
+// FIX (real bug, "date picker overlaps" report): this raw DOM <input>
+// bypasses react-native-web entirely (see comment above), which means it
+// also misses out on the `boxSizing: 'border-box'` that RNW quietly adds
+// to every one of its own components (checked react-native-web's own
+// View source — it's applied per-component in its generated style, never
+// as a global CSS reset, so nothing outside RNW's pipeline gets it for
+// free). Left at the browser default of content-box, this field's actual
+// rendered width was 100% of its container PLUS 28px of padding and a
+// border on top of that — spilling past the card's right edge and
+// overlapping whatever sits next to it, unlike every other input on this
+// screen (which stayed flush because RNW's TextInput gets border-box
+// automatically). Explicit boxSizing here closes that gap.
 const webDateInputStyle: any = {
   backgroundColor: DARK, borderRadius: 10, paddingLeft: 14, paddingRight: 14,
   paddingTop: 12, paddingBottom: 12, border: '0.5px solid #333',
-  color: '#fff', fontSize: 14, width: '100%', colorScheme: 'dark',
+  color: '#fff', fontSize: 14, width: '100%', boxSizing: 'border-box',
+  colorScheme: 'dark',
 };
 
 // NEW: same launch promo window used everywhere else today — needed

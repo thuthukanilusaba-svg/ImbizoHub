@@ -70,10 +70,24 @@ const GREY = '#AAAAAA';
 // straight to a raw DOM <input> (which isn't wrapped by react-native-web
 // at all) risks it not being applied as real CSS. A plain inline-style
 // object sidesteps that entirely.
+// FIX (real bug, "date picker overlaps" report, same root cause found in
+// hirevan.tsx's identical copy of this style object): this raw DOM
+// <input> bypasses react-native-web entirely, which means it also misses
+// the `boxSizing: 'border-box'` RNW quietly adds to every one of its own
+// components (checked react-native-web's own View source — applied
+// per-component in its generated style, never as a global CSS reset, so
+// nothing outside RNW's pipeline gets it for free). Left at the browser
+// default of content-box, this field's actual rendered width was 100% of
+// its container PLUS 28px of padding and a border on top of that —
+// spilling past its container's right edge and overlapping whatever sits
+// next to it, unlike every other input on this screen (which stayed
+// flush because RNW's TextInput gets border-box automatically). Explicit
+// boxSizing here closes that gap.
 const webDateInputStyle: any = {
   backgroundColor: DARK, borderRadius: 10, paddingLeft: 14, paddingRight: 14,
   paddingTop: 12, paddingBottom: 12, border: '0.5px solid #333',
-  color: '#fff', fontSize: 14, width: '100%', colorScheme: 'dark',
+  color: '#fff', fontSize: 14, width: '100%', boxSizing: 'border-box',
+  colorScheme: 'dark',
 };
 
 const POLL_INTERVAL_MS = 2000;

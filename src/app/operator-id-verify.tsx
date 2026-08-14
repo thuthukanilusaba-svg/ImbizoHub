@@ -47,7 +47,6 @@ const GOLD = '#B8860B';
 const BLACK = '#1A1A18';
 const DARK = '#2a2a2a';
 const GREY = '#AAAAAA';
-const GREEN = '#4fc96e';
 const RED = '#ff8a8a';
 
 type OperatorType = 'delivery_operator' | 'transport_operator';
@@ -361,10 +360,8 @@ const styles = StyleSheet.create({
   errorBox: { backgroundColor: '#3a1a1a', borderRadius: 10, padding: 12, marginBottom: 16 },
   errorText: { color: RED, fontSize: 13 },
 
-  uploadBtn: { backgroundColor: DARK, borderRadius: 14, paddingVertical: 16, alignItems: 'center', borderWidth: 1, borderColor: '#444', borderStyle: 'dashed' },
   uploadOptionsRow: { flexDirection: 'row', gap: 10 },
   uploadBtnHalf: { flex: 1, backgroundColor: DARK, borderRadius: 14, paddingVertical: 16, alignItems: 'center', borderWidth: 1, borderColor: '#444', borderStyle: 'dashed' },
-  uploadBtnText: { color: '#fff', fontSize: 14, fontWeight: '700' },
   uploadBtnHalfText: { color: '#fff', fontSize: 12, fontWeight: '700', textAlign: 'center' },
   previewImage: { width: '100%', height: 180, borderRadius: 10, marginBottom: 14, backgroundColor: DARK },
   changePhotoText: { color: GREY, fontSize: 12, textAlign: 'center', marginTop: 12 },
