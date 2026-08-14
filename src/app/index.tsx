@@ -385,7 +385,6 @@ export default function HomeScreen() {
         numColumns={numColumns}
         columnWrapperStyle={styles.listingRow}
         contentContainerStyle={styles.listingGridContainer}
-        showsVerticalScrollIndicator={false}
         ListHeaderComponent={ListHeader}
         ListFooterComponent={ListFooter}
         onEndReached={loadMore}
