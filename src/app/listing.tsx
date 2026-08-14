@@ -104,9 +104,10 @@ const isPromoActive = () => new Date() < FREE_PROMO_END;
 // landscape. Now it resizes to roughly match the currently-active
 // photo's real aspect ratio instead — clamped so an unusually
 // tall/thin or short/wide photo can't blow the layout out to something
-// absurd.
-const CAROUSEL_MIN_HEIGHT = SCREEN_WIDTH * 0.6;
-const CAROUSEL_MAX_HEIGHT = SCREEN_WIDTH * 1.5;
+// absurd. The min/max clamp is derived from the carousel's actual
+// measured width (see carouselWidth state below), not this constant,
+// since on the website the real width can be narrower than the full
+// device/browser window.
 
 export default function ListingScreen() {
   const router = useRouter();
@@ -125,6 +126,16 @@ export default function ListingScreen() {
   // since remote images don't expose their real dimensions any other
   // way before they're actually loaded.
   const [photoAspectRatios, setPhotoAspectRatios] = useState<Record<number, number>>({});
+  // FIX (website carousel stretching full browser width instead of
+  // staying phone-proportioned): this used to size off the module-level
+  // SCREEN_WIDTH constant (the raw window width), which on the website
+  // is wrong once _layout.tsx caps the app to a centered phone-width
+  // column — the carousel would still measure the full browser window
+  // rather than the actual space it has. Measuring the wrapper's real
+  // rendered width via onLayout instead makes this correct on both web
+  // (narrower than the window) and native (same as SCREEN_WIDTH, since
+  // there's nothing constraining it there).
+  const [carouselWidth, setCarouselWidth] = useState(SCREEN_WIDTH);
   const scrollRef = useRef<ScrollView>(null);
 
   useEffect(() => { fetchListing(); fetchMe(); }, [id]);
@@ -245,7 +256,7 @@ export default function ListingScreen() {
   }
 
   function onScroll(e: NativeSyntheticEvent<NativeScrollEvent>) {
-    const index = Math.round(e.nativeEvent.contentOffset.x / SCREEN_WIDTH);
+    const index = Math.round(e.nativeEvent.contentOffset.x / carouselWidth);
     if (index !== activeIndex) {
       LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
       setActiveIndex(index);
@@ -285,17 +296,25 @@ export default function ListingScreen() {
   // until its real dimensions arrive from Image.getSize(), so there's
   // never a moment with no box at all.
   const activeRatio = photoAspectRatios[activeIndex] ?? 1;
+  const carouselMinHeight = carouselWidth * 0.6;
+  const carouselMaxHeight = carouselWidth * 1.5;
   const carouselHeight = Math.min(
-    CAROUSEL_MAX_HEIGHT,
-    Math.max(CAROUSEL_MIN_HEIGHT, SCREEN_WIDTH / activeRatio)
+    carouselMaxHeight,
+    Math.max(carouselMinHeight, carouselWidth / activeRatio)
   );
 
   return (
     <View style={styles.container}>
       <ScrollView showsVerticalScrollIndicator={false}>
 
-        {/* Photo carousel */}
-        <View style={[styles.carouselWrap, { height: carouselHeight }]}>
+        {/* Photo carousel — width comes from flex/stretch (no fixed
+            SCREEN_WIDTH here), and onLayout measures whatever that
+            actually resolves to so the paging math and photo sizing
+            below stay correct on both phone and website. */}
+        <View
+          style={[styles.carouselWrap, { height: carouselHeight }]}
+          onLayout={(e) => setCarouselWidth(e.nativeEvent.layout.width)}
+        >
           {photos.length > 0 ? (
             <>
               <ScrollView
@@ -321,7 +340,7 @@ export default function ListingScreen() {
                         letterboxing to the old fixed square. */}
                     <Image
                       source={{ uri: url }}
-                      style={[styles.carouselImage, { height: carouselHeight }]}
+                      style={[styles.carouselImage, { width: carouselWidth, height: carouselHeight }]}
                       resizeMode="contain"
                     />
                   </TouchableOpacity>
@@ -502,11 +521,15 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#111111' },
   center: { flex: 1, backgroundColor: '#111', alignItems: 'center', justifyContent: 'center' },
 
-  // height is now set inline per-render (see carouselHeight) — width and
-  // background stay fixed here since those never change per-photo.
-  carouselWrap: { width: SCREEN_WIDTH, backgroundColor: DARK, position: 'relative' },
-  carouselImage: { width: SCREEN_WIDTH },
-  noPhoto: { width: SCREEN_WIDTH, height: '100%', alignItems: 'center', justifyContent: 'center' },
+  // height is set inline per-render (see carouselHeight), and width now
+  // comes from flex/stretch by default (no fixed SCREEN_WIDTH) so this
+  // fills whatever space its actual parent has — correct on both the
+  // phone app and the website's narrower centered layout. Individual
+  // photos still need an explicit pixel width for horizontal-scroll
+  // paging to work, which is set inline from the measured carouselWidth.
+  carouselWrap: { backgroundColor: DARK, position: 'relative' },
+  carouselImage: {},
+  noPhoto: { width: '100%', height: '100%', alignItems: 'center', justifyContent: 'center' },
 
   soldOverlay: {
     position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
