@@ -238,22 +238,26 @@ export default function RootLayout() {
   return (
     <SafeAreaProvider>
       <View style={styles.webOuter}>
-        {Platform.OS === 'web' && isDesktopWeb && (
-          <View style={styles.webSideAction}>
-            <TouchableOpacity style={styles.getAppBtn} onPress={handleGetApp}>
-              <Text style={styles.getAppBtnIcon}>📱</Text>
-              <Text style={styles.getAppBtnText}>Get App</Text>
-            </TouchableOpacity>
-            {showComingSoon && (
-              <View style={styles.comingSoonBubble}>
-                <Text style={styles.comingSoonText}>Coming soon on Google Play</Text>
-              </View>
-            )}
-          </View>
-        )}
+        {/* FIX (real bug, not just cosmetic — confirmed by the actual
+            numbers): this used to be `position: absolute, top: 24,
+            right: 24` against webOuter, the raw browser window —
+            completely unaware of how much margin actually exists. On a
+            ~950px-wide laptop window the margin is only ~38px per
+            side, but the button needs ~110px — so `right: 24` didn't
+            just look "less clean," it placed the button ~90px INSIDE
+            the frame, overlapping real app content. On a huge monitor
+            the margin is hundreds of px, so the same fixed offset
+            happened to land cleanly by pure coincidence. Fixed for
+            real this time: webColumn carries the same responsive width
+            as the frame, and webSideActionRow below is a normal
+            (non-absolute) row inside it, right-aligned — so it's
+            physically impossible for the button to sit anywhere but
+            flush with the frame's own right edge, in normal layout
+            flow, regardless of window width. No pixel math, nothing to
+            overlap, works identically on any screen size. */}
         <View
           style={[
-            styles.webFrame,
+            styles.webColumn,
             Platform.OS === 'web' && (
               isDesktopWeb
                 // Percentage width (capped) instead of a bare maxWidth
@@ -263,23 +267,44 @@ export default function RootLayout() {
                 ? { width: DESKTOP_FRAME_WIDTH_PERCENT, maxWidth: DESKTOP_MAX_WIDTH }
                 : { maxWidth: MOBILE_WEB_MAX_WIDTH }
             ),
-            // NEW: on desktop web there's now a real, visible margin
-            // (screen width minus DESKTOP_MAX_WIDTH) between this frame
-            // and webOuter's background below — previously both were
-            // near-identical shades of black with nothing marking
-            // where one ends and the other begins, which read as an
-            // accident rather than a deliberate centered layout. A thin
-            // border makes the boundary unmistakably intentional
-            // without introducing a jarring color change.
-            Platform.OS === 'web' && isDesktopWeb && styles.webFrameBordered,
           ]}
         >
-          <Stack
-            screenOptions={{
-              headerShown: false,
-              contentStyle: { backgroundColor: '#111111' }
-            }}
-          />
+          {Platform.OS === 'web' && isDesktopWeb && (
+            <View style={styles.webSideActionRow}>
+              <View style={styles.webSideAction}>
+                <TouchableOpacity style={styles.getAppBtn} onPress={handleGetApp}>
+                  <Text style={styles.getAppBtnIcon}>📱</Text>
+                  <Text style={styles.getAppBtnText}>Get App</Text>
+                </TouchableOpacity>
+                {showComingSoon && (
+                  <View style={styles.comingSoonBubble}>
+                    <Text style={styles.comingSoonText}>Coming soon on Google Play</Text>
+                  </View>
+                )}
+              </View>
+            </View>
+          )}
+          <View
+            style={[
+              styles.webFrame,
+              // NEW: on desktop web there's now a real, visible margin
+              // (screen width minus the frame's own width) between this
+              // frame and webOuter's background below — previously both
+              // were near-identical shades of black with nothing marking
+              // where one ends and the other begins, which read as an
+              // accident rather than a deliberate centered layout. A
+              // thin border makes the boundary unmistakably intentional
+              // without introducing a jarring color change.
+              Platform.OS === 'web' && isDesktopWeb && styles.webFrameBordered,
+            ]}
+          >
+            <Stack
+              screenOptions={{
+                headerShown: false,
+                contentStyle: { backgroundColor: '#111111' }
+              }}
+            />
+          </View>
         </View>
       </View>
     </SafeAreaProvider>
@@ -292,6 +317,14 @@ const styles = StyleSheet.create({
     backgroundColor: Platform.OS === 'web' ? WEB_MARGIN_COLOR : undefined,
     alignItems: Platform.OS === 'web' ? 'center' : undefined,
   },
+  // Carries the actual responsive width (set inline above, since it
+  // depends on isDesktopWeb) — webFrame and webSideActionRow are both
+  // children of this, so they always share the exact same width and
+  // right edge, on any screen size.
+  webColumn: {
+    flex: 1,
+    width: '100%',
+  },
   webFrame: {
     flex: 1,
     width: '100%',
@@ -301,15 +334,18 @@ const styles = StyleSheet.create({
     borderRightWidth: 1,
     borderColor: WEB_MARGIN_BORDER,
   },
-  // Positioned relative to webOuter (the full-screen container), not
-  // webFrame — that's what makes this sit in the margin, outside the
-  // app's own centered column, rather than inside it.
-  webSideAction: {
-    position: 'absolute',
-    top: 24,
-    right: 24,
-    zIndex: 10,
+  // Normal layout flow, not absolute positioning — right-aligned
+  // within webColumn, so it lands flush with the frame's own right
+  // edge no matter how wide or narrow that edge's margin actually is.
+  webSideActionRow: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    paddingTop: 16,
+    paddingBottom: 4,
   },
+  // Just wraps the button + its "coming soon" bubble so the bubble
+  // (position: absolute below) anchors to this pair, not the page.
+  webSideAction: {},
   getAppBtn: {
     flexDirection: 'row', alignItems: 'center', gap: 5,
     backgroundColor: '#1A1A18', borderRadius: 20, paddingHorizontal: 12, paddingVertical: 7,
