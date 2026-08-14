@@ -21,15 +21,16 @@
 // scroll actually have somewhere to go, rather than the ScrollView clamping
 // every scrollTo() call back to 0 because nothing overflows.
 //
-// UPDATED AGAIN (product request): "Profile" no longer sits directly in the
-// row as its own icon — it now lives behind a "⋯" (more) button at the end
-// of the row, which pops up a small menu with "Profile" in it. NavKey still
-// includes 'profile' (profile.tsx still passes active="profile"), it just
-// now maps to highlighting the "⋯" button instead of a dedicated tab.
+// UPDATED AGAIN (product request): "Profile" now shows a "⋯" icon instead
+// of the person glyph — tried a version where "⋯" popped up a small menu
+// you then had to tap "Profile" inside of, but that made getting to
+// Profile a two-step process for the one thing it led to. Tapping "⋯" now
+// goes straight to Profile, same one-tap behavior as every other tab, just
+// with a different icon.
 
 import { useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
-import { Animated, LayoutChangeEvent, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Animated, LayoutChangeEvent, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 // FIX: useNativeDriver: true does not reliably animate Animated.Text on
@@ -48,8 +49,7 @@ export type NavKey = 'home' | 'browse' | 'messages' | 'dealer' | 'admin' | 'prof
 
 type TabEntry = { type: 'tab'; key: NavKey; icon: string; label: string; route: string };
 type PostEntry = { type: 'post'; route: string };
-type MoreEntry = { type: 'more' };
-type Entry = TabEntry | PostEntry | MoreEntry;
+type Entry = TabEntry | PostEntry;
 
 const HOME: TabEntry = { type: 'tab', key: 'home', icon: '🏠', label: 'Home', route: '/' };
 const BROWSE: TabEntry = { type: 'tab', key: 'browse', icon: '🔍', label: 'Browse', route: '/explore' };
@@ -57,14 +57,7 @@ const POST: PostEntry = { type: 'post', route: '/post' };
 const MESSAGES: TabEntry = { type: 'tab', key: 'messages', icon: '💬', label: 'Messages', route: '/messages' };
 const DASHBOARD: TabEntry = { type: 'tab', key: 'dealer', icon: '🏪', label: 'Dashboard', route: '/dealer' };
 const ADMIN: TabEntry = { type: 'tab', key: 'admin', icon: '🛡️', label: 'Admin', route: '/admin-verification-review' };
-const MORE: MoreEntry = { type: 'more' };
-
-// The single item the "⋯" more-menu reveals today. Kept as a list (rather
-// than a single hardcoded row) so adding a second item later is just
-// appending here — nothing about the menu's rendering is hardcoded to one row.
-const MORE_MENU_ITEMS: { key: string; icon: string; label: string; route: string }[] = [
-  { key: 'profile', icon: '👤', label: 'Profile', route: '/profile' },
-];
+const PROFILE: TabEntry = { type: 'tab', key: 'profile', icon: '⋯', label: 'Profile', route: '/profile' };
 
 interface BottomNavProps {
   active: NavKey;
@@ -79,7 +72,6 @@ export default function BottomNav({ active, showDashboardTab, isAdmin }: BottomN
   const containerWidthRef = useRef(0);
   const layoutsRef = useRef<Record<string, { x: number; width: number }>>({});
   const [pressedKey, setPressedKey] = useState<NavKey | null>(null);
-  const [moreMenuVisible, setMoreMenuVisible] = useState(false);
   const scaleAnim = useRef(new Animated.Value(1)).current;
 
   const entries: Entry[] = [
@@ -89,7 +81,7 @@ export default function BottomNav({ active, showDashboardTab, isAdmin }: BottomN
     MESSAGES,
     ...(showDashboardTab ? [DASHBOARD] : []),
     ...(isAdmin ? [ADMIN] : []),
-    MORE,
+    PROFILE,
   ];
 
   function scrollToKey(key: string, animated: boolean) {
@@ -133,23 +125,6 @@ export default function BottomNav({ active, showDashboardTab, isAdmin }: BottomN
     }, 200);
   }
 
-  // The "⋯" button doesn't navigate directly — it pops up the small menu
-  // below instead. 'profile' is used as its pressed/active key since
-  // that's the one screen it currently leads to; if a second item is ever
-  // added to MORE_MENU_ITEMS this key stops mattering for correctness
-  // (it only drives the icon's own highlight state).
-  function handleMorePress() {
-    setPressedKey('profile');
-    playPopAnimation();
-    scrollToKey('profile', true);
-    setMoreMenuVisible(true);
-  }
-
-  function handleMoreMenuItemPress(route: string) {
-    setMoreMenuVisible(false);
-    router.push(route as any);
-  }
-
   return (
     <View style={[styles.wrap, { paddingBottom: 24 + insets.bottom }]}>
       <ScrollView
@@ -174,46 +149,6 @@ export default function BottomNav({ active, showDashboardTab, isAdmin }: BottomN
             );
           }
 
-          if (entry.type === 'more') {
-            // 'profile' is the key used to track this button's
-            // pressed/active/measured-layout state — see the comment on
-            // handleMorePress for why.
-            const isActive = active === 'profile';
-            const isPressed = pressedKey === 'profile';
-
-            return (
-              <TouchableOpacity
-                key="more"
-                style={styles.navItem}
-                onLayout={(e: LayoutChangeEvent) => {
-                  layoutsRef.current.profile = {
-                    x: e.nativeEvent.layout.x,
-                    width: e.nativeEvent.layout.width,
-                  };
-                }}
-                onPress={handleMorePress}
-              >
-                <Animated.Text
-                  style={[
-                    styles.navIcon,
-                    styles.navIconMore,
-                    (isActive || isPressed) && styles.navIconActive,
-                    isPressed && { transform: [{ scale: scaleAnim }] },
-                  ]}
-                >
-                  ⋯
-                </Animated.Text>
-                <Text
-                  style={[styles.navLabel, (isActive || isPressed) && styles.navLabelActive]}
-                  numberOfLines={1}
-                  allowFontScaling={false}
-                >
-                  More
-                </Text>
-              </TouchableOpacity>
-            );
-          }
-
           const isActive = entry.key === active;
           const isPressed = entry.key === pressedKey;
 
@@ -232,6 +167,7 @@ export default function BottomNav({ active, showDashboardTab, isAdmin }: BottomN
               <Animated.Text
                 style={[
                   styles.navIcon,
+                  entry.key === 'profile' && styles.navIconMore,
                   (isActive || isPressed) && styles.navIconActive,
                   isPressed && { transform: [{ scale: scaleAnim }] },
                 ]}
@@ -249,29 +185,6 @@ export default function BottomNav({ active, showDashboardTab, isAdmin }: BottomN
           );
         })}
       </ScrollView>
-
-      <Modal
-        visible={moreMenuVisible}
-        transparent
-        animationType="fade"
-        statusBarTranslucent
-        onRequestClose={() => setMoreMenuVisible(false)}
-      >
-        <Pressable style={styles.menuOverlay} onPress={() => setMoreMenuVisible(false)}>
-          <View style={[styles.menuCard, { bottom: 78 + insets.bottom }]}>
-            {MORE_MENU_ITEMS.map((item) => (
-              <TouchableOpacity
-                key={item.key}
-                style={styles.menuItem}
-                onPress={() => handleMoreMenuItemPress(item.route)}
-              >
-                <Text style={styles.menuItemIcon}>{item.icon}</Text>
-                <Text style={styles.menuItemText}>{item.label}</Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-        </Pressable>
-      </Modal>
     </View>
   );
 }
@@ -304,33 +217,4 @@ const styles = StyleSheet.create({
   // next to it at the same fontSize, so it gets a small bump + nudge to
   // read as the same weight/position in the row.
   navIconMore: { fontSize: 26, marginTop: -4 },
-  menuOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.35)',
-    alignItems: 'flex-end',
-  },
-  menuCard: {
-    position: 'absolute',
-    right: 16,
-    minWidth: 170,
-    backgroundColor: BLACK,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: DARK,
-    paddingVertical: 6,
-    shadowColor: '#000',
-    shadowOpacity: 0.35,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 10,
-  },
-  menuItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-  },
-  menuItemIcon: { fontSize: 18 },
-  menuItemText: { color: '#EDEDED', fontSize: 14, fontFamily: 'Inter_600SemiBold' },
 });
