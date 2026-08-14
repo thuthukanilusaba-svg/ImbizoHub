@@ -65,6 +65,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator, Platform,
+  ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -325,7 +326,11 @@ export default function MeetPayScreen() {
   }
 
   return (
-    <View style={styles.container}>
+    // FIX (clean-sweep bug): same missing-ScrollView pattern found and
+    // fixed elsewhere this pass — the confirm button and instructions
+    // box below it could sit below the fold on a shorter viewport with
+    // no way to scroll down to them.
+    <ScrollView contentContainerStyle={styles.container}>
       <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
         <Text style={styles.backText}>← Back</Text>
       </TouchableOpacity>
@@ -366,7 +371,7 @@ export default function MeetPayScreen() {
           marked complete once both you and {otherRoleLabel} have confirmed.
         </Text>
       </View>
-    </View>
+    </ScrollView>
   );
 }
 

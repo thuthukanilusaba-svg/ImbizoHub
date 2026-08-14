@@ -283,7 +283,6 @@ export default function ExploreScreen() {
           numColumns={numColumns}
           columnWrapperStyle={styles.listingRow}
           contentContainerStyle={styles.listingGridContainer}
-          showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
           ListHeaderComponent={ListHeader}
           ListFooterComponent={ListFooter}

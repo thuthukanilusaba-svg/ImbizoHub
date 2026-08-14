@@ -382,7 +382,7 @@ export default function DealerScreen() {
         style={{ flex: 1 }}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       >
-        <ScrollView showsVerticalScrollIndicator={false}>
+        <ScrollView>
 
           {/* Header */}
           <View style={styles.header}>

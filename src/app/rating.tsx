@@ -37,6 +37,7 @@ import { useState } from 'react';
 import {
   ActivityIndicator,
   Platform,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -120,7 +121,11 @@ export default function RatingScreen() {
   const isSeller = role === 'seller';
 
   return (
-    <View style={styles.container}>
+    // FIX (clean-sweep bug): same missing-ScrollView pattern found and
+    // fixed elsewhere this pass — the star selector, review box, and
+    // submit button could overflow a shorter viewport with no way to
+    // reach the submit button.
+    <ScrollView contentContainerStyle={styles.container}>
       <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
         <Text style={styles.backText}>← Skip for now</Text>
       </TouchableOpacity>
@@ -179,7 +184,7 @@ export default function RatingScreen() {
       <TouchableOpacity style={styles.skipBtn} onPress={() => router.replace('/')}>
         <Text style={styles.skipText}>Skip — rate later</Text>
       </TouchableOpacity>
-    </View>
+    </ScrollView>
   );
 }
 

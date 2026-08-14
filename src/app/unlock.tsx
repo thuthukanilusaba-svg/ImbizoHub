@@ -58,6 +58,7 @@ import * as WebBrowser from 'expo-web-browser';
 import { useEffect, useState } from 'react';
 import {
   ActivityIndicator, Platform,
+  ScrollView,
   StyleSheet,
   Text, TouchableOpacity,
   View,
@@ -320,7 +321,11 @@ export default function DepositScreen() {
   }
 
   return (
-    <View style={styles.container}>
+    // FIX (clean-sweep bug): this screen's content — summary card, info
+    // box, and pay button — could overflow a shorter viewport with no
+    // way to scroll down to reach the button. Same missing-ScrollView
+    // pattern already found and fixed on login.tsx/etc. this pass.
+    <ScrollView contentContainerStyle={styles.container}>
       <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
         <Text style={styles.backText}>← Back</Text>
       </TouchableOpacity>
@@ -423,7 +428,7 @@ export default function DepositScreen() {
           )}
         </TouchableOpacity>
       )}
-    </View>
+    </ScrollView>
   );
 }
 

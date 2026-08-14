@@ -52,7 +52,7 @@ import * as Linking from 'expo-linking';
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
 import {
-  ActivityIndicator, KeyboardAvoidingView, Platform, StyleSheet,
+  ActivityIndicator, KeyboardAvoidingView, Platform, ScrollView, StyleSheet,
   Text, TextInput, TouchableOpacity, View,
 } from 'react-native';
 import { supabase } from '../../lib/supabase';
@@ -141,7 +141,10 @@ export default function ForgotPasswordScreen() {
       style={styles.container}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
-      <View style={styles.content}>
+      {/* FIX (clean-sweep bug): same missing-ScrollView pattern found and
+         fixed elsewhere this pass — the submit button could sit below the
+         fold on a shorter viewport with no way to scroll down to it. */}
+      <ScrollView contentContainerStyle={styles.content}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
           <Text style={styles.backText}>← Back</Text>
         </TouchableOpacity>
@@ -175,7 +178,7 @@ export default function ForgotPasswordScreen() {
             : <Text style={styles.submitBtnText}>Send reset link</Text>
           }
         </TouchableOpacity>
-      </View>
+      </ScrollView>
     </KeyboardAvoidingView>
   );
 }

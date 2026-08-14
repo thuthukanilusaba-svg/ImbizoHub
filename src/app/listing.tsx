@@ -305,7 +305,20 @@ export default function ListingScreen() {
 
   return (
     <View style={styles.container}>
-      <ScrollView showsVerticalScrollIndicator={false}>
+      {/* FIX (real bug — "the back arrow hides when you scroll all the
+          way down"): this button used to live inside carouselWrap,
+          which is itself inside the page's ScrollView below — so it
+          scrolled away with the photos instead of staying put. Moved
+          out here as a sibling of the ScrollView instead: it's now
+          absolutely positioned against `container` (the whole screen),
+          not against the carousel, so it stays pinned in the same
+          spot regardless of scroll position, the way a floating back
+          button normally behaves. */}
+      <TouchableOpacity style={styles.backFloat} onPress={() => router.back()}>
+        <Text style={styles.backFloatText}>←</Text>
+      </TouchableOpacity>
+
+      <ScrollView>
 
         {/* Photo carousel — width comes from flex/stretch (no fixed
             SCREEN_WIDTH here), and onLayout measures whatever that
@@ -373,10 +386,6 @@ export default function ListingScreen() {
               <Text style={styles.soldOverlayText}>SOLD</Text>
             </View>
           )}
-
-          <TouchableOpacity style={styles.backFloat} onPress={() => router.back()}>
-            <Text style={styles.backFloatText}>←</Text>
-          </TouchableOpacity>
         </View>
 
         {/* Details */}
@@ -544,7 +553,12 @@ const styles = StyleSheet.create({
   photoCounter: { position: 'absolute', top: 50, right: 16, backgroundColor: 'rgba(0,0,0,0.6)', borderRadius: 12, paddingHorizontal: 10, paddingVertical: 4 },
   photoCounterText: { color: '#fff', fontSize: 11, fontWeight: '600' },
 
-  backFloat: { position: 'absolute', top: 50, left: 16, width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(0,0,0,0.6)', alignItems: 'center', justifyContent: 'center' },
+  // zIndex added: now a sibling of the ScrollView instead of nested
+  // inside it (see the FIX comment above where this button is
+  // rendered) — without it, the ScrollView (rendered second) could
+  // paint over this button in some cases since sibling render order
+  // alone no longer guarantees it stays on top.
+  backFloat: { position: 'absolute', top: 50, left: 16, width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(0,0,0,0.6)', alignItems: 'center', justifyContent: 'center', zIndex: 10 },
   backFloatText: { color: '#fff', fontSize: 20 },
 
   details: { padding: 20 },

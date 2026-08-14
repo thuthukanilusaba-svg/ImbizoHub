@@ -18,7 +18,7 @@ import * as Linking from 'expo-linking';
 import { useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import {
-    ActivityIndicator, KeyboardAvoidingView, Platform, StyleSheet,
+    ActivityIndicator, KeyboardAvoidingView, Platform, ScrollView, StyleSheet,
     Text, TextInput, TouchableOpacity, View,
 } from 'react-native';
 import { supabase } from '../../lib/supabase';
@@ -172,7 +172,10 @@ export default function ResetPasswordScreen() {
       style={styles.container}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
-      <View style={styles.content}>
+      {/* FIX (clean-sweep bug): same missing-ScrollView pattern found and
+         fixed elsewhere this pass — the update-password button could sit
+         below the fold on a shorter viewport with no way to reach it. */}
+      <ScrollView contentContainerStyle={styles.content}>
         <Text style={styles.heading}>Set a new password</Text>
         <Text style={styles.subheading}>Choose a new password for your account.</Text>
 
@@ -208,7 +211,7 @@ export default function ResetPasswordScreen() {
             : <Text style={styles.submitBtnText}>Update password</Text>
           }
         </TouchableOpacity>
-      </View>
+      </ScrollView>
     </KeyboardAvoidingView>
   );
 }

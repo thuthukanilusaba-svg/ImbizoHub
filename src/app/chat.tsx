@@ -729,7 +729,6 @@ export default function ChatScreen() {
         <ScrollView
           ref={scrollRef}
           style={styles.messages}
-          showsVerticalScrollIndicator={false}
           onContentSizeChange={() => scrollRef.current?.scrollToEnd({ animated: true })}
         >
           <View style={styles.dateStamp}>
