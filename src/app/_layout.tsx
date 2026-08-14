@@ -224,7 +224,14 @@ export default function RootLayout() {
 const styles = StyleSheet.create({
   webOuter: {
     flex: 1,
-    backgroundColor: Platform.OS === 'web' ? '#000' : undefined,
+    // UPDATED: matches Stack's own contentStyle background ('#111111'
+    // below) instead of pure black — per the "tiktok.com" reference,
+    // the margin should read as the same cohesive surface as the app
+    // itself, not a separate, unrelated black backdrop. The thin
+    // webFrameBordered border still marks where the frame actually
+    // ends, so this doesn't undo that fix — it just means the two
+    // regions no longer clash while that boundary is still visible.
+    backgroundColor: Platform.OS === 'web' ? '#111111' : undefined,
     alignItems: Platform.OS === 'web' ? 'center' : undefined,
   },
   webFrame: {
