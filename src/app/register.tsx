@@ -2,6 +2,7 @@ import { useRouter } from 'expo-router';
 import { useRef, useState } from 'react';
 import { ActivityIndicator, KeyboardAvoidingView, Linking, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { supabase } from '../../lib/supabase';
+import { OAuthProvider, signInWithProvider } from '../../lib/oauth';
 
 const GOLD = '#B8860B';
 const BLACK = '#1A1A18';
@@ -65,7 +66,31 @@ export default function RegisterScreen() {
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
 
+  // NEW: Google / Facebook sign-up — see lib/oauth.ts. Same helper
+  // and same status handling as login.tsx.
+  const [oauthLoading, setOauthLoading] = useState<OAuthProvider | null>(null);
+
   const isSubmittingRef = useRef(false);
+
+  async function handleOAuthSignIn(provider: OAuthProvider) {
+    setErrorMsg('');
+    setOauthLoading(provider);
+
+    const result = await signInWithProvider(provider);
+
+    setOauthLoading(null);
+
+    if (result.status === 'error') {
+      setErrorMsg(result.message);
+      return;
+    }
+    if (result.status === 'cancelled' || result.status === 'redirecting') {
+      return;
+    }
+    // status === 'success' — native only; web reloads into
+    // auth-callback.tsx instead of resolving here.
+    router.replace('/');
+  }
 
   async function handleRegister() {
     if (isSubmittingRef.current) return;
@@ -184,6 +209,47 @@ export default function RegisterScreen() {
       <ScrollView style={styles.container} contentContainerStyle={styles.content}>
         <Text style={styles.title}>Create your account</Text>
         <Text style={styles.subtitle}>Buy, Sell and Deliver</Text>
+
+        {/* NEW: Google / Facebook sign-up, placed above the email form
+            — matches how most apps surface the fastest path first,
+            with the existing form as the fallback. */}
+        <TouchableOpacity
+          style={styles.oauthButton}
+          onPress={() => handleOAuthSignIn('google')}
+          disabled={!!oauthLoading}
+        >
+          {oauthLoading === 'google' ? (
+            <ActivityIndicator color={BLACK} />
+          ) : (
+            <>
+              <Text style={styles.oauthIconGoogle}>G</Text>
+              <Text style={styles.oauthButtonText}>Continue with Google</Text>
+            </>
+          )}
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.oauthButton, styles.facebookButton]}
+          onPress={() => handleOAuthSignIn('facebook')}
+          disabled={!!oauthLoading}
+        >
+          {oauthLoading === 'facebook' ? (
+            <ActivityIndicator color="#fff" />
+          ) : (
+            <>
+              <Text style={styles.oauthIconFacebook}>f</Text>
+              <Text style={[styles.oauthButtonText, styles.facebookButtonText]}>Continue with Facebook</Text>
+            </>
+          )}
+        </TouchableOpacity>
+
+        {errorMsg ? <Text style={styles.error}>{errorMsg}</Text> : null}
+
+        <View style={styles.dividerRow}>
+          <View style={styles.dividerLine} />
+          <Text style={styles.dividerText}>or sign up with email</Text>
+          <View style={styles.dividerLine} />
+        </View>
 
         <Text style={styles.label}>Full Name *</Text>
         <TextInput style={styles.input} placeholder="Enter your full name" placeholderTextColor="#888"
@@ -335,6 +401,10 @@ export default function RegisterScreen() {
           </Text>
         </TouchableOpacity>
 
+        {/* Shown again here (also shown up near the OAuth buttons) —
+            this form is long enough that someone who scrolled all the
+            way down to hit "Create Account" shouldn't have to scroll
+            back up to see why it failed. */}
         {errorMsg ? <Text style={styles.error}>{errorMsg}</Text> : null}
 
         <TouchableOpacity style={styles.button} onPress={handleRegister} disabled={loading}>
@@ -425,4 +495,18 @@ const styles = StyleSheet.create({
   loginLink: { marginTop: 20, alignItems: 'center' },
   loginLinkText: { color: '#aaa', fontSize: 14 },
   loginLinkBold: { color: GOLD, fontWeight: 'bold' },
+
+  // NEW: Google / Facebook sign-up
+  dividerRow: { flexDirection: 'row', alignItems: 'center', marginTop: 20, marginBottom: 4, gap: 10 },
+  dividerLine: { flex: 1, height: 1, backgroundColor: '#333' },
+  dividerText: { color: '#666', fontSize: 12 },
+  oauthButton: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10,
+    backgroundColor: '#fff', borderRadius: 10, padding: 14, marginTop: 14,
+  },
+  oauthIconGoogle: { fontSize: 16, fontWeight: '900', color: '#4285F4', width: 18, textAlign: 'center' },
+  oauthButtonText: { color: '#1A1A1A', fontSize: 15, fontWeight: '600' },
+  facebookButton: { backgroundColor: '#1877F2' },
+  oauthIconFacebook: { fontSize: 16, fontWeight: '900', color: '#fff', width: 18, textAlign: 'center' },
+  facebookButtonText: { color: '#fff' },
 });

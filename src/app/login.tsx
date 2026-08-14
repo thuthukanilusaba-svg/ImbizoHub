@@ -30,6 +30,7 @@ import { useRouter } from 'expo-router';
 import { useState } from 'react';
 import { ActivityIndicator, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { supabase } from '../../lib/supabase';
+import { OAuthProvider, signInWithProvider } from '../../lib/oauth';
 
 const GOLD = '#B8860B';
 const BLACK = '#1A1A18';
@@ -41,6 +42,37 @@ export default function LoginScreen() {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  // NEW: Google / Facebook sign-in. Tracks WHICH provider is mid-flow
+  // (rather than a plain boolean) so only the tapped button shows a
+  // spinner, not both at once.
+  const [oauthLoading, setOauthLoading] = useState<OAuthProvider | null>(null);
+
+  // NEW: shared with register.tsx via lib/oauth.ts, which itself
+  // mirrors reset-password.tsx's PKCE exchange pattern. Anonymous-
+  // session merge (see handleLogin's comment above) is handled inside
+  // signInWithProvider()/auth-callback.tsx, not here.
+  async function handleOAuthSignIn(provider: OAuthProvider) {
+    setError('');
+    setOauthLoading(provider);
+
+    const result = await signInWithProvider(provider);
+
+    setOauthLoading(null);
+
+    if (result.status === 'error') {
+      setError(result.message);
+      return;
+    }
+    if (result.status === 'cancelled' || result.status === 'redirecting') {
+      // cancelled: user backed out of the provider's page. redirecting:
+      // web is mid full-page navigation away from this screen. Nothing
+      // left to do here in either case.
+      return;
+    }
+    // status === 'success' — native only; web never resolves here, it
+    // reloads straight into auth-callback.tsx instead.
+    router.replace('/');
+  }
 
   async function handleLogin() {
     if (!email.trim() || !password) {
@@ -128,6 +160,42 @@ export default function LoginScreen() {
           {loading ? <ActivityIndicator color={BLACK} /> : <Text style={styles.buttonText}>Sign in</Text>}
         </TouchableOpacity>
 
+        <View style={styles.dividerRow}>
+          <View style={styles.dividerLine} />
+          <Text style={styles.dividerText}>or</Text>
+          <View style={styles.dividerLine} />
+        </View>
+
+        <TouchableOpacity
+          style={styles.oauthButton}
+          onPress={() => handleOAuthSignIn('google')}
+          disabled={!!oauthLoading}
+        >
+          {oauthLoading === 'google' ? (
+            <ActivityIndicator color={BLACK} />
+          ) : (
+            <>
+              <Text style={styles.oauthIconGoogle}>G</Text>
+              <Text style={styles.oauthButtonText}>Continue with Google</Text>
+            </>
+          )}
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.oauthButton, styles.facebookButton]}
+          onPress={() => handleOAuthSignIn('facebook')}
+          disabled={!!oauthLoading}
+        >
+          {oauthLoading === 'facebook' ? (
+            <ActivityIndicator color="#fff" />
+          ) : (
+            <>
+              <Text style={styles.oauthIconFacebook}>f</Text>
+              <Text style={[styles.oauthButtonText, styles.facebookButtonText]}>Continue with Facebook</Text>
+            </>
+          )}
+        </TouchableOpacity>
+
         <TouchableOpacity onPress={() => router.push('/register')}>
           <Text style={styles.link}>Don't have an account? <Text style={styles.gold}>Register</Text></Text>
         </TouchableOpacity>
@@ -152,4 +220,18 @@ const styles = StyleSheet.create({
   forgotLinkText: { color: GOLD, fontSize: 12 },
   buttonText: { color: BLACK, fontSize: 16, fontWeight: '700' },
   link: { color: '#aaa', fontSize: 13, textAlign: 'center', marginTop: 20 },
+
+  // NEW: Google / Facebook sign-in
+  dividerRow: { flexDirection: 'row', alignItems: 'center', marginTop: 24, gap: 10 },
+  dividerLine: { flex: 1, height: 1, backgroundColor: '#333' },
+  dividerText: { color: '#666', fontSize: 12 },
+  oauthButton: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10,
+    backgroundColor: '#fff', borderRadius: 10, padding: 14, marginTop: 14,
+  },
+  oauthIconGoogle: { fontSize: 16, fontWeight: '900', color: '#4285F4', width: 18, textAlign: 'center' },
+  oauthButtonText: { color: '#1A1A1A', fontSize: 15, fontWeight: '600' },
+  facebookButton: { backgroundColor: '#1877F2' },
+  oauthIconFacebook: { fontSize: 16, fontWeight: '900', color: '#fff', width: 18, textAlign: 'center' },
+  facebookButtonText: { color: '#fff' },
 });

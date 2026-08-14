@@ -268,7 +268,6 @@ export default function RootLayout() {
             <View style={styles.webSideActionRow}>
               <View style={styles.webSideAction}>
                 <TouchableOpacity style={styles.getAppBtn} onPress={handleGetApp}>
-                  <Text style={styles.getAppBtnIcon}>📱</Text>
                   <Text style={styles.getAppBtnText}>Get App</Text>
                 </TouchableOpacity>
                 {showComingSoon && (
@@ -328,6 +327,14 @@ const styles = StyleSheet.create({
     borderLeftWidth: 1,
     borderRightWidth: 1,
     borderColor: WEB_MARGIN_BORDER,
+    // NEW: rounded edges — makes the frame read as a deliberately
+    // placed card against the margin rather than a rectangle with a
+    // line drawn around it. overflow: 'hidden' clips the Stack's own
+    // content (which is otherwise a plain rectangle) to match, so the
+    // corners actually look rounded instead of the border curving
+    // while square content pokes past it.
+    borderRadius: 16,
+    overflow: 'hidden',
   },
   // Normal layout flow, not absolute positioning — right-aligned
   // within webColumn, so it lands flush with the frame's own right
@@ -342,10 +349,9 @@ const styles = StyleSheet.create({
   // (position: absolute below) anchors to this pair, not the page.
   webSideAction: {},
   getAppBtn: {
-    flexDirection: 'row', alignItems: 'center', gap: 5,
-    backgroundColor: '#1A1A18', borderRadius: 20, paddingHorizontal: 12, paddingVertical: 7,
+    flexDirection: 'row', alignItems: 'center',
+    backgroundColor: '#1A1A18', borderRadius: 20, paddingHorizontal: 14, paddingVertical: 7,
   },
-  getAppBtnIcon: { fontSize: 13 },
   getAppBtnText: { color: '#fff', fontSize: 12, fontWeight: '700' },
   comingSoonBubble: {
     position: 'absolute', top: 40, right: 0, backgroundColor: '#1A1A18',
