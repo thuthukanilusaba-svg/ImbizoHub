@@ -57,14 +57,36 @@ const MOBILE_WEB_MAX_WIDTH = 480;
 // actual goal here, not maximum width.
 const DESKTOP_MAX_WIDTH = 1200;
 
-// TRYING: white margin (per the tiktok.com/vinted.com-style reference
-// discussed) instead of the near-black WEB_MARGIN_COLOR used before —
-// easy to revert to '#1A1A18' (or anything else) if it doesn't read
-// well once live. WEB_MARGIN_BORDER pairs with it and needs to flip
-// too: a light-on-white border reads instead of the previous
-// light-on-black one.
-const WEB_MARGIN_COLOR = '#FFFFFF';
-const WEB_MARGIN_BORDER = 'rgba(0,0,0,0.1)';
+// FIX (real bug, found by comparing an actual laptop against an
+// external monitor): the frame was `width: '100%'` capped by
+// `maxWidth: DESKTOP_MAX_WIDTH` alone — that only produces a margin
+// once the browser window is WIDER than DESKTOP_MAX_WIDTH. A laptop
+// whose window is, say, 1150-1250px (very common — most 13"-14"
+// laptops render well under 1400px of logical width) sits right at or
+// under that line, so the frame is effectively the full window width
+// with ~zero margin, and the whole centered/margin/border treatment
+// above just doesn't show up at all — it isn't "off," it's silently
+// disabled. On a 1728px+ external monitor there's plenty of width
+// past the cap, so the same code produces a large, obvious margin.
+// Same fixed pixel cap, two very different results depending on
+// screen size. DESKTOP_FRAME_WIDTH_PERCENT guarantees a margin
+// proportional to the window at every desktop width, not only past
+// one specific pixel threshold, so laptop and monitor both show the
+// same deliberately-centered look instead of one showing it and the
+// other silently not.
+const DESKTOP_FRAME_WIDTH_PERCENT = '92%';
+
+// REVERTED off pure white — too bright/harsh next to the app's own
+// dark screens (stark white margin around near-black content is a big
+// brightness jump to stare at). Went back dark, but not back to plain
+// black or the earlier arbitrary near-black either: this is GOLD
+// (#B8860B, the app's own accent, used for the avatar/logo/CTA colors
+// throughout) at very low saturation and lightness — same hue family,
+// just dialed way down so it reads as a shade of the brand rather than
+// a competing color. Warm without being bright, dark without being
+// flat/cold black.
+const WEB_MARGIN_COLOR = '#201C14';
+const WEB_MARGIN_BORDER = 'rgba(255,255,255,0.08)';
 
 // FIX (part of letting the full-screen photo viewer rotate to
 // landscape): app.json's top-level "orientation" is "default" so the
@@ -232,9 +254,15 @@ export default function RootLayout() {
         <View
           style={[
             styles.webFrame,
-            Platform.OS === 'web' && {
-              maxWidth: isDesktopWeb ? DESKTOP_MAX_WIDTH : MOBILE_WEB_MAX_WIDTH,
-            },
+            Platform.OS === 'web' && (
+              isDesktopWeb
+                // Percentage width (capped) instead of a bare maxWidth
+                // — see DESKTOP_FRAME_WIDTH_PERCENT above for why: this
+                // is what actually keeps a visible margin on a laptop-
+                // sized window, not just on wide external monitors.
+                ? { width: DESKTOP_FRAME_WIDTH_PERCENT, maxWidth: DESKTOP_MAX_WIDTH }
+                : { maxWidth: MOBILE_WEB_MAX_WIDTH }
+            ),
             // NEW: on desktop web there's now a real, visible margin
             // (screen width minus DESKTOP_MAX_WIDTH) between this frame
             // and webOuter's background below — previously both were
