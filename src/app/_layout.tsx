@@ -19,7 +19,6 @@ import { useEffect, useRef, useState } from 'react';
 import { Platform, StyleSheet, Text, TouchableOpacity, useWindowDimensions, View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { useIsDesktopWeb } from '../../lib/responsive';
-import { theme } from '../../lib/theme';
 import { registerForPushNotifications, registerNotificationListeners, savePushToken } from '../../lib/notifications';
 
 SplashScreen.preventAutoHideAsync();
@@ -77,16 +76,12 @@ const DESKTOP_FRAME_WIDTH_RATIO = 0.92;
 // color, just a visibly warmer, slightly lighter step than the
 // earlier '#201C14' pick.
 //
-// REPLACED (web redesign — cream/coffee, website only, native
-// unchanged): both this margin color AND the frame's own background
-// were near-identical shades of near-black, which was already flagged
-// as a problem and given a 1px border as a partial fix. Now sourced
-// from lib/theme.ts instead of hardcoded here: theme.card (a deeper
-// cream/tan) for the margin, theme.background (a lighter cream) for
-// the frame itself — two visibly distinct tones instead of a subtle
-// border being the only thing marking the boundary.
-const WEB_MARGIN_COLOR = theme.card;
-const WEB_MARGIN_BORDER = theme.border;
+// A cream/coffee web-only theme was tried here (see lib/theme.ts,
+// still in the repo but currently unused) and then deliberately
+// reverted back to this original dark palette — the pixel-based width
+// fix above is the part that was worth keeping from that pass.
+const WEB_MARGIN_COLOR = '#2A2115';
+const WEB_MARGIN_BORDER = 'rgba(255,255,255,0.08)';
 
 // FIX (part of letting the full-screen photo viewer rotate to
 // landscape): app.json's top-level "orientation" is "default" so the
@@ -304,12 +299,7 @@ export default function RootLayout() {
             <Stack
               screenOptions={{
                 headerShown: false,
-                // Was hardcoded '#111111' — now theme.background, which
-                // resolves to cream on web and the app's dark background
-                // on native (see lib/theme.ts). This is just the gap-
-                // filler shown briefly between screens; each screen's
-                // own container still sets its own background too.
-                contentStyle: { backgroundColor: theme.background },
+                contentStyle: { backgroundColor: '#111111' }
               }}
             />
           </View>
@@ -364,16 +354,12 @@ const styles = StyleSheet.create({
   webSideAction: {},
   getAppBtn: {
     flexDirection: 'row', alignItems: 'center',
-    // Was hardcoded '#1A1A18'/'#fff' — now theme.text/theme.background,
-    // so this stays a dark pill button on native (unchanged) but
-    // becomes a coffee-brown pill (dark text color, cream text) on
-    // web instead of a jarring pure-black button on a cream page.
-    backgroundColor: theme.text, borderRadius: 20, paddingHorizontal: 14, paddingVertical: 7,
+    backgroundColor: '#1A1A18', borderRadius: 20, paddingHorizontal: 14, paddingVertical: 7,
   },
-  getAppBtnText: { color: theme.background, fontSize: 12, fontWeight: '700' },
+  getAppBtnText: { color: '#fff', fontSize: 12, fontWeight: '700' },
   comingSoonBubble: {
-    position: 'absolute', top: 40, right: 0, backgroundColor: theme.text,
+    position: 'absolute', top: 40, right: 0, backgroundColor: '#1A1A18',
     borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6, minWidth: 170,
   },
-  comingSoonText: { color: theme.background, fontSize: 11 },
+  comingSoonText: { color: '#fff', fontSize: 11 },
 });
