@@ -51,7 +51,12 @@ SplashScreen.preventAutoHideAsync();
 // this wrapper, so they may still need their own follow-up fix.
 
 const MOBILE_WEB_MAX_WIDTH = 480;
-const DESKTOP_MAX_WIDTH = 1200;
+// UPDATED: 1200 left a wide, flat-black margin on typical laptop
+// screens (1440-1728px wide) with nothing visually distinguishing it
+// from "unrendered" — widened to fill more of that space, while still
+// capping well short of full-bleed so the marketplace grid doesn't
+// stretch into a sparse-looking row on ultra-wide monitors.
+const DESKTOP_MAX_WIDTH = 1400;
 
 // FIX (part of letting the full-screen photo viewer rotate to
 // landscape): app.json's top-level "orientation" is "default" so the
@@ -193,6 +198,15 @@ export default function RootLayout() {
             Platform.OS === 'web' && {
               maxWidth: isDesktopWeb ? DESKTOP_MAX_WIDTH : MOBILE_WEB_MAX_WIDTH,
             },
+            // NEW: on desktop web there's now a real, visible margin
+            // (screen width minus DESKTOP_MAX_WIDTH) between this frame
+            // and webOuter's black background below — previously both
+            // were near-identical shades of black with nothing marking
+            // where one ends and the other begins, which read as an
+            // accident rather than a deliberate centered layout. A thin,
+            // low-opacity border makes the boundary unmistakably
+            // intentional without introducing a jarring color change.
+            Platform.OS === 'web' && isDesktopWeb && styles.webFrameBordered,
           ]}
         >
           <Stack
@@ -216,5 +230,10 @@ const styles = StyleSheet.create({
   webFrame: {
     flex: 1,
     width: '100%',
+  },
+  webFrameBordered: {
+    borderLeftWidth: 1,
+    borderRightWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
   },
 });
