@@ -76,16 +76,11 @@ const DESKTOP_MAX_WIDTH = 1200;
 // other silently not.
 const DESKTOP_FRAME_WIDTH_PERCENT = '92%';
 
-// REVERTED off pure white — too bright/harsh next to the app's own
-// dark screens (stark white margin around near-black content is a big
-// brightness jump to stare at). Went back dark, but not back to plain
-// black or the earlier arbitrary near-black either: this is GOLD
-// (#B8860B, the app's own accent, used for the avatar/logo/CTA colors
-// throughout) at very low saturation and lightness — same hue family,
-// just dialed way down so it reads as a shade of the brand rather than
-// a competing color. Warm without being bright, dark without being
-// flat/cold black.
-const WEB_MARGIN_COLOR = '#201C14';
+// CHOSEN from a side-by-side comparison of six candidates ("Bronze /
+// espresso") — same GOLD-derived hue family as the app's own accent
+// color, just a visibly warmer, slightly lighter step than the
+// earlier '#201C14' pick.
+const WEB_MARGIN_COLOR = '#2A2115';
 const WEB_MARGIN_BORDER = 'rgba(255,255,255,0.08)';
 
 // FIX (part of letting the full-screen photo viewer rotate to
