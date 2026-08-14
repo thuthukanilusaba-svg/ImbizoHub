@@ -2,7 +2,7 @@ import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, FlatList, Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, FlatList, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import BottomNav from '../../components/BottomNav';
 import { useIsDesktopWeb } from '../../lib/responsive';
@@ -53,20 +53,6 @@ export default function HomeScreen() {
   // runtime.
   const isDesktopWeb = useIsDesktopWeb();
   const numColumns = isDesktopWeb ? 4 : 2;
-
-  // NEW (web-only "Get App" nudge, referencing tiktok.com's header
-  // pattern): the Android build isn't approved on the Play Store yet
-  // (still in eas submit/review as of this writing), so this can't
-  // link out for real without sending visitors to a 404. Shows a
-  // small "coming soon" bubble instead for now — once the listing is
-  // live, swap handleGetApp's body for a real Linking.openURL to
-  // https://play.google.com/store/apps/details?id=com.imbizohub.app
-  // (see app.json's "package") and this UI needs no other changes.
-  const [showComingSoon, setShowComingSoon] = useState(false);
-  function handleGetApp() {
-    setShowComingSoon(true);
-    setTimeout(() => setShowComingSoon(false), 2500);
-  }
 
   const [listings, setListings] = useState<any[]>([]);
   const [sellerProfiles, setSellerProfiles] = useState<Record<string, any>>({});
@@ -221,23 +207,8 @@ export default function HomeScreen() {
               {userName ? `${getGreeting()}, ${userName}` : getGreeting()}
             </Text>
           </View>
-          <View style={styles.headerRight}>
-            {Platform.OS === 'web' && (
-              <View>
-                <TouchableOpacity style={styles.getAppBtn} onPress={handleGetApp}>
-                  <Text style={styles.getAppBtnIcon}>📱</Text>
-                  <Text style={styles.getAppBtnText}>Get App</Text>
-                </TouchableOpacity>
-                {showComingSoon && (
-                  <View style={styles.comingSoonBubble}>
-                    <Text style={styles.comingSoonText}>Coming soon on Google Play</Text>
-                  </View>
-                )}
-              </View>
-            )}
-            <View style={styles.avatar}>
-              <Text style={styles.avatarText}>{getInitials(userName)}</Text>
-            </View>
+          <View style={styles.avatar}>
+            <Text style={styles.avatarText}>{getInitials(userName)}</Text>
           </View>
         </View>
 
@@ -494,20 +465,6 @@ const styles = StyleSheet.create({
   greeting: { color: GREY, fontSize: 12, marginTop: 2 },
   avatar: { width: 36, height: 36, backgroundColor: GOLD, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
   avatarText: { color: BLACK, fontSize: 13, fontWeight: '700' },
-  headerRight: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  getAppBtn: {
-    flexDirection: 'row', alignItems: 'center', gap: 5,
-    backgroundColor: DARK, borderRadius: 20, paddingHorizontal: 12, paddingVertical: 7,
-    borderWidth: 0.5, borderColor: '#333',
-  },
-  getAppBtnIcon: { fontSize: 13 },
-  getAppBtnText: { color: '#fff', fontSize: 12, fontWeight: '700' },
-  comingSoonBubble: {
-    position: 'absolute', top: 40, right: 0, backgroundColor: DARK,
-    borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6,
-    borderWidth: 0.5, borderColor: '#333', minWidth: 170,
-  },
-  comingSoonText: { color: '#fff', fontSize: 11 },
   searchWrap: { backgroundColor: BLACK, paddingHorizontal: 16, paddingBottom: 14 },
   searchBar: { backgroundColor: DARK, borderRadius: 12, padding: 10, flexDirection: 'row', alignItems: 'center', gap: 10, borderWidth: 0.5, borderColor: '#333' },
   searchIcon: { fontSize: 16 },

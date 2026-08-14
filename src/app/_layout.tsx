@@ -15,8 +15,8 @@ import { Inter_400Regular, Inter_600SemiBold, Inter_700Bold, Inter_800ExtraBold,
 import { Stack, useRouter } from 'expo-router';
 import * as ScreenOrientation from 'expo-screen-orientation';
 import * as SplashScreen from 'expo-splash-screen';
-import { useEffect, useRef } from 'react';
-import { Platform, StyleSheet, View } from 'react-native';
+import { useEffect, useRef, useState } from 'react';
+import { Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { useIsDesktopWeb } from '../../lib/responsive';
 import { registerForPushNotifications, registerNotificationListeners, savePushToken } from '../../lib/notifications';
@@ -57,17 +57,14 @@ const MOBILE_WEB_MAX_WIDTH = 480;
 // actual goal here, not maximum width.
 const DESKTOP_MAX_WIDTH = 1200;
 
-// Reuses the app's own established near-black brand color (same value
-// as BLACK in index.tsx/explore.tsx/hirevan.tsx, already visible today
-// in every screen's header bar) for the margin around the centered
-// frame — rather than pure '#000' (too harsh/cold, no relation to the
-// app's palette) or matching the frame's own '#111111' content
-// background exactly (blended so well the centered layout stopped
-// reading as intentional — the whole point of "centered" is that the
-// boundary is visible). This sits between the two: distinct enough to
-// see the frame clearly, but drawn from the app's own palette rather
-// than an arbitrary new color, so it still feels like part of the app.
-const WEB_MARGIN_COLOR = '#1A1A18';
+// TRYING: white margin (per the tiktok.com/vinted.com-style reference
+// discussed) instead of the near-black WEB_MARGIN_COLOR used before —
+// easy to revert to '#1A1A18' (or anything else) if it doesn't read
+// well once live. WEB_MARGIN_BORDER pairs with it and needs to flip
+// too: a light-on-white border reads instead of the previous
+// light-on-black one.
+const WEB_MARGIN_COLOR = '#FFFFFF';
+const WEB_MARGIN_BORDER = 'rgba(0,0,0,0.1)';
 
 // FIX (part of letting the full-screen photo viewer rotate to
 // landscape): app.json's top-level "orientation" is "default" so the
@@ -88,6 +85,22 @@ export default function RootLayout() {
   const router = useRouter();
   const unsubscribeRef = useRef<() => void>(() => {});
   const isDesktopWeb = useIsDesktopWeb();
+
+  // MOVED (was index.tsx's Home-only header button): "outside the
+  // app" means outside webFrame entirely, in the margin — which only
+  // exists as real space on desktop web, so it only renders there.
+  // Living in the root layout also means it now shows on every page,
+  // not just Home. The Play Store listing isn't approved yet (still
+  // in eas submit/review as of this writing), so this shows a
+  // "coming soon" bubble instead of linking anywhere for real — once
+  // it's live, swap handleGetApp's body for Linking.openURL to
+  // https://play.google.com/store/apps/details?id=com.imbizohub.app
+  // (see app.json's "package").
+  const [showComingSoon, setShowComingSoon] = useState(false);
+  function handleGetApp() {
+    setShowComingSoon(true);
+    setTimeout(() => setShowComingSoon(false), 2500);
+  }
 
   const [fontsLoaded] = useFonts({
     Inter_400Regular,
@@ -203,6 +216,19 @@ export default function RootLayout() {
   return (
     <SafeAreaProvider>
       <View style={styles.webOuter}>
+        {Platform.OS === 'web' && isDesktopWeb && (
+          <View style={styles.webSideAction}>
+            <TouchableOpacity style={styles.getAppBtn} onPress={handleGetApp}>
+              <Text style={styles.getAppBtnIcon}>📱</Text>
+              <Text style={styles.getAppBtnText}>Get App</Text>
+            </TouchableOpacity>
+            {showComingSoon && (
+              <View style={styles.comingSoonBubble}>
+                <Text style={styles.comingSoonText}>Coming soon on Google Play</Text>
+              </View>
+            )}
+          </View>
+        )}
         <View
           style={[
             styles.webFrame,
@@ -211,12 +237,12 @@ export default function RootLayout() {
             },
             // NEW: on desktop web there's now a real, visible margin
             // (screen width minus DESKTOP_MAX_WIDTH) between this frame
-            // and webOuter's black background below — previously both
-            // were near-identical shades of black with nothing marking
+            // and webOuter's background below — previously both were
+            // near-identical shades of black with nothing marking
             // where one ends and the other begins, which read as an
-            // accident rather than a deliberate centered layout. A thin,
-            // low-opacity border makes the boundary unmistakably
-            // intentional without introducing a jarring color change.
+            // accident rather than a deliberate centered layout. A thin
+            // border makes the boundary unmistakably intentional
+            // without introducing a jarring color change.
             Platform.OS === 'web' && isDesktopWeb && styles.webFrameBordered,
           ]}
         >
@@ -245,6 +271,26 @@ const styles = StyleSheet.create({
   webFrameBordered: {
     borderLeftWidth: 1,
     borderRightWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
+    borderColor: WEB_MARGIN_BORDER,
   },
+  // Positioned relative to webOuter (the full-screen container), not
+  // webFrame — that's what makes this sit in the margin, outside the
+  // app's own centered column, rather than inside it.
+  webSideAction: {
+    position: 'absolute',
+    top: 24,
+    right: 24,
+    zIndex: 10,
+  },
+  getAppBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 5,
+    backgroundColor: '#1A1A18', borderRadius: 20, paddingHorizontal: 12, paddingVertical: 7,
+  },
+  getAppBtnIcon: { fontSize: 13 },
+  getAppBtnText: { color: '#fff', fontSize: 12, fontWeight: '700' },
+  comingSoonBubble: {
+    position: 'absolute', top: 40, right: 0, backgroundColor: '#1A1A18',
+    borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6, minWidth: 170,
+  },
+  comingSoonText: { color: '#fff', fontSize: 11 },
 });
