@@ -4,10 +4,14 @@
 // top-of-file comment for why: openAuthSessionAsync() on native gets
 // the redirect URL handed back directly without ever leaving the app.
 // On web, signInWithOAuth() does a real full-page redirect, so this
-// is the screen that receives the trip back from Google/Facebook (via
+// is the screen that receives the trip back from Google (via
 // Supabase's own callback) and does the actual code exchange — same
 // PKCE pattern as reset-password.tsx, which this file otherwise
 // mirrors closely.
+//
+// Written provider-agnostically on purpose — nothing here is
+// Google-specific — so it doesn't need to change if/when Facebook
+// sign-in comes back (see lib/oauth.ts's top-of-file comment).
 //
 // Reachable only via Linking.createURL('auth-callback') with a `code`
 // query param attached, exactly like reset-password.tsx.
@@ -41,7 +45,7 @@ export default function AuthCallbackScreen() {
     const initialUrl = url ?? (await Linking.getInitialURL());
 
     if (!initialUrl) {
-      setLinkError('This screen should only be reached from a Google or Facebook sign-in redirect.');
+      setLinkError('This screen should only be reached from a Google sign-in redirect.');
       return;
     }
 

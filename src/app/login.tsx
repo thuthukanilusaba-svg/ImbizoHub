@@ -42,9 +42,11 @@ export default function LoginScreen() {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  // NEW: Google / Facebook sign-in. Tracks WHICH provider is mid-flow
-  // (rather than a plain boolean) so only the tapped button shows a
-  // spinner, not both at once.
+  // NEW: Google sign-in. Tracks WHICH provider is mid-flow (rather
+  // than a plain boolean) so only the tapped button shows a spinner,
+  // not both at once — OAuthProvider is currently just 'google', but
+  // kept as a union type since Facebook is meant to come back later
+  // (see lib/oauth.ts's top-of-file comment).
   const [oauthLoading, setOauthLoading] = useState<OAuthProvider | null>(null);
 
   // NEW: shared with register.tsx via lib/oauth.ts, which itself
@@ -181,21 +183,6 @@ export default function LoginScreen() {
           )}
         </TouchableOpacity>
 
-        <TouchableOpacity
-          style={[styles.oauthButton, styles.facebookButton]}
-          onPress={() => handleOAuthSignIn('facebook')}
-          disabled={!!oauthLoading}
-        >
-          {oauthLoading === 'facebook' ? (
-            <ActivityIndicator color="#fff" />
-          ) : (
-            <>
-              <Text style={styles.oauthIconFacebook}>f</Text>
-              <Text style={[styles.oauthButtonText, styles.facebookButtonText]}>Continue with Facebook</Text>
-            </>
-          )}
-        </TouchableOpacity>
-
         <TouchableOpacity onPress={() => router.push('/register')}>
           <Text style={styles.link}>Don't have an account? <Text style={styles.gold}>Register</Text></Text>
         </TouchableOpacity>
@@ -221,7 +208,7 @@ const styles = StyleSheet.create({
   buttonText: { color: BLACK, fontSize: 16, fontWeight: '700' },
   link: { color: '#aaa', fontSize: 13, textAlign: 'center', marginTop: 20 },
 
-  // NEW: Google / Facebook sign-in
+  // NEW: Google sign-in
   dividerRow: { flexDirection: 'row', alignItems: 'center', marginTop: 24, gap: 10 },
   dividerLine: { flex: 1, height: 1, backgroundColor: '#333' },
   dividerText: { color: '#666', fontSize: 12 },
@@ -231,7 +218,4 @@ const styles = StyleSheet.create({
   },
   oauthIconGoogle: { fontSize: 16, fontWeight: '900', color: '#4285F4', width: 18, textAlign: 'center' },
   oauthButtonText: { color: '#1A1A1A', fontSize: 15, fontWeight: '600' },
-  facebookButton: { backgroundColor: '#1877F2' },
-  oauthIconFacebook: { fontSize: 16, fontWeight: '900', color: '#fff', width: 18, textAlign: 'center' },
-  facebookButtonText: { color: '#fff' },
 });

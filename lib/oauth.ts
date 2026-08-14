@@ -1,19 +1,28 @@
 // lib/oauth.ts
 //
-// Shared Google / Facebook sign-in helper for login.tsx and
-// register.tsx. Mirrors app/reset-password.tsx's PKCE code-exchange
-// pattern — this app has detectSessionInUrl: false set in
-// lib/supabase.ts (deliberately, see that file's comment), so nothing
-// auto-detects a code/token from an incoming URL; every OAuth
-// redirect has to be parsed and exchanged manually, exactly like
-// reset-password.tsx already does for the password-reset link.
+// Shared Google sign-in helper for login.tsx and register.tsx.
+// Mirrors app/reset-password.tsx's PKCE code-exchange pattern — this
+// app has detectSessionInUrl: false set in lib/supabase.ts
+// (deliberately, see that file's comment), so nothing auto-detects a
+// code/token from an incoming URL; every OAuth redirect has to be
+// parsed and exchanged manually, exactly like reset-password.tsx
+// already does for the password-reset link.
+//
+// Facebook sign-in was built alongside this but has been pulled back
+// out: Meta's console requires Business Verification to publish a
+// Facebook Login app for public use, and that's currently blocked on
+// the developer account. lib/oauth.ts and auth-callback.tsx were
+// written provider-agnostically on purpose, so re-adding Facebook
+// later (once verification is possible) is just: widen OAuthProvider
+// back to 'google' | 'facebook', re-add the button in login.tsx /
+// register.tsx, and re-enable the provider in Supabase — no changes
+// needed here.
 //
 // IMPORTANT — this file only builds the app-side half of the flow.
-// Sign-in will not actually work until Google and Facebook are turned
-// on as providers in the Supabase dashboard (Authentication >
-// Providers), each with a real Client ID + Secret from Google Cloud
-// Console / Facebook for Developers pasted in there. No code change
-// here can substitute for that setup.
+// Sign-in will not actually work until Google is turned on as a
+// provider in the Supabase dashboard (Authentication > Providers),
+// with a real Client ID + Secret from Google Cloud Console pasted in
+// there. No code change here can substitute for that setup.
 //
 // Native vs web, and why they're handled so differently:
 //  - Native: there's no "page" to navigate away from and back to, so
@@ -32,7 +41,7 @@ import { Platform } from 'react-native';
 import * as WebBrowser from 'expo-web-browser';
 import { supabase } from './supabase';
 
-export type OAuthProvider = 'google' | 'facebook';
+export type OAuthProvider = 'google';
 
 export type OAuthResult =
   | { status: 'success' }

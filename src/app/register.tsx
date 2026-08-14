@@ -66,8 +66,8 @@ export default function RegisterScreen() {
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
 
-  // NEW: Google / Facebook sign-up — see lib/oauth.ts. Same helper
-  // and same status handling as login.tsx.
+  // NEW: Google sign-up — see lib/oauth.ts. Same helper and same
+  // status handling as login.tsx.
   const [oauthLoading, setOauthLoading] = useState<OAuthProvider | null>(null);
 
   const isSubmittingRef = useRef(false);
@@ -210,9 +210,9 @@ export default function RegisterScreen() {
         <Text style={styles.title}>Create your account</Text>
         <Text style={styles.subtitle}>Buy, Sell and Deliver</Text>
 
-        {/* NEW: Google / Facebook sign-up, placed above the email form
-            — matches how most apps surface the fastest path first,
-            with the existing form as the fallback. */}
+        {/* NEW: Google sign-up, placed above the email form — matches
+            how most apps surface the fastest path first, with the
+            existing form as the fallback. */}
         <TouchableOpacity
           style={styles.oauthButton}
           onPress={() => handleOAuthSignIn('google')}
@@ -224,21 +224,6 @@ export default function RegisterScreen() {
             <>
               <Text style={styles.oauthIconGoogle}>G</Text>
               <Text style={styles.oauthButtonText}>Continue with Google</Text>
-            </>
-          )}
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={[styles.oauthButton, styles.facebookButton]}
-          onPress={() => handleOAuthSignIn('facebook')}
-          disabled={!!oauthLoading}
-        >
-          {oauthLoading === 'facebook' ? (
-            <ActivityIndicator color="#fff" />
-          ) : (
-            <>
-              <Text style={styles.oauthIconFacebook}>f</Text>
-              <Text style={[styles.oauthButtonText, styles.facebookButtonText]}>Continue with Facebook</Text>
             </>
           )}
         </TouchableOpacity>
@@ -496,7 +481,7 @@ const styles = StyleSheet.create({
   loginLinkText: { color: '#aaa', fontSize: 14 },
   loginLinkBold: { color: GOLD, fontWeight: 'bold' },
 
-  // NEW: Google / Facebook sign-up
+  // NEW: Google sign-up
   dividerRow: { flexDirection: 'row', alignItems: 'center', marginTop: 20, marginBottom: 4, gap: 10 },
   dividerLine: { flex: 1, height: 1, backgroundColor: '#333' },
   dividerText: { color: '#666', fontSize: 12 },
@@ -506,7 +491,4 @@ const styles = StyleSheet.create({
   },
   oauthIconGoogle: { fontSize: 16, fontWeight: '900', color: '#4285F4', width: 18, textAlign: 'center' },
   oauthButtonText: { color: '#1A1A1A', fontSize: 15, fontWeight: '600' },
-  facebookButton: { backgroundColor: '#1877F2' },
-  oauthIconFacebook: { fontSize: 16, fontWeight: '900', color: '#fff', width: 18, textAlign: 'center' },
-  facebookButtonText: { color: '#fff' },
 });
