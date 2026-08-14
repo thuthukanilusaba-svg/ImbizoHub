@@ -29,12 +29,17 @@ const dark = {
   buttonText: '#1A1A18',
 };
 
+// TUNED DOWN from an earlier, brighter pass ('#FAF3E7'/'#F1E7D5') —
+// per direct feedback that felt like too much off-white, too bright/
+// high-contrast against the gold and coffee text. This version is
+// deliberately more muted/desaturated — easier on the eyes at a
+// glance, still clearly "off-white, not stark white."
 const cream = {
-  background: '#FAF3E7',
-  card: '#F1E7D5',
+  background: '#F5F0E6',
+  card: '#EDE5D5',
   text: '#3B2A1E',         // coffee — replaces white text
   textMuted: '#8A7562',    // muted coffee — replaces GREY
-  border: '#E3D5BC',
+  border: '#DCD1BB',
   accent: '#B8860B',       // GOLD — unchanged, reads fine on cream
   buttonBg: '#B8860B',
   buttonText: '#3B2A1E',   // coffee text on gold buttons (was black)
