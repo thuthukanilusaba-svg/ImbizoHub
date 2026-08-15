@@ -254,15 +254,26 @@ export default function RootLayout() {
           <View
             style={[
               styles.webFrame,
-              // NEW: on desktop web there's now a real, visible margin
-              // (screen width minus the frame's own width) between this
-              // frame and webOuter's background below — previously both
-              // were near-identical shades of black with nothing marking
-              // where one ends and the other begins, which read as an
-              // accident rather than a deliberate centered layout. A
-              // thin border makes the boundary unmistakably intentional
-              // without introducing a jarring color change.
-              Platform.OS === 'web' && isDesktopWeb && styles.webFrameBordered,
+              // NEW: on web there's a real, visible margin (screen width
+              // minus the frame's own width) between this frame and
+              // webOuter's background below — previously both were near-
+              // identical shades of black with nothing marking where one
+              // ends and the other begins, which read as an accident
+              // rather than a deliberate centered layout. A thin border
+              // makes the boundary unmistakably intentional without
+              // introducing a jarring color change.
+              //
+              // FIX (rounded corners went missing after the 480px
+              // revert): this used to also require `isDesktopWeb`, back
+              // when the bordered/rounded treatment was desktop-only.
+              // Now that the wide desktop layout is switched off (see
+              // lib/responsive.ts) and narrow is the only web layout,
+              // gating this on isDesktopWeb meant it never applied at
+              // all — the frame silently lost its rounded corners as a
+              // side effect of that revert, not a deliberate change.
+              // This should apply any time we're centering a narrower
+              // frame inside a visible margin, i.e. on web, full stop.
+              Platform.OS === 'web' && styles.webFrameBordered,
             ]}
           >
             <Stack
