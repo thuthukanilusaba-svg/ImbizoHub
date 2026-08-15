@@ -242,15 +242,29 @@ const styles = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center', marginHorizontal: 20,
   },
   // Two plain bars instead of a "+" text glyph — see the comment above
-  // where these are used for why. Centered via margin: 'auto' against
-  // all four 0 offsets, which RN's layout engine resolves to exact
-  // pixel-centering regardless of platform.
+  // where these are used for why.
+  //
+  // FIX (real bug, reported: "the + sign is not showing... it only
+  // show a circle without anything"): the previous version centered
+  // these via `top:0, left:0, right:0, bottom:0, margin:'auto'` — a
+  // real CSS centering trick, but one that assumes a real browser CSS
+  // engine. React Native's own layout engine (Yoga) does NOT reliably
+  // resolve that exact combination the same way on iOS/Android — margin:
+  // 'auto' support in Yoga is limited and inconsistent, especially
+  // stacked with all four offsets at once, so on-device this could
+  // resolve to zero size or an unpositioned box instead of a centered
+  // bar, i.e. nothing visible at all, leaving just the plain gold
+  // circle behind it. Replaced with explicit numeric offsets computed
+  // against navPost's known 44x44 size — (44-width)/2 and (44-height)/2
+  // — which every layout engine (Yoga included) resolves identically,
+  // so this can't silently fail to render on native the way the CSS
+  // trick could.
   plusBarHorizontal: {
-    position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, margin: 'auto',
+    position: 'absolute', top: 20.5, left: 14,
     width: 16, height: 3, borderRadius: 1.5, backgroundColor: BLACK,
   },
   plusBarVertical: {
-    position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, margin: 'auto',
+    position: 'absolute', top: 14, left: 20.5,
     width: 3, height: 16, borderRadius: 1.5, backgroundColor: BLACK,
   },
   // The ellipsis glyph sits visually smaller/higher than the emoji icons
