@@ -314,7 +314,24 @@ export default function ListingScreen() {
           not against the carousel, so it stays pinned in the same
           spot regardless of scroll position, the way a floating back
           button normally behaves. */}
-      <TouchableOpacity style={styles.backFloat} onPress={() => router.back()}>
+      {/* FIX (real bug, reported: "back arrow not centered and feels
+          unresponsive"): two separate issues. (1) the ← glyph sits
+          visibly high within its own line box in this font — nudged
+          down slightly so it optically centers in the circle. (2) the
+          circle itself is only 36x36, below the ~44x44 minimum touch
+          target both Apple's and Google's own guidelines recommend —
+          over a busy photo background that made it genuinely easy to
+          miss-tap, which reads as "unresponsive" even though the
+          handler itself fires instantly. hitSlop expands the tappable
+          area without changing the visual size of the button, and
+          activeOpacity gives clear, deliberate press feedback instead
+          of relying on TouchableOpacity's default. */}
+      <TouchableOpacity
+        style={styles.backFloat}
+        onPress={() => router.back()}
+        activeOpacity={0.7}
+        hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+      >
         <Text style={styles.backFloatText}>←</Text>
       </TouchableOpacity>
 
@@ -559,7 +576,9 @@ const styles = StyleSheet.create({
   // paint over this button in some cases since sibling render order
   // alone no longer guarantees it stays on top.
   backFloat: { position: 'absolute', top: 50, left: 16, width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(0,0,0,0.6)', alignItems: 'center', justifyContent: 'center', zIndex: 10 },
-  backFloatText: { color: '#fff', fontSize: 20 },
+  // top: 1 nudges the ← glyph down slightly so it optically centers in
+  // the circle — see the FIX comment where this button is used.
+  backFloatText: { color: '#fff', fontSize: 20, position: 'relative', top: 1 },
 
   details: { padding: 20 },
   titleRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10 },

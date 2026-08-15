@@ -61,7 +61,7 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, KeyboardAvoidingView, Modal, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, AppState, KeyboardAvoidingView, Modal, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   notifyMeetPayPinGenerated,
@@ -253,6 +253,30 @@ export default function ChatScreen() {
       setDealModal(true);
     }
   }, [openDeal, depositChecked, depositPaid]);
+
+  // FIX (real bug, reported: "some messages do not come through
+  // especially if the other phone is not active"): there was no
+  // AppState handling anywhere in this screen. Mobile OSes routinely
+  // suspend JS execution and can silently drop the realtime websocket
+  // while the app is backgrounded or the phone is locked — the message
+  // itself lands in the database fine, but with the socket dead there's
+  // no INSERT event to receive it, and with no resync-on-return logic
+  // either, `messages` just sits stale until something else happens to
+  // remount this whole screen (force-quitting and reopening the app,
+  // for instance). A plain re-fetch on foreground is the standard fix
+  // for exactly this: it doesn't matter whether the realtime channel
+  // silently died in the background, this always reconciles against
+  // whatever's actually in the database. fetchMessages() already does a
+  // full replace (setMessages(filtered), not an append), so calling it
+  // again here is safe and can't duplicate anything.
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', (nextState) => {
+      if (nextState === 'active' && myId) {
+        fetchMessages(myId);
+      }
+    });
+    return () => subscription.remove();
+  }, [myId]);
 
   async function fetchOtherPersonName() {
     if (!receiver_id) return;
