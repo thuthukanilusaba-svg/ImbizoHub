@@ -284,6 +284,8 @@ export default function ProfileScreen() {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user || user.is_anonymous) { router.push('/register'); return; }
 
+    setError('');
+
     // FIX: see top-of-file comment — only insert the starter row when
     // one doesn't exist yet. Never overwrite verification_tier/status on
     // an existing row here; that's operator-id-verify.tsx and admin
@@ -295,12 +297,32 @@ export default function ProfileScreen() {
       .maybeSingle();
 
     if (!existing) {
-      await supabase.from('delivery_operators').insert({
+      // FIX (real bug, root cause of a "null value in column full_name"
+      // error surfacing on delivery-operator-register-pay.tsx): this
+      // insert never supplied `phone`, which — same as full_name — is a
+      // NOT NULL column on delivery_operators with no default. Every
+      // single call here was silently failing on that constraint (the
+      // insert's own `error` was never even checked, so nothing
+      // surfaced it). The user would then get pushed forward to
+      // /delivery-operator-register-pay anyway with no row actually
+      // created, where the free-promo path's own fallback insert (also
+      // now fixed, see register_operator_free_promo.sql) would hit the
+      // exact same constraint and finally leak a raw Postgres error
+      // onto the screen. Now supplies phone, and genuinely checks the
+      // error instead of assuming success and navigating forward
+      // regardless.
+      const { error: insertError } = await supabase.from('delivery_operators').insert({
         user_id: user.id,
         full_name: fullName || '',
+        phone: phone || '',
         verification_tier: 'unverified',
         status: 'active',
       });
+
+      if (insertError) {
+        setError('Could not start delivery operator registration: ' + insertError.message);
+        return;
+      }
     }
 
     router.push('/delivery-operator-register-pay');

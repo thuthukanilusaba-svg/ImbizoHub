@@ -47,6 +47,19 @@ export default function DeliveryOperatorRegisterPayScreen() {
   const [myId, setMyId] = useState('');
   const [myEmail, setMyEmail] = useState('');
   const [operatorRow, setOperatorRow] = useState<any>(null);
+  // FIX (real bug, root cause of a raw Postgres error reaching the
+  // screen): init() below already set an error message when no
+  // delivery_operators row exists for this user, but nothing actually
+  // stopped the full pricing/payment form from rendering underneath
+  // that message — the form and its pay button stayed fully
+  // interactive, so tapping it called register_operator_free_promo()
+  // against a user with no row, which hit that RPC's own missing-row
+  // fallback and leaked a raw "null value in column full_name..."
+  // constraint error onto the screen. This flag gates the form so a
+  // missing profile shows ONLY the explanatory error and a way back,
+  // the same pattern operator-id-verify.tsx already uses for its own
+  // "invalid link" case.
+  const [noProfileFound, setNoProfileFound] = useState(false);
   // NEW: real, required Operator Terms acceptance.
   const [agreedToTerms, setAgreedToTerms] = useState(false);
 
@@ -83,6 +96,7 @@ export default function DeliveryOperatorRegisterPayScreen() {
 
     if (!data) {
       setError('No delivery operator profile found. Please register as a delivery operator first.');
+      setNoProfileFound(true);
       setLoading(false);
       return;
     }
@@ -209,6 +223,24 @@ export default function DeliveryOperatorRegisterPayScreen() {
     return (
       <View style={styles.center}>
         <ActivityIndicator size="large" color={GOLD} />
+      </View>
+    );
+  }
+
+  if (noProfileFound) {
+    return (
+      <View style={styles.successScreen}>
+        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+          <Text style={styles.backText}><Text style={styles.backArrow}>←</Text> Back</Text>
+        </TouchableOpacity>
+        <Text style={styles.successEmoji}>⚠️</Text>
+        <Text style={styles.successTitle}>No operator profile yet</Text>
+        <Text style={styles.successBody}>
+          {error || 'We couldn\'t find a delivery operator profile for your account. Start from your profile page to set one up first.'}
+        </Text>
+        <TouchableOpacity style={styles.startBtn} onPress={() => router.replace('/profile')}>
+          <Text style={styles.startBtnText}>Back to profile</Text>
+        </TouchableOpacity>
       </View>
     );
   }
