@@ -67,6 +67,7 @@ import {
   NativeScrollEvent,
   NativeSyntheticEvent,
   Platform,
+  Pressable,
   ScrollView,
   StyleSheet,
   Text,
@@ -356,9 +357,21 @@ export default function ListingScreen() {
                 scrollEventThrottle={16}
               >
                 {photos.map((url, i) => (
-                  <TouchableOpacity
+                  // FIX (real bug, reported: "does not show a full
+                  // picture unless you double tap"): this was a
+                  // TouchableOpacity nested inside a horizontal paging
+                  // ScrollView, which is itself nested inside the
+                  // page's own vertical ScrollView — a well-known React
+                  // Native gesture-arbitration case where the first tap
+                  // on a Touchable can get consumed while the responder
+                  // system is still negotiating between the two
+                  // surrounding scroll views, so nothing visibly
+                  // happens until a second tap. Pressable uses the
+                  // newer Pressability API, which resolves this
+                  // negotiation more reliably in nested-scroll layouts
+                  // than the legacy Touchable* components.
+                  <Pressable
                     key={i}
-                    activeOpacity={0.95}
                     onPress={() => { setActiveIndex(i); setZoomVisible(true); }}
                   >
                     {/* FIX: switched from resizeMode="cover" (crops to
@@ -373,7 +386,7 @@ export default function ListingScreen() {
                       style={[styles.carouselImage, { width: carouselWidth, height: carouselHeight }]}
                       resizeMode="contain"
                     />
-                  </TouchableOpacity>
+                  </Pressable>
                 ))}
               </ScrollView>
 
