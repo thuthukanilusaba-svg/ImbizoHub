@@ -207,7 +207,17 @@ export default function OperatorRegisterPayScreen() {
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-        <Text style={styles.backText}>← Back</Text>
+        {/* FIX (real bug, reported: "the back arrow is not in the
+            middle"): the ← glyph sits noticeably higher than its own
+            line box in this font, so plain "← Back" in one Text node
+            reads as visually uncentered next to the word. Splitting the
+            arrow into its own nested Text lets it get a small vertical
+            nudge independent of "Back" without needing an icon library
+            (this app doesn't use one anywhere — kept consistent with
+            that). Same "← Back" pattern is used across most screens in
+            the app, so the same tweak likely applies everywhere if this
+            looks right. */}
+        <Text style={styles.backText}><Text style={styles.backArrow}>←</Text> Back</Text>
       </TouchableOpacity>
 
       <Text style={styles.heading}>Transport operator registration</Text>
@@ -322,6 +332,10 @@ const styles = StyleSheet.create({
 
   backBtn: { marginBottom: 16 },
   backText: { color: GREY, fontSize: 14 },
+  // Small independent nudge so the ← glyph optically centers against
+  // "Back" instead of sitting high — see the FIX comment where this is
+  // used.
+  backArrow: { position: 'relative', top: 1 },
   heading: { fontSize: 24, fontWeight: '800', color: '#fff', marginBottom: 8 },
   subheading: { fontSize: 13, color: GREY, lineHeight: 19, marginBottom: 24 },
 
@@ -351,7 +365,17 @@ const styles = StyleSheet.create({
   termsText: { color: '#ccc', fontSize: 13, flex: 1 },
   termsLink: { color: GOLD, textDecorationLine: 'underline' },
 
-  payBtn: { backgroundColor: GOLD, borderRadius: 14, paddingVertical: 18, alignItems: 'center', marginBottom: 16, flexDirection: 'row', justifyContent: 'center', gap: 10 },
+  // FIX (real bug, reported: "the letters are not aligned" — visible as
+  // the button label and "Free until..."/"Valid for..." caption
+  // overlapping/clipping on a real phone): this was `flexDirection:
+  // 'row'`, which lays payBtnText and payBtnSub SIDE BY SIDE. That's
+  // fine for the verifying state (a small spinner next to one short
+  // line), but the static states render a full-length label plus a
+  // full-length caption — two long strings that don't fit side by side
+  // on a phone-width button, so they overflowed and clipped. Removed
+  // (the RN default is column), so the label stacks above the caption
+  // like payBtnSub's own `marginTop: 4` was clearly designed for.
+  payBtn: { backgroundColor: GOLD, borderRadius: 14, paddingVertical: 18, alignItems: 'center', marginBottom: 16, justifyContent: 'center' },
   payBtnText: { color: BLACK, fontSize: 16, fontWeight: '800' },
   payBtnSub: { color: '#5a4400', fontSize: 12, marginTop: 4 },
 

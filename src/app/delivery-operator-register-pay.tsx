@@ -242,7 +242,9 @@ export default function DeliveryOperatorRegisterPayScreen() {
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-        <Text style={styles.backText}>← Back</Text>
+        {/* FIX: same "back arrow not centered" fix as its twin file,
+            operator-register-pay.tsx — see the comment there. */}
+        <Text style={styles.backText}><Text style={styles.backArrow}>←</Text> Back</Text>
       </TouchableOpacity>
 
       <Text style={styles.heading}>Delivery operator registration</Text>
@@ -379,6 +381,7 @@ const styles = StyleSheet.create({
 
   backBtn: { marginBottom: 16 },
   backText: { color: GREY, fontSize: 14 },
+  backArrow: { position: 'relative', top: 1 },
   heading: { fontSize: 24, fontWeight: '800', color: '#fff', marginBottom: 8 },
   subheading: { fontSize: 13, color: GREY, lineHeight: 19, marginBottom: 24 },
 
@@ -409,7 +412,9 @@ const styles = StyleSheet.create({
   termsText: { color: '#ccc', fontSize: 13, flex: 1 },
   termsLink: { color: GOLD, textDecorationLine: 'underline' },
 
-  payBtn: { backgroundColor: GOLD, borderRadius: 14, paddingVertical: 18, alignItems: 'center', marginBottom: 16, flexDirection: 'row', justifyContent: 'center', gap: 10 },
+  // FIX: same button-text-overlap fix as its twin file,
+  // operator-register-pay.tsx — see the comment there.
+  payBtn: { backgroundColor: GOLD, borderRadius: 14, paddingVertical: 18, alignItems: 'center', marginBottom: 16, justifyContent: 'center' },
   payBtnText: { color: BLACK, fontSize: 16, fontWeight: '800' },
   payBtnSub: { color: '#5a4400', fontSize: 12, marginTop: 4 },
 
