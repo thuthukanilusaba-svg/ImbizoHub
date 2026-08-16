@@ -121,6 +121,7 @@ export default function ChatScreen() {
   const [dealModal, setDealModal] = useState(false);
   const openDealHandled = useRef(false);
   const isBuyerRoleRef = useRef(false);
+  const sessionChannelRef = useRef<any>(null);
 
   const [itemIsPhysical, setItemIsPhysical] = useState(true);
 
@@ -224,6 +225,10 @@ export default function ChatScreen() {
       if (channelRef.current) {
         supabase.removeChannel(channelRef.current);
         channelRef.current = null;
+      }
+      if (sessionChannelRef.current) {
+        supabase.removeChannel(sessionChannelRef.current);
+        sessionChannelRef.current = null;
       }
     };
   }, []);
@@ -406,7 +411,35 @@ export default function ChatScreen() {
     if (data) {
       setSession(data);
       if (data.status === 'confirmed') setConfirmed(true);
+      // NEW: realtime sync (mirrors meetpay.tsx's subscribeToSession) —
+      // without this, whichever side didn't just trigger the change (the
+      // buyer waiting on the seller's PIN, or the seller waiting on the
+      // buyer's confirmation) would have no way to find out except
+      // backing out of the modal and reopening it.
+      subscribeToSession(data.id);
     }
+  }
+
+  function subscribeToSession(sessionId: string) {
+    if (sessionChannelRef.current) {
+      supabase.removeChannel(sessionChannelRef.current);
+      sessionChannelRef.current = null;
+    }
+
+    const channel = supabase
+      .channel(`chat-meetpay-session-${sessionId}`)
+      .on('postgres_changes', {
+        event: 'UPDATE', schema: 'public', table: 'meetpay_sessions',
+        filter: `id=eq.${sessionId}`,
+      }, (payload) => {
+        if (payload.new) {
+          setSession(payload.new);
+          if ((payload.new as any).status === 'confirmed') setConfirmed(true);
+        }
+      })
+      .subscribe();
+
+    sessionChannelRef.current = channel;
   }
 
   const fetchMessages = async (uid: string) => {
@@ -598,9 +631,14 @@ export default function ChatScreen() {
       // restriction preventing a buyer from inserting a session
       // pre-marked status='confirmed', or fabricating buyer_id/seller_id
       // entirely. create_meetpay_session() now derives both parties
-      // server-side from the real listing/item_request/quote records
-      // and generates the PIN itself — the client just asks for a
-      // session to exist.
+      // server-side from the real listing/item_request/quote records.
+      //
+      // CHANGED (PIN-role reversal): create_meetpay_session() no longer
+      // generates a PIN at all — the buyer just arranges the deal here.
+      // Both parties meet in person first; once they're happy, the
+      // SELLER generates the PIN (see regeneratePin(), now seller-only)
+      // and the buyer enters it to confirm. So no PIN exists yet at this
+      // point, and there's nothing to notify about.
       const { data, error } = await supabase.rpc('create_meetpay_session', {
         p_type: isItemRequestChat ? 'item_request' : 'listing',
         p_reference_id: isItemRequestChat ? String(item_request_id) : String(listing_id),
@@ -609,17 +647,23 @@ export default function ChatScreen() {
 
       if (error) { setPinError(error.message); return; }
       setSession(data);
-
-      notifyMeetPayPinGenerated(isItemRequestChat ? 'this item' : 'this listing');
+      subscribeToSession(data.id);
+    } else if (session) {
+      subscribeToSession(session.id);
     }
   }
 
+  // CHANGED (PIN-role reversal): regenerate_meetpay_pin() now requires
+  // the caller to be the session's SELLER (previously the buyer) — see
+  // the reverse_meetpay_pin_roles migration. This is now how the seller
+  // generates the very first PIN too, not just a refresh: the PIN is
+  // null from session creation onward until the seller calls this.
   async function regeneratePin() {
     if (!session) return;
 
     // FIX: was a direct, unguarded update to `pin`/`pin_expires_at` —
     // regenerate_meetpay_pin() now checks server-side that the caller is
-    // genuinely this session's buyer and that the session is still
+    // genuinely this session's seller and that the session is still
     // pending before generating a new PIN.
     const { data, error } = await supabase.rpc('regenerate_meetpay_pin', {
       p_session_id: session.id,
@@ -627,13 +671,22 @@ export default function ChatScreen() {
 
     if (error) { setPinError(error.message); return; }
     setSession(data);
+
+    // Local-device-only reminder for the seller who just generated it —
+    // see lib/notifications.ts for why this can't reach the buyer's
+    // device directly.
+    notifyMeetPayPinGenerated(isItemRequestChat ? 'this item' : 'this listing');
   }
 
+  // CHANGED (PIN-role reversal): confirm_meetpay_pin() now requires the
+  // caller to be the session's BUYER (previously the seller) — the
+  // buyer is the one entering the PIN the seller just showed them, to
+  // confirm they received the goods.
   async function handleConfirmPin() {
     setPinError('');
     if (enteredPin.length !== 4) { setPinError('Enter the 4-digit PIN.'); return; }
     if (!session) { setPinError('No active session found.'); return; }
-    if (secondsLeft === 0) { setPinError('This PIN has expired. Ask the buyer to refresh.'); return; }
+    if (secondsLeft === 0) { setPinError('This PIN has expired. Ask the seller for a new one.'); return; }
     if (enteredPin !== session.pin) { setPinError('Incorrect PIN.'); return; }
 
     setConfirming(true);
@@ -641,7 +694,7 @@ export default function ChatScreen() {
     // this used to be a direct .update() guarded only by whatever
     // .eq()s this specific query happened to include — real protection,
     // but only as strong as "the official app always sends this exact
-    // query." confirm_meetpay_pin() now makes the seller-only + PIN
+    // query." confirm_meetpay_pin() now makes the buyer-only + PIN
     // match + not-expired checks the database's own problem, the same
     // pattern confirm_delivery_pin() already uses in dealer.tsx.
     const { data, error } = await supabase.rpc('confirm_meetpay_pin', {
@@ -651,7 +704,7 @@ export default function ChatScreen() {
     setConfirming(false);
 
     if (error) {
-      setPinError(error.message || 'This PIN just changed — ask the buyer for the current one and try again.');
+      setPinError(error.message || 'This PIN just changed — ask the seller for the current one and try again.');
       return;
     }
     setSession(data);
@@ -705,7 +758,10 @@ export default function ChatScreen() {
             >
               <Text style={styles.meetPayHeaderIcon}>🔒</Text>
               <Text style={styles.meetPayHeaderText}>
-                {isBuyerRole ? 'Arrange deal' : 'Confirm PIN'}
+                {/* CHANGED (PIN-role reversal): the seller no longer
+                    confirms a PIN — they generate one, after meeting the
+                    buyer and both being happy. */}
+                {isBuyerRole ? 'Arrange deal' : 'Meet & Pay'}
               </Text>
             </TouchableOpacity>
           )}
@@ -879,10 +935,13 @@ export default function ChatScreen() {
               <View style={{ alignItems: 'center', paddingVertical: 10 }}>
                 <Text style={{ fontSize: 56, marginBottom: 16 }}>✅</Text>
                 <Text style={styles.modalTitle}>Transaction confirmed!</Text>
+                {/* CHANGED (PIN-role reversal): the buyer is now the
+                    one who performs the confirming action (entering the
+                    seller's PIN); the seller receives it passively. */}
                 <Text style={styles.modalBody}>
                   {isBuyerRole
-                    ? (isItemRequestChat ? 'You confirmed you received the item.' : 'You confirmed the deal with the buyer.')
-                    : (isItemRequestChat ? 'The buyer confirmed receipt. Thank you for using ImbizoHub safely.' : 'The seller confirmed receipt. Thank you for using ImbizoHub safely.')}
+                    ? (isItemRequestChat ? 'You confirmed you received the item.' : 'You confirmed you received the goods.')
+                    : (isItemRequestChat ? 'The buyer confirmed receipt. Thank you for using ImbizoHub safely.' : 'The buyer confirmed receipt. Thank you for using ImbizoHub safely.')}
                 </Text>
                 {/* FIX (real bug, found during a thorough review):
                     this used to always interpolate listing_id
@@ -911,51 +970,25 @@ export default function ChatScreen() {
                 </TouchableOpacity>
               </View>
             ) : isBuyerRole ? (
+              // CHANGED (PIN-role reversal): the buyer arranged the deal
+              // (created the session) but no longer generates a PIN —
+              // they meet the seller first, and once the seller
+              // generates a PIN, the buyer enters it here to confirm
+              // they received the goods.
               <>
                 <Text style={styles.modalTitle}>{isItemRequestChat ? 'Meet & Collect' : 'Meet & Pay'}</Text>
                 <Text style={styles.modalBody}>
-                  {isItemRequestChat
-                    ? 'Show this PIN to the seller once you\'ve collected the item and you\'re ready to confirm.'
-                    : 'Show this PIN to the seller once you\'ve inspected the item and you\'re ready to complete the deal.'}
+                  {session?.pin
+                    ? 'Enter the PIN the seller shows you once you\'ve inspected the item and you\'re both happy to complete the deal.'
+                    : 'Meet the seller in person first. Once you\'re both happy, ask them to generate a PIN so you can confirm here.'}
                 </Text>
 
                 {pinError ? <Text style={styles.modalError}>⚠️ {pinError}</Text> : null}
 
-                {session && (
-                  <>
-                    <View style={styles.pinCard}>
-                      <Text style={styles.pinLabel}>Your PIN</Text>
-                      <Text style={styles.pinDisplay}>{session.pin}</Text>
-                      <Text style={[styles.pinTimer, secondsLeft < 60 && { color: '#ff8a8a' }]}>
-                        {secondsLeft > 0 ? `Expires in ${formatTime(secondsLeft)}` : 'Expired'}
-                      </Text>
-                    </View>
-
-                    <TouchableOpacity style={styles.regenBtn} onPress={regeneratePin}>
-                      <Text style={styles.regenBtnText}>
-                        {secondsLeft === 0 ? 'Generate new PIN' : 'Get a new PIN'}
-                      </Text>
-                    </TouchableOpacity>
-                  </>
-                )}
-
-                <TouchableOpacity style={styles.cancelLink} onPress={() => setMeetPayModal(false)}>
-                  <Text style={styles.cancelLinkText}>Close</Text>
-                </TouchableOpacity>
-              </>
-            ) : (
-              <>
-                <Text style={styles.modalTitle}>Confirm with PIN</Text>
-                <Text style={styles.modalBody}>
-                  Ask the buyer for their 4-digit PIN to confirm this transaction is complete.
-                </Text>
-
-                {pinError ? <Text style={styles.modalError}>⚠️ {pinError}</Text> : null}
-
-                {!session ? (
+                {!session || !session.pin ? (
                   <View style={styles.waitingBox}>
                     <ActivityIndicator color={GOLD} style={{ marginBottom: 10 }} />
-                    <Text style={styles.waitingText}>Waiting for buyer to generate a PIN...</Text>
+                    <Text style={styles.waitingText}>Waiting for the seller to generate a PIN...</Text>
                   </View>
                 ) : (
                   <>
@@ -977,6 +1010,52 @@ export default function ChatScreen() {
                         ? <ActivityIndicator color={BLACK} />
                         : <Text style={styles.modalBtnText}>Confirm transaction</Text>
                       }
+                    </TouchableOpacity>
+                  </>
+                )}
+
+                <TouchableOpacity style={styles.cancelLink} onPress={() => setMeetPayModal(false)}>
+                  <Text style={styles.cancelLinkText}>Close</Text>
+                </TouchableOpacity>
+              </>
+            ) : (
+              // CHANGED (PIN-role reversal): the seller no longer
+              // confirms the buyer's PIN — once they've met the buyer
+              // and both are happy, the seller generates the PIN here
+              // and shows it to the buyer, who enters it to confirm.
+              <>
+                <Text style={styles.modalTitle}>{isItemRequestChat ? 'Meet & Collect' : 'Meet & Pay'}</Text>
+                <Text style={styles.modalBody}>
+                  {!session
+                    ? 'Waiting for the buyer to arrange the deal.'
+                    : 'Once you\'ve met the buyer and you\'re both happy, generate a PIN and show it to them to confirm they received the goods.'}
+                </Text>
+
+                {pinError ? <Text style={styles.modalError}>⚠️ {pinError}</Text> : null}
+
+                {!session ? (
+                  <View style={styles.waitingBox}>
+                    <ActivityIndicator color={GOLD} style={{ marginBottom: 10 }} />
+                    <Text style={styles.waitingText}>Waiting for the buyer to arrange the deal...</Text>
+                  </View>
+                ) : !session.pin ? (
+                  <TouchableOpacity style={styles.modalBtn} onPress={regeneratePin}>
+                    <Text style={styles.modalBtnText}>Generate PIN</Text>
+                  </TouchableOpacity>
+                ) : (
+                  <>
+                    <View style={styles.pinCard}>
+                      <Text style={styles.pinLabel}>Your PIN</Text>
+                      <Text style={styles.pinDisplay}>{session.pin}</Text>
+                      <Text style={[styles.pinTimer, secondsLeft < 60 && { color: '#ff8a8a' }]}>
+                        {secondsLeft > 0 ? `Expires in ${formatTime(secondsLeft)}` : 'Expired'}
+                      </Text>
+                    </View>
+
+                    <TouchableOpacity style={styles.regenBtn} onPress={regeneratePin}>
+                      <Text style={styles.regenBtnText}>
+                        {secondsLeft === 0 ? 'Generate new PIN' : 'Get a new PIN'}
+                      </Text>
                     </TouchableOpacity>
                   </>
                 )}

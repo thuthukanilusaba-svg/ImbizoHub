@@ -31,6 +31,23 @@
 // someone sees before submitting; it has zero effect on what actually
 // gets written, since the RPC re-derives the real values server-side
 // from the session itself regardless of what the URL says.
+//
+// EXTENDED (delivery rating fix): delivery-track.tsx and
+// buyer-deliveries.tsx's "Rate this delivery" button used to link here
+// with a delivery_bookings id passed as session_id — but submit_rating()
+// only ever recognizes meetpay_sessions ids, so it always threw
+// "Transaction not found" for a real delivery. There was also no rating
+// path anywhere for the delivery DRIVER — delivery_operators.rating/
+// rating_count exist and are shown in the UI, but nothing ever wrote to
+// them. Both are now handled by a second RPC, submit_delivery_rating(),
+// reached via ?source=delivery&booking_id=...&target=seller|driver
+// (see the two call sites above). Same security model: server-derives
+// and verifies everything from the confirmed delivery_bookings row,
+// client params here are cosmetic only. After rating the seller, if the
+// booking has an assigned driver, the success screen offers a chained
+// "Rate the driver" step — see currentTarget/startDriverRating below —
+// rather than navigating to a second URL, so state resets cleanly
+// without relying on this screen remounting.
 
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useState } from 'react';
@@ -53,21 +70,35 @@ const GREY = '#AAAAAA';
 
 export default function RatingScreen() {
   const router = useRouter();
-  const { session_id, role } = useLocalSearchParams<{
+  const { session_id, role, source, booking_id, target, has_driver } = useLocalSearchParams<{
     session_id: string;
     reviewee_id: string;
     role: string;
     listing_id: string;
+    source: string;
+    booking_id: string;
+    target: string;
+    has_driver: string;
   }>();
   // reviewee_id and listing_id are intentionally not destructured for
   // use beyond display — see file header. role is kept only to pick the
   // right pre-submission copy below.
+
+  const isDelivery = source === 'delivery';
 
   const [stars, setStars] = useState(0);
   const [review, setReview] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState('');
+  // Only meaningful when isDelivery — which of the two possible targets
+  // (seller, then optionally driver) this screen is currently rating.
+  // Starts from the target param (always 'seller' from the two call
+  // sites today, but kept flexible), and flips to 'driver' via
+  // startDriverRating() below after the seller step succeeds.
+  const [currentTarget, setCurrentTarget] = useState<'seller' | 'driver'>(
+    target === 'driver' ? 'driver' : 'seller'
+  );
 
   async function handleSubmit() {
     if (stars === 0) {
@@ -78,14 +109,21 @@ export default function RatingScreen() {
     setError('');
     setSubmitting(true);
 
-    // The ONLY write path now — everything else (auth check, session
-    // validity, participant verification, duplicate check, atomic
-    // aggregate update) happens server-side inside this one function.
-    const { data, error: rpcError } = await supabase.rpc('submit_rating', {
-      p_session_id: session_id,
-      p_stars: stars,
-      p_review: review.trim() || null,
-    });
+    // The ONLY write path now — everything else (auth check, session/
+    // booking validity, participant verification, duplicate check,
+    // atomic aggregate update) happens server-side inside these RPCs.
+    const { data, error: rpcError } = isDelivery
+      ? await supabase.rpc('submit_delivery_rating', {
+          p_booking_id: booking_id,
+          p_target: currentTarget,
+          p_stars: stars,
+          p_review: review.trim() || null,
+        })
+      : await supabase.rpc('submit_rating', {
+          p_session_id: session_id,
+          p_stars: stars,
+          p_review: review.trim() || null,
+        });
 
     setSubmitting(false);
 
@@ -101,7 +139,20 @@ export default function RatingScreen() {
     setSubmitted(true);
   }
 
+  // Chains straight into rating the driver after the seller step,
+  // without navigating to a second URL — a router.push to this same
+  // route wouldn't reliably remount the screen (or reset this state),
+  // so the reset happens explicitly here instead.
+  function startDriverRating() {
+    setCurrentTarget('driver');
+    setStars(0);
+    setReview('');
+    setError('');
+    setSubmitted(false);
+  }
+
   if (submitted) {
+    const offerDriverStep = isDelivery && currentTarget === 'seller' && has_driver === '1';
     return (
       <View style={styles.container}>
         <View style={styles.successCard}>
@@ -110,8 +161,18 @@ export default function RatingScreen() {
           <Text style={styles.successBody}>
             Thank you for your feedback. It helps build trust on ImbizoHub.
           </Text>
-          <TouchableOpacity style={styles.doneBtn} onPress={() => router.replace('/')}>
-            <Text style={styles.doneBtnText}>Back to home</Text>
+          {offerDriverStep && (
+            <TouchableOpacity style={styles.doneBtn} onPress={startDriverRating}>
+              <Text style={styles.doneBtnText}>⭐ Rate the driver →</Text>
+            </TouchableOpacity>
+          )}
+          <TouchableOpacity
+            style={offerDriverStep ? styles.skipBtn : styles.doneBtn}
+            onPress={() => router.replace('/')}
+          >
+            <Text style={offerDriverStep ? styles.skipText : styles.doneBtnText}>
+              {offerDriverStep ? 'Skip — back to home' : 'Back to home'}
+            </Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -132,9 +193,13 @@ export default function RatingScreen() {
 
       <Text style={styles.heading}>Rate your experience</Text>
       <Text style={styles.subheading}>
-        {isSeller
-          ? 'How was the buyer? Your rating helps other sellers know who to trust.'
-          : 'How was the seller? Your rating helps other buyers make safe decisions.'}
+        {isDelivery
+          ? (currentTarget === 'driver'
+              ? 'How was the driver? Your rating helps other buyers know who to trust for delivery.'
+              : 'How was the seller? Your rating helps other buyers make safe decisions.')
+          : (isSeller
+              ? 'How was the buyer? Your rating helps other sellers know who to trust.'
+              : 'How was the seller? Your rating helps other buyers make safe decisions.')}
       </Text>
 
       {/* Star selector */}
@@ -158,9 +223,13 @@ export default function RatingScreen() {
         style={styles.reviewInput}
         value={review}
         onChangeText={setReview}
-        placeholder={isSeller
-          ? 'e.g. Buyer was on time and payment went smoothly.'
-          : 'e.g. Item was exactly as described, seller was friendly.'}
+        placeholder={isDelivery
+          ? (currentTarget === 'driver'
+              ? 'e.g. Driver was on time and handled the item carefully.'
+              : 'e.g. Item was exactly as described, seller was friendly.')
+          : (isSeller
+              ? 'e.g. Buyer was on time and payment went smoothly.'
+              : 'e.g. Item was exactly as described, seller was friendly.')}
         placeholderTextColor="#555"
         multiline
         numberOfLines={3}

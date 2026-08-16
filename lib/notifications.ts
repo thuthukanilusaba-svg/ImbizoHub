@@ -163,10 +163,16 @@ export function notifyNewMessage(senderName: string, messageText: string, listin
   );
 }
 
+// CHANGED (PIN-role reversal): the SELLER now generates the PIN, after
+// meeting the buyer in person and both being happy — the buyer then
+// enters it to confirm they received the goods. This fires only on the
+// generating device (see showLocalNotification's own local-only
+// limitation), so it reads as a self-reminder to the seller rather than
+// something the buyer will see.
 export function notifyMeetPayPinGenerated(listingTitle: string) {
   return showLocalNotification(
     'Meet & Pay PIN ready',
-    `The buyer has generated a PIN for "${listingTitle}". Tap to confirm the transaction.`,
+    `You generated a PIN for "${listingTitle}". Show it to the buyer to complete the deal.`,
     { type: 'meetpay' }
   );
 }

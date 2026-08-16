@@ -198,7 +198,12 @@ export default function DeliveryTrackScreen() {
   const stepIdx = currentStepIndex(booking.status);
   const driver = booking.delivery_operators;
   const isConfirmed = booking.status === 'confirmed';
-  const canShowPin = booking.status !== 'requested';
+  // NEW: a driver can now decline an assigned job instead of it being
+  // auto-accepted (see decline_delivery_job). 'declined' also excluded
+  // here since there's no PIN to show at all for a booking with no
+  // driver actively working it.
+  const isDeclined = booking.status === 'declined';
+  const canShowPin = booking.status !== 'requested' && !isDeclined;
   const pinIsFresh = booking.pin && secondsLeft > 0;
 
   return (
@@ -241,52 +246,80 @@ export default function DeliveryTrackScreen() {
           <View style={styles.errorBox}><Text style={styles.errorText}>⚠️ {error}</Text></View>
         ) : null}
 
-        {/* ── Status timeline ── */}
-        <View style={styles.timelineCard}>
-          {STEPS.map((step, i) => {
-            const done = i <= stepIdx;
-            const isLast = i === STEPS.length - 1;
-            return (
-              <View key={step.key} style={styles.timelineRow}>
-                <View style={styles.timelineLeft}>
-                  <View style={[styles.timelineDot, done && styles.timelineDotDone]}>
-                    {done && <Text style={styles.timelineCheck}>✓</Text>}
-                  </View>
-                  {!isLast && <View style={[styles.timelineLine, i < stepIdx && styles.timelineLineDone]} />}
-                </View>
-                <Text style={[styles.timelineLabel, done && styles.timelineLabelDone]}>{step.label}</Text>
-              </View>
-            );
-          })}
-        </View>
-
-        {/* ── Driver info ── */}
-        {driver && (
-          <View style={styles.driverCard}>
-            <View style={styles.driverAvatar}>
-              <Text style={styles.driverAvatarText}>{driver.full_name ? driver.full_name[0].toUpperCase() : '?'}</Text>
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.driverName}>{driver.full_name}</Text>
-              <Text style={styles.driverVehicle}>🚗 {driver.vehicle_type || 'Vehicle not specified'}</Text>
-              {driver.rating_count > 0 && (
-                <Text style={styles.driverRating}>★ {driver.rating.toFixed(1)} ({driver.rating_count})</Text>
-              )}
-            </View>
+        {/* ── Declined state: no timeline/driver/PIN, just a clear CTA ── */}
+        {isDeclined ? (
+          <View style={styles.declinedBox}>
+            <Text style={styles.declinedEmoji}>🚫</Text>
+            <Text style={styles.declinedTitle}>Driver unavailable</Text>
+            <Text style={styles.declinedBody}>
+              Your driver couldn't take this delivery. Choose another driver to keep it moving — the $2 booking
+              fee you already paid covers the new driver too.
+            </Text>
+            <TouchableOpacity
+              style={styles.chooseAnotherBtn}
+              onPress={() => router.push(`/delivery-booking?reassign_booking_id=${booking.id}`)}
+            >
+              <Text style={styles.chooseAnotherBtnText}>Choose another driver →</Text>
+            </TouchableOpacity>
           </View>
+        ) : (
+          <>
+            {/* ── Status timeline ── */}
+            <View style={styles.timelineCard}>
+              {STEPS.map((step, i) => {
+                const done = i <= stepIdx;
+                const isLast = i === STEPS.length - 1;
+                return (
+                  <View key={step.key} style={styles.timelineRow}>
+                    <View style={styles.timelineLeft}>
+                      <View style={[styles.timelineDot, done && styles.timelineDotDone]}>
+                        {done && <Text style={styles.timelineCheck}>✓</Text>}
+                      </View>
+                      {!isLast && <View style={[styles.timelineLine, i < stepIdx && styles.timelineLineDone]} />}
+                    </View>
+                    <Text style={[styles.timelineLabel, done && styles.timelineLabelDone]}>{step.label}</Text>
+                  </View>
+                );
+              })}
+            </View>
+
+            {/* ── Driver info ── */}
+            {driver && (
+              <View style={styles.driverCard}>
+                <View style={styles.driverAvatar}>
+                  <Text style={styles.driverAvatarText}>{driver.full_name ? driver.full_name[0].toUpperCase() : '?'}</Text>
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.driverName}>{driver.full_name}</Text>
+                  <Text style={styles.driverVehicle}>🚗 {driver.vehicle_type || 'Vehicle not specified'}</Text>
+                  {driver.rating_count > 0 && (
+                    <Text style={styles.driverRating}>★ {driver.rating.toFixed(1)} ({driver.rating_count})</Text>
+                  )}
+                </View>
+              </View>
+            )}
+          </>
         )}
 
         {/* ── PIN section ── */}
-        {isConfirmed ? (
+        {isDeclined ? null : isConfirmed ? (
           <View style={styles.confirmedBox}>
             <Text style={styles.confirmedEmoji}>✅</Text>
             <Text style={styles.confirmedTitle}>Delivery confirmed</Text>
             <Text style={styles.confirmedBody}>This delivery is complete. Thanks for using ImbizoHub safely.</Text>
+            {/* FIX (real bug): this used to link to
+                /rating?session_id=${booking.id}... — but session_id is
+                meant to be a meetpay_sessions id, and submit_rating()
+                only ever recognizes those, so this always failed with
+                "Transaction not found" for a real delivery booking.
+                Now routes through the delivery-specific
+                submit_delivery_rating() RPC via source=delivery&
+                booking_id=... — see rating.tsx's top-of-file comment. */}
             {booking.seller_id && (
               <TouchableOpacity
                 style={styles.rateLinkBtn}
                 onPress={() => router.push(
-                  `/rating?session_id=${booking.id}&reviewee_id=${booking.seller_id}&role=buyer&listing_id=${booking.listing_id ?? ''}`
+                  `/rating?source=delivery&booking_id=${booking.id}&target=seller&has_driver=${driver?.full_name ? '1' : '0'}&listing_id=${booking.listing_id ?? ''}`
                 )}
               >
                 <Text style={styles.rateLinkText}>⭐ Rate this delivery</Text>
@@ -415,4 +448,11 @@ const styles = StyleSheet.create({
   confirmedBody: { fontSize: 13, color: GREY, textAlign: 'center', lineHeight: 19 },
   rateLinkBtn: { marginTop: 16 },
   rateLinkText: { color: GOLD, fontSize: 14, fontWeight: '700' },
+
+  declinedBox: { backgroundColor: BLACK, borderRadius: 14, padding: 28, alignItems: 'center', borderWidth: 0.5, borderColor: '#ff8a8a', marginBottom: 16 },
+  declinedEmoji: { fontSize: 48, marginBottom: 12 },
+  declinedTitle: { fontSize: 18, fontWeight: '800', color: '#fff', marginBottom: 8 },
+  declinedBody: { fontSize: 13, color: GREY, textAlign: 'center', lineHeight: 19, marginBottom: 20 },
+  chooseAnotherBtn: { backgroundColor: GOLD, borderRadius: 12, paddingVertical: 14, paddingHorizontal: 24 },
+  chooseAnotherBtnText: { color: BLACK, fontSize: 14, fontWeight: '800' },
 });

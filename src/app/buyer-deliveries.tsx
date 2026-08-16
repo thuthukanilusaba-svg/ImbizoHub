@@ -51,16 +51,16 @@ const STEPS = [
 function statusColor(status: string) {
   const map: Record<string, string> = {
     requested: '#888', accepted: '#4A90D9', dispatched: GOLD,
-    delivered: GREEN, confirmed: GREEN,
+    delivered: GREEN, confirmed: GREEN, declined: '#ff8a8a',
   };
   return map[status] ?? '#888';
 }
 
 function statusLabel(status: string) {
   const map: Record<string, string> = {
-    requested: 'Finding a driver', accepted: 'Driver on the way to collect',
+    requested: 'Waiting for driver to accept', accepted: 'Driver on the way to collect',
     dispatched: 'In transit to you', delivered: 'Delivered — confirm receipt',
-    confirmed: 'Completed',
+    confirmed: 'Completed', declined: 'Driver unavailable',
   };
   return map[status] ?? status;
 }
@@ -139,6 +139,7 @@ export default function BuyerDeliveriesScreen() {
             const stepIdx = currentStepIndex(booking.status);
             const driver = booking.delivery_operators;
             const itemTitle = itemTitleFor(booking);
+            const isDeclined = booking.status === 'declined';
             const isTrackable = booking.status !== 'requested' && booking.status !== 'confirmed';
             const isConfirmed = booking.status === 'confirmed';
 
@@ -172,10 +173,16 @@ export default function BuyerDeliveriesScreen() {
                 {isTrackable && (
                   <TouchableOpacity
                     style={styles.trackBtn}
-                    onPress={() => router.push(`/delivery-track?booking_id=${booking.id}`)}
+                    onPress={() =>
+                      isDeclined
+                        ? router.push(`/delivery-booking?reassign_booking_id=${booking.id}`)
+                        : router.push(`/delivery-track?booking_id=${booking.id}`)
+                    }
                   >
                     <Text style={styles.trackBtnText}>
-                      {booking.status === 'delivered' ? 'Confirm receipt →' : 'Track delivery →'}
+                      {isDeclined
+                        ? 'Choose another driver →'
+                        : booking.status === 'delivered' ? 'Confirm receipt →' : 'Track delivery →'}
                     </Text>
                   </TouchableOpacity>
                 )}
@@ -183,10 +190,23 @@ export default function BuyerDeliveriesScreen() {
                 {isConfirmed && (
                   <View style={styles.confirmedBox}>
                     <Text style={styles.confirmedText}>✅ Delivery confirmed</Text>
-                    {driver?.full_name && (
+                    {/* FIX (real bug): same broken link as
+                        delivery-track.tsx — session_id here was a
+                        delivery_bookings id, but submit_rating() only
+                        recognizes meetpay_sessions ids, so this always
+                        failed with "Transaction not found". Now routes
+                        through submit_delivery_rating() via
+                        source=delivery&booking_id=... — see rating.tsx.
+                        ALSO CHANGED the gate from `driver?.full_name` to
+                        `booking.seller_id` (matching delivery-track.tsx)
+                        — rating the seller shouldn't depend on whether a
+                        driver happens to be assigned; has_driver is
+                        still passed separately so rating.tsx knows
+                        whether to offer the chained driver-rating step. */}
+                    {booking.seller_id && (
                       <TouchableOpacity
                         onPress={() => router.push(
-                          `/rating?session_id=${booking.id}&reviewee_id=${booking.seller_id}&role=buyer&listing_id=${booking.listing_id ?? ''}`
+                          `/rating?source=delivery&booking_id=${booking.id}&target=seller&has_driver=${driver?.full_name ? '1' : '0'}&listing_id=${booking.listing_id ?? ''}`
                         )}
                       >
                         <Text style={styles.rateLink}>⭐ Rate this delivery</Text>
