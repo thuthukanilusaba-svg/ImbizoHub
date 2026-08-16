@@ -283,6 +283,16 @@ export default function BrowseWantedScreen() {
       setUploadingPhoto(false);
     }
 
+    // FIX (real bug, reported: submitting a response with a photo
+    // failed with "Could not find the 'image_url' column of
+    // 'item_responses' in the schema cache"): this wasn't a stale
+    // schema cache — that column has never existed. item_responses'
+    // real column is photo_url; this insert always used the wrong name
+    // whenever a photo was attached, so the whole response (price,
+    // message, everything) failed to save, not just the photo. A
+    // response with no photo never hit this line at all (imageUrl
+    // stays null either way), which is why this went unnoticed until
+    // someone actually attached a photo.
     const { error } = await supabase.from('item_responses').insert({
       item_request_id: selected.id,
       responder_id: user.id,
@@ -290,7 +300,7 @@ export default function BrowseWantedScreen() {
       message: message.trim(),
       status: 'pending',
       is_physical_item: isPhysicalItem,
-      image_url: imageUrl,
+      photo_url: imageUrl,
     });
 
     setSubmitting(false);
