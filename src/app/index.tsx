@@ -212,12 +212,13 @@ export default function HomeScreen() {
           </View>
         </View>
 
-        <View style={styles.searchWrap}>
-          <TouchableOpacity style={styles.searchBar} onPress={() => router.push('/explore')}>
-            <Text style={styles.searchIcon}>🔍</Text>
-            <Text style={styles.searchPlaceholder}>Search phones, cars, furniture...</Text>
-          </TouchableOpacity>
-        </View>
+        {/* REMOVED (product decision): this search bar was purely a
+            shortcut to /explore — no live typing/filtering happened
+            here, that all lives in explore.tsx itself. It duplicated
+            the bottom nav's "Browse" tab, which goes to the exact same
+            screen with the exact same real search box already on it.
+            Removing it is cosmetic only; no search functionality was
+            attached to this element. */}
 
         <TouchableOpacity
           style={styles.wantedBanner}
@@ -464,10 +465,6 @@ const styles = StyleSheet.create({
   greeting: { color: GREY, fontSize: 12, marginTop: 2 },
   avatar: { width: 36, height: 36, backgroundColor: GOLD, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
   avatarText: { color: BLACK, fontSize: 13, fontWeight: '700' },
-  searchWrap: { backgroundColor: BLACK, paddingHorizontal: 16, paddingBottom: 14 },
-  searchBar: { backgroundColor: DARK, borderRadius: 12, padding: 10, flexDirection: 'row', alignItems: 'center', gap: 10, borderWidth: 0.5, borderColor: '#333' },
-  searchIcon: { fontSize: 16 },
-  searchPlaceholder: { color: '#555', fontSize: 13 },
   vanBanner: { backgroundColor: '#1a1a2e', borderRadius: 14, marginHorizontal: 16, marginTop: 12, marginBottom: 4, paddingHorizontal: 18, paddingVertical: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderWidth: 0.5, borderColor: '#3a3a5e' },
   wantedBanner: { backgroundColor: '#1a2e1a', borderRadius: 14, marginHorizontal: 16, marginTop: 12, marginBottom: 4, paddingHorizontal: 18, paddingVertical: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderWidth: 0.5, borderColor: '#3a5e3a' },
   browseWantedBanner: { backgroundColor: '#2e2a1a', borderRadius: 14, marginHorizontal: 16, marginTop: 4, marginBottom: 4, paddingHorizontal: 18, paddingVertical: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderWidth: 0.5, borderColor: '#5e5a3a' },
