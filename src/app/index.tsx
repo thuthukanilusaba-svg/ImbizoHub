@@ -265,31 +265,6 @@ export default function HomeScreen() {
           <Text style={styles.vanBannerArrow}>›</Text>
         </TouchableOpacity>
 
-        <View style={styles.trustSection}>
-          <Text style={styles.trustTitle}>How ImbizoHub keeps you safe</Text>
-          <View style={styles.trustRow}>
-            <Text style={styles.trustIcon}>🔐</Text>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.trustItemTitle}>PIN-confirmed handovers</Text>
-              <Text style={styles.trustItemSub}>Nothing's marked complete until both sides confirm, in person, with a one-time PIN</Text>
-            </View>
-          </View>
-          <View style={styles.trustRow}>
-            <Text style={styles.trustIcon}>🪪</Text>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.trustItemTitle}>ID-verified delivery operators</Text>
-              <Text style={styles.trustItemSub}>Drivers submit real identification before they can accept delivery jobs</Text>
-            </View>
-          </View>
-          <View style={styles.trustRow}>
-            <Text style={styles.trustIcon}>⭐</Text>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.trustItemTitle}>Real ratings only</Text>
-              <Text style={styles.trustItemSub}>Reviews only come from confirmed transactions — never fake, never bought</Text>
-            </View>
-          </View>
-        </View>
-
         {featuredListing && (
           <View style={styles.section}>
             <TouchableOpacity
@@ -368,6 +343,36 @@ export default function HomeScreen() {
             </View>
             <Text style={styles.vanBannerArrow}>›</Text>
           </TouchableOpacity>
+        </View>
+
+        {/* MOVED (product decision): this used to sit up in ListHeader,
+            right after the WhatsApp banner and before the featured
+            listing/categories/recent listings — now sits below the
+            Hire Transport banner instead, as the last thing before the
+            bottom spacer. */}
+        <View style={styles.trustSection}>
+          <Text style={styles.trustTitle}>How ImbizoHub keeps you safe</Text>
+          <View style={styles.trustRow}>
+            <Text style={styles.trustIcon}>🔐</Text>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.trustItemTitle}>PIN-confirmed handovers</Text>
+              <Text style={styles.trustItemSub}>Nothing's marked complete until both sides confirm, in person, with a one-time PIN</Text>
+            </View>
+          </View>
+          <View style={styles.trustRow}>
+            <Text style={styles.trustIcon}>🪪</Text>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.trustItemTitle}>ID-verified delivery operators</Text>
+              <Text style={styles.trustItemSub}>Drivers submit real identification before they can accept delivery jobs</Text>
+            </View>
+          </View>
+          <View style={styles.trustRow}>
+            <Text style={styles.trustIcon}>⭐</Text>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.trustItemTitle}>Real ratings only</Text>
+              <Text style={styles.trustItemSub}>Reviews only come from confirmed transactions — never fake, never bought</Text>
+            </View>
+          </View>
         </View>
 
         <View style={{ height: 80 + insets.bottom }} />
