@@ -204,8 +204,22 @@ export default function RootLayout() {
           // authenticated seller's own id directly), so this is a
           // plain route, no id required.
           router.push('/seller-deliveries');
+        } else if (data?.type === 'delivery_request' && data?.booking_id) {
+          // NEW: sent to the DRIVER when a booking is freshly assigned
+          // to them (or reassigned after a previous driver declined) —
+          // see notify-delivery-status/index.ts's 'new_request' event.
+          // Routes to dealer.tsx, which now shows exactly the jobs
+          // assigned to this operator awaiting accept/decline.
+          router.push('/dealer');
+        } else if (data?.type === 'delivery_declined' && data?.booking_id) {
+          // NEW: sent to the BUYER when their assigned driver declines
+          // — see notify-delivery-status/index.ts's 'declined' event.
+          // delivery-track.tsx now renders a dedicated "Driver
+          // unavailable" state with a "Choose another driver" CTA for
+          // bookings in this status.
+          router.push(`/delivery-track?booking_id=${data.booking_id}`);
         }
-        // All nine notification types built today are now handled.
+        // All eleven notification types built today are now handled.
       }
     ).then((unsubscribe) => {
       unsubscribeRef.current = unsubscribe;

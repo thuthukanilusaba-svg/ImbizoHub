@@ -104,12 +104,20 @@ function canCarryLargeItems(vehicleType: string | null | undefined): boolean {
 
 export default function DeliveryBookingScreen() {
   const router = useRouter();
-  const { listing_id, seller_id, listing_price, item_request_id } = useLocalSearchParams<{
+  const { listing_id, seller_id, listing_price, item_request_id, reassign_booking_id } = useLocalSearchParams<{
     listing_id?: string;
     seller_id: string;
     listing_price?: string;
     item_request_id?: string;
+    reassign_booking_id?: string;
   }>();
+
+  // NEW: reassignment mode — reached from delivery-track.tsx /
+  // buyer-deliveries.tsx's "Choose another driver →" button after a
+  // driver declines a job. The $2 booking fee was already paid on the
+  // original booking, so this skips the whole details/payment flow and
+  // goes straight to picking a new driver for the SAME booking row.
+  const isReassignMode = !!reassign_booking_id;
 
   const isFromWantedMatch = !listing_id && !!item_request_id;
 
@@ -158,6 +166,7 @@ export default function DeliveryBookingScreen() {
   const [booked, setBooked] = useState(false);
   const [error, setError] = useState('');
   const [step, setStep] = useState<'details' | 'choose-driver' | 'confirm'>('details');
+  const [reassignBooking, setReassignBooking] = useState<any>(null);
 
   useEffect(() => { checkAuth(); }, []);
 
@@ -169,7 +178,83 @@ export default function DeliveryBookingScreen() {
     }
     setMyId(user.id);
     setMyEmail(user.email ?? '');
+
+    // Stay on the loading spinner (not the details form) until
+    // reassignment data has actually loaded — otherwise the full
+    // "Book delivery" form flashes for a moment before jumping to
+    // 'choose-driver', which is jarring and shows fields that don't
+    // apply to reassignment at all.
+    if (reassign_booking_id) {
+      await initReassign(reassign_booking_id, user.id);
+    }
     setCheckingAuth(false);
+  }
+
+  // NEW: loads the declined booking, prefills the same route/item
+  // details it was originally booked with, and jumps straight to
+  // driver selection — excluding whichever driver(s) already declined
+  // it (declined_operator_ids, kept server-side by decline_delivery_job).
+  async function initReassign(bookingId: string, userId: string) {
+    setDriversLoading(true);
+    setError('');
+
+    const { data: bookingRow, error: fetchError } = await supabase
+      .from('delivery_bookings')
+      .select('*')
+      .eq('id', bookingId)
+      .maybeSingle();
+
+    if (fetchError || !bookingRow) {
+      setError('This booking could not be found.');
+      setDriversLoading(false);
+      return;
+    }
+    if (bookingRow.buyer_id !== userId) {
+      setError('This booking does not belong to you.');
+      setDriversLoading(false);
+      return;
+    }
+    if (bookingRow.status !== 'declined') {
+      setError('This booking is not currently waiting for a new driver.');
+      setDriversLoading(false);
+      return;
+    }
+
+    setReassignBooking(bookingRow);
+    setPickupCity(bookingRow.pickup_city ?? '');
+    setDropoffCity(bookingRow.dropoff_city ?? '');
+    setParcelDescription(bookingRow.parcel_description ?? '');
+    setParcelSize((bookingRow.parcel_size as 'small' | 'large') ?? 'small');
+    setScheduledDate(bookingRow.scheduled_date ?? '');
+
+    const excludedOperatorIds = [
+      ...(bookingRow.declined_operator_ids ?? []),
+      ...(bookingRow.operator_id ? [bookingRow.operator_id] : []),
+    ];
+
+    const { data, error: driversError } = await supabase
+      .from('delivery_operators')
+      .select('*')
+      .eq('status', 'active')
+      .eq('registration_paid', true)
+      .gt('registration_expires_at', new Date().toISOString())
+      .order('verification_tier', { ascending: false })
+      .order('rating', { ascending: false });
+
+    setDriversLoading(false);
+
+    if (driversError) {
+      setError(driversError.message);
+      return;
+    }
+
+    let filtered = (data ?? []).filter((d) => !excludedOperatorIds.includes(d.id));
+    if (bookingRow.parcel_size === 'large') {
+      filtered = filtered.filter((d) => canCarryLargeItems(d.vehicle_type));
+    }
+
+    setAvailableDrivers(filtered);
+    setStep('choose-driver');
   }
 
   const citiesDiffer = pickupCity.trim().toLowerCase() !== dropoffCity.trim().toLowerCase()
@@ -235,8 +320,36 @@ export default function DeliveryBookingScreen() {
     return 'timeout';
   }
 
+  // NEW: reassignment has no payment step — the $2 booking fee was
+  // already paid on the original booking — so this just points the
+  // existing row at a new operator and puts it back to 'requested' for
+  // them (reassign_delivery_operator RPC does both, server-side, and
+  // is what triggers that driver's "New delivery job" notification).
+  async function reassignDriver() {
+    if (!selectedDriver || !reassignBooking) return;
+    setBooking(true);
+    setError('');
+
+    const { error: rpcError } = await supabase.rpc('reassign_delivery_operator', {
+      p_booking_id: reassignBooking.id,
+      p_new_operator_id: selectedDriver.id,
+    });
+
+    setBooking(false);
+
+    if (rpcError) {
+      setError(rpcError.message);
+      return;
+    }
+
+    setBooked(true);
+  }
+
   async function confirmBooking() {
     if (!selectedDriver) return;
+    if (isReassignMode) {
+      return reassignDriver();
+    }
     setBooking(true);
     setError('');
     setBookingStage('starting');
@@ -301,6 +414,7 @@ export default function DeliveryBookingScreen() {
   }
 
   function bookingButtonLabel() {
+    if (isReassignMode) return booking ? 'Reassigning…' : 'Reassign to this driver';
     if (bookingStage === 'starting') return 'Starting payment…';
     if (bookingStage === 'awaiting_payment') return 'Opening Paynow…';
     if (bookingStage === 'confirming') return 'Confirming payment…';
@@ -320,15 +434,32 @@ export default function DeliveryBookingScreen() {
       <View style={styles.container}>
         <View style={styles.successCard}>
           <Text style={{ fontSize: 64, marginBottom: 16 }}>📦</Text>
-          <Text style={styles.successTitle}>Delivery booked!</Text>
-          <Text style={styles.successBody}>
-            {selectedDriver?.full_name} will collect the parcel from the seller.{'\n\n'}
-            Pay them <Text style={{ color: GOLD, fontWeight: '800' }}>${deliveryFee} cash</Text> when they collect.{'\n'}
-            The ${BOOKING_FEE} ImbizoHub booking fee has been paid.{'\n\n'}
-            You'll receive a PIN to confirm receipt when the item is delivered.
+          <Text style={styles.successTitle}>
+            {isReassignMode ? 'New driver requested!' : 'Delivery booked!'}
           </Text>
-          <TouchableOpacity style={styles.doneBtn} onPress={() => router.back()}>
-            <Text style={styles.doneBtnText}>Back to chat</Text>
+          {isReassignMode ? (
+            <Text style={styles.successBody}>
+              We've sent this job to {selectedDriver?.full_name}. They'll get a notification and can accept
+              or decline — you'll be notified either way.{'\n\n'}
+              Pay them <Text style={{ color: GOLD, fontWeight: '800' }}>${deliveryFee} cash</Text> when they collect.
+            </Text>
+          ) : (
+            <Text style={styles.successBody}>
+              We've sent this job to {selectedDriver?.full_name}. They'll get a notification and need to accept
+              it before they head your way — you'll be notified as soon as they do.{'\n\n'}
+              Pay them <Text style={{ color: GOLD, fontWeight: '800' }}>${deliveryFee} cash</Text> when they collect.{'\n'}
+              The ${BOOKING_FEE} ImbizoHub booking fee has been paid.
+            </Text>
+          )}
+          <TouchableOpacity
+            style={styles.doneBtn}
+            onPress={() =>
+              isReassignMode
+                ? router.replace(`/delivery-track?booking_id=${reassignBooking?.id}`)
+                : router.back()
+            }
+          >
+            <Text style={styles.doneBtnText}>{isReassignMode ? 'Track delivery' : 'Back to chat'}</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -341,11 +472,23 @@ export default function DeliveryBookingScreen() {
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
       <ScrollView contentContainerStyle={styles.content}>
-        <TouchableOpacity onPress={() => step === 'details' ? router.back() : setStep('details')} style={styles.backBtn}>
-          <Text style={styles.backText}>← {step === 'details' ? 'Back' : 'Change details'}</Text>
+        <TouchableOpacity
+          onPress={() => {
+            // Reassign mode skips the 'details' step entirely (there's
+            // nothing to re-edit — same booking, just a new driver), so
+            // its only "back" destination is leaving the screen, not a
+            // details step that was never shown.
+            if (isReassignMode) { router.back(); return; }
+            step === 'details' ? router.back() : setStep('details');
+          }}
+          style={styles.backBtn}
+        >
+          <Text style={styles.backText}>
+            ← {isReassignMode ? 'Back' : step === 'details' ? 'Back' : 'Change details'}
+          </Text>
         </TouchableOpacity>
 
-        <Text style={styles.heading}>Book delivery</Text>
+        <Text style={styles.heading}>{isReassignMode ? 'Choose another driver' : 'Book delivery'}</Text>
 
         {step === 'details' && (
           <>
@@ -605,7 +748,9 @@ export default function DeliveryBookingScreen() {
 
         {step === 'confirm' && selectedDriver && (
           <>
-            <Text style={styles.subheading}>Confirm your delivery booking.</Text>
+            <Text style={styles.subheading}>
+              {isReassignMode ? 'Confirm your new driver for this delivery.' : 'Confirm your delivery booking.'}
+            </Text>
 
             <View style={styles.confirmCard}>
               <Text style={styles.confirmLabel}>Driver</Text>
@@ -631,10 +776,22 @@ export default function DeliveryBookingScreen() {
               <Text style={styles.confirmLabel}>Pay driver (cash on collection)</Text>
               <Text style={[styles.confirmValue, { color: GOLD, fontSize: 20, fontWeight: '800' }]}>${deliveryFee}</Text>
 
-              <View style={styles.confirmDivider} />
-              <Text style={styles.confirmLabel}>ImbizoHub booking fee</Text>
-              <Text style={styles.confirmValue}>${BOOKING_FEE} — pay now via Paynow</Text>
+              {!isReassignMode && (
+                <>
+                  <View style={styles.confirmDivider} />
+                  <Text style={styles.confirmLabel}>ImbizoHub booking fee</Text>
+                  <Text style={styles.confirmValue}>${BOOKING_FEE} — pay now via Paynow</Text>
+                </>
+              )}
             </View>
+
+            {isReassignMode && (
+              <View style={styles.cashNote}>
+                <Text style={styles.cashNoteText}>
+                  ℹ️ Your ${BOOKING_FEE} booking fee already covers this delivery — no new payment needed to switch drivers.
+                </Text>
+              </View>
+            )}
 
             <View style={styles.cashNote}>
               <Text style={styles.cashNoteText}>

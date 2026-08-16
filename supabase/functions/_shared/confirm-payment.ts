@@ -539,8 +539,17 @@ export async function confirmPaymentIntent(
         // before this column existed; every new booking sends it.
         parcel_size: intent.parcel_size,
         scheduled_date: intent.scheduled_date,
-        status: 'accepted',
-        accepted_at: new Date().toISOString(),
+        // CHANGED: was 'accepted'/accepted_at set right here, which
+        // auto-accepted every booking on behalf of whichever driver got
+        // pre-chosen — the driver never actually saw or agreed to the
+        // job, and the entire accept/decline flow built in dealer.tsx
+        // was unreachable dead code as a result. Now bookings start
+        // life as 'requested' (the column's own DB default) so the
+        // assigned driver must explicitly accept_delivery_job() or
+        // decline_delivery_job() — the on_delivery_booking_inserted
+        // trigger fires right after this insert and pushes them a
+        // "New delivery job" notification either way.
+        status: 'requested',
       })
       .select('*')
       .maybeSingle();
@@ -550,24 +559,14 @@ export async function confirmPaymentIntent(
       return { ok: false, error: 'DB error' };
     }
 
-    let itemTitle = 'your item';
-    if (intent.listing_id) {
-      const { data: listing } = await supabase
-        .from('listings')
-        .select('title')
-        .eq('id', intent.listing_id)
-        .maybeSingle();
-      if (listing?.title) itemTitle = listing.title;
-    } else if (intent.item_request_id) {
-      const { data: request } = await supabase
-        .from('item_requests')
-        .select('title')
-        .eq('id', intent.item_request_id)
-        .maybeSingle();
-      if (request?.title) itemTitle = request.title;
-    }
-
-    await notifyDeliveryBooked(supabase, intent.seller_id, itemTitle);
+    // NOTE: notifyDeliveryBooked (telling the SELLER a driver was
+    // booked) intentionally no longer fires here — that message doesn't
+    // make sense yet, since no driver has accepted anything at this
+    // point. The seller instead finds out once the driver actually
+    // accepts, via the existing 'requested' -> 'accepted' push in
+    // notify-delivery-status/index.ts. The driver-facing "new job"
+    // notification is handled entirely server-side by the new
+    // on_delivery_booking_inserted trigger, not from here.
 
   } else {
     console.error('confirmPaymentIntent: unrecognized payment_intents kind', intent.kind, intent.our_reference);

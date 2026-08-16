@@ -196,19 +196,32 @@ export default function DealerScreen() {
   async function loadDeliveryJobs(operatorId: string, userId: string) {
     setLoadingJobs(true);
 
+    // FIX (real bug, closes the gap that made this whole section
+    // unreachable): this used to query ALL 'requested' bookings
+    // globally, as if they were an open pool any driver could grab.
+    // Bookings are actually pre-assigned to a specific driver at
+    // booking time (confirm-payment.ts sets operator_id directly) — so
+    // this now scopes to jobs assigned to THIS operator specifically,
+    // which is what "you have a new job, accept or decline it" means.
     const { data: open } = await supabase
       .from('delivery_bookings')
       .select('*, listings(title, price), item_requests(title)')
+      .eq('operator_id', operatorId)
       .eq('status', 'requested')
       .order('requested_at', { ascending: false });
 
     setOpenJobs(open ?? []);
 
+    // 'declined' excluded here too — a job this operator turned down
+    // isn't "my delivery" anymore; it goes back to the buyer to
+    // reassign to someone else, and won't show operator_id === this
+    // operator once that happens.
     const { data: mine } = await supabase
       .from('delivery_bookings')
       .select('*, listings(title, price), item_requests(title)')
       .eq('operator_id', operatorId)
       .neq('status', 'requested')
+      .neq('status', 'declined')
       .order('accepted_at', { ascending: false });
 
     setMyJobs(mine ?? []);
@@ -247,6 +260,29 @@ export default function DealerScreen() {
       setOpenJobs(prev => prev.filter(j => j.id !== bookingId));
       setMyJobs(prev => [{ ...job, status: 'accepted', operator_id: deliveryOperator.id }, ...prev]);
     }
+  }
+
+  // NEW: lets the assigned driver turn a job down instead of the app
+  // silently auto-accepting on their behalf — per the "do not auto
+  // accept" requirement. Declining puts the booking into a 'declined'
+  // state; the buyer is notified and can choose a different driver
+  // (see delivery-booking.tsx's reassignment flow).
+  async function declineJob(bookingId: string) {
+    if (!deliveryOperator) return;
+    setAcceptingId(bookingId);
+    setAcceptError('');
+
+    const { error } = await supabase.rpc('decline_delivery_job', { p_booking_id: bookingId });
+
+    setAcceptingId(null);
+
+    if (error) {
+      setOpenJobs(prev => prev.filter(j => j.id !== bookingId));
+      setAcceptError(error.message);
+      return;
+    }
+
+    setOpenJobs(prev => prev.filter(j => j.id !== bookingId));
   }
 
   async function markDispatched(bookingId: string) {
@@ -518,7 +554,7 @@ export default function DealerScreen() {
 
               <View style={styles.section}>
                 <View style={styles.sectionRow}>
-                  <Text style={styles.sectionTitle}>📦 Open delivery requests</Text>
+                  <Text style={styles.sectionTitle}>📦 Delivery requests</Text>
                   <TouchableOpacity onPress={() => deliveryOperator && loadDeliveryJobs(deliveryOperator.id, myId)}>
                     <Text style={styles.refreshText}>Refresh</Text>
                   </TouchableOpacity>
@@ -532,8 +568,8 @@ export default function DealerScreen() {
                   <ActivityIndicator color={GOLD} style={{ marginTop: 20 }} />
                 ) : openJobs.length === 0 ? (
                   <View style={styles.emptyBox}>
-                    <Text style={styles.emptyText}>No open delivery requests right now.</Text>
-                    <Text style={styles.emptySubText}>Check back later — new requests appear here as sellers book deliveries.</Text>
+                    <Text style={styles.emptyText}>No delivery requests waiting on you right now.</Text>
+                    <Text style={styles.emptySubText}>New jobs appear here — and send you a push notification — as soon as a buyer books you as their driver.</Text>
                   </View>
                 ) : (
                   openJobs.map((job) => (
@@ -573,16 +609,25 @@ export default function DealerScreen() {
                           <Text style={styles.jobFeeLabel}>You earn</Text>
                           <Text style={styles.jobFee}>${job.delivery_fee} cash</Text>
                         </View>
-                        <TouchableOpacity
-                          style={[styles.acceptBtn, acceptingId === job.id && { opacity: 0.6 }]}
-                          onPress={() => acceptJob(job.id)}
-                          disabled={acceptingId === job.id}
-                        >
-                          {acceptingId === job.id
-                            ? <ActivityIndicator color={BLACK} size="small" />
-                            : <Text style={styles.acceptBtnText}>Accept job</Text>
-                          }
-                        </TouchableOpacity>
+                        <View style={{ flexDirection: 'row', gap: 8 }}>
+                          <TouchableOpacity
+                            style={[styles.declineBtn, acceptingId === job.id && { opacity: 0.6 }]}
+                            onPress={() => declineJob(job.id)}
+                            disabled={acceptingId === job.id}
+                          >
+                            <Text style={styles.declineBtnText}>Decline</Text>
+                          </TouchableOpacity>
+                          <TouchableOpacity
+                            style={[styles.acceptBtn, acceptingId === job.id && { opacity: 0.6 }]}
+                            onPress={() => acceptJob(job.id)}
+                            disabled={acceptingId === job.id}
+                          >
+                            {acceptingId === job.id
+                              ? <ActivityIndicator color={BLACK} size="small" />
+                              : <Text style={styles.acceptBtnText}>Accept job</Text>
+                            }
+                          </TouchableOpacity>
+                        </View>
                       </View>
                     </View>
                   ))
@@ -827,6 +872,8 @@ const styles = StyleSheet.create({
   jobFee: { color: GOLD, fontSize: 16, fontWeight: '800' },
   acceptBtn: { backgroundColor: GOLD, borderRadius: 10, paddingHorizontal: 16, paddingVertical: 10 },
   acceptBtnText: { color: BLACK, fontSize: 13, fontWeight: '800' },
+  declineBtn: { backgroundColor: 'transparent', borderRadius: 10, paddingHorizontal: 16, paddingVertical: 10, borderWidth: 1, borderColor: '#ff8a8a' },
+  declineBtnText: { color: '#ff8a8a', fontSize: 13, fontWeight: '800' },
   statusText: { fontSize: 11, fontWeight: '700' },
   statusBtn: { backgroundColor: '#1a2a1a', borderRadius: 8, paddingHorizontal: 12, paddingVertical: 8, borderWidth: 0.5, borderColor: '#4fc96e' },
   statusBtnText: { color: '#4fc96e', fontSize: 11, fontWeight: '700' },

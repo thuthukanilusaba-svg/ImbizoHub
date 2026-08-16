@@ -39,6 +39,12 @@ const STEPS = [
 
 function statusColor(status: string) {
   const map: Record<string, string> = {
+    // NEW: bookings now start life as 'requested' and can end up
+    // 'declined' if the assigned driver turns the job down — see
+    // confirm-payment.ts. Both are real, visible states now that
+    // bookings aren't auto-accepted at payment time.
+    requested: '#888',
+    declined: '#ff8a8a',
     accepted: '#4A90D9',
     dispatched: GOLD,
     delivered: GREEN,
@@ -49,6 +55,8 @@ function statusColor(status: string) {
 
 function statusLabel(status: string) {
   const map: Record<string, string> = {
+    requested: 'Waiting for driver to accept',
+    declined: 'Driver declined — buyer is choosing another',
     accepted: 'Awaiting pickup',
     dispatched: 'In transit',
     delivered: 'Delivered — awaiting buyer PIN',
