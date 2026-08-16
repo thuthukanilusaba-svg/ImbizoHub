@@ -27,6 +27,7 @@ import { useRouter } from 'expo-router';
 import { createElement, useState } from 'react';
 import {
   ActivityIndicator,
+  KeyboardAvoidingView,
   Modal,
   Platform,
   ScrollView,
@@ -223,7 +224,23 @@ export default function HireVanScreen() {
   }
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+    // FIX (real bug, reported: "the keyboard hides some of the tabs, i
+    // cannot scroll up to type in the tabs" — passengers/notes near the
+    // bottom of this form end up hidden behind the keyboard with no way
+    // to reach them): this screen had a ScrollView but no
+    // KeyboardAvoidingView at all, unlike every other form screen in
+    // this app (browse-wanted.tsx, chat.tsx). Without it, particularly
+    // on iOS, opening the keyboard doesn't resize or inset the
+    // scrollable area to account for the space the keyboard now
+    // covers, so a field near the bottom can end up entirely behind it
+    // with no amount of scrolling able to reveal it — the ScrollView
+    // itself was never told the keyboard exists. Wrapping it here
+    // matches the same fix already applied elsewhere.
+    <KeyboardAvoidingView
+      style={styles.container}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+    >
+    <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
       <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
         <Text style={styles.backText}>← Back</Text>
       </TouchableOpacity>
@@ -376,6 +393,7 @@ export default function HireVanScreen() {
         )}
       </TouchableOpacity>
     </ScrollView>
+    </KeyboardAvoidingView>
   );
 }
 
