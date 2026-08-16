@@ -408,7 +408,7 @@ export default function HomeScreen() {
               {item.image_url ? (
                 <Image
                   source={{ uri: item.image_url }}
-                  style={[styles.listingImg, isDesktopWeb && styles.listingImgDesktop]}
+                  style={styles.listingImg}
                   contentFit="cover"
                 />
               ) : (
@@ -422,7 +422,7 @@ export default function HomeScreen() {
                 // issue, so fixed here for both. Mirrors the "No photos
                 // yet" placeholder listing.tsx's detail-page carousel
                 // already shows for the same situation.
-                <View style={[styles.listingImg, isDesktopWeb && styles.listingImgDesktop, styles.listingImgPlaceholder]}>
+                <View style={[styles.listingImg, styles.listingImgPlaceholder]}>
                   <Text style={styles.listingImgPlaceholderText}>📦</Text>
                 </View>
               )}
@@ -512,12 +512,18 @@ const styles = StyleSheet.create({
   listingGridContainer: { paddingHorizontal: 16 },
   listingRow: { gap: 8 },
   listingCard: { backgroundColor: '#222', borderRadius: 12, overflow: 'hidden', borderWidth: 0.5, borderColor: '#333', flex: 1, marginBottom: 8 },
-  listingImg: { height: 120, width: '100%' },
-  // Desktop cards are wider (4 columns of a ~1200px frame vs 2 of a
-  // ~480px one), so the same 120px height would look squashed/
-  // letterboxed relative to the extra width — taller keeps the photo
-  // looking proportioned instead of like a thin strip.
-  listingImgDesktop: { height: 170 },
+  // CHANGED (real bug, reported via screenshot: a portrait bike photo
+  // had its top/bottom sliced off): this used to be a fixed height
+  // (120px, with a separate 170px override for wider desktop cards) —
+  // effectively a ~3:2 landscape crop box, which aggressively trims
+  // portrait or square photos (the norm for phone-shot listings).
+  // aspectRatio locks the crop to a square instead, scaling
+  // automatically with the card's actual width (2 columns on mobile, 4
+  // on desktop — see numColumns above) so a single style now works for
+  // both, and the crop only trims a sliver off the edges instead of a
+  // third of the photo. Matches the square-thumbnail norm eBay and
+  // Facebook Marketplace both use for grid browsing.
+  listingImg: { aspectRatio: 1, width: '100%' },
   listingImgPlaceholder: { backgroundColor: DARK, alignItems: 'center', justifyContent: 'center' },
   listingImgPlaceholderText: { fontSize: 28, opacity: 0.5 },
   listingBody: { padding: 8 },
