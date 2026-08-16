@@ -58,6 +58,7 @@ import {
   Modal,
   Platform,
   RefreshControl,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -376,7 +377,21 @@ export default function BrowseWantedScreen() {
           style={styles.modalOverlay}
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         >
+          {/* FIX (real bug, reported: "the page does not scroll down to
+              see what i add on the top" — after picking a photo, the
+              response form grew taller than the screen with no way to
+              reach the fields pushed off the top). This sheet had no
+              ScrollView at all — it was a plain View anchored to the
+              bottom of the screen (modalOverlay's justifyContent:
+              'flex-end'), just growing with its content and getting
+              clipped by the screen edge once it overflowed, the same
+              missing-ScrollView pattern already fixed elsewhere in this
+              app (rating.tsx, listing.tsx's carousel). maxHeight below
+              gives the sheet a bounded box to scroll within — without
+              it, a ScrollView here would still just grow unbounded
+              alongside its content instead of actually scrolling. */}
           <View style={[styles.modalSheet, { paddingBottom: (Platform.OS === 'ios' ? 40 : 24) + insets.bottom }]}>
+            <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
             {!submitted ? (
               <>
                 <Text style={styles.modalTitle}>Your response</Text>
@@ -481,6 +496,7 @@ export default function BrowseWantedScreen() {
                 </TouchableOpacity>
               </View>
             )}
+            </ScrollView>
           </View>
         </KeyboardAvoidingView>
       </Modal>
@@ -540,9 +556,16 @@ const styles = StyleSheet.create({
   emptySubtext: { fontSize: 13, color: GREY, marginTop: 6 },
 
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },
+  // FIX: added maxHeight so the ScrollView wrapping this sheet's
+  // content (see the modal's render) actually has a bounded box to
+  // scroll within — without a bounded parent height, a ScrollView just
+  // grows unbounded alongside its content like the plain View it
+  // replaced, and still doesn't scroll. See the comment at the modal's
+  // render for the reported bug this fixes.
   modalSheet: {
     backgroundColor: BLACK, borderTopLeftRadius: 20, borderTopRightRadius: 20,
     padding: 24, paddingBottom: Platform.OS === 'ios' ? 40 : 24,
+    maxHeight: '85%',
   },
   modalTitle: { fontSize: 18, fontWeight: '800', color: '#fff', marginBottom: 4 },
   modalItemTitle: { fontSize: 13, color: GREY, marginBottom: 16 },
