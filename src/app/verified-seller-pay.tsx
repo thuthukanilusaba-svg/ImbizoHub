@@ -37,6 +37,7 @@ import {
   Text, TouchableOpacity, View,
 } from 'react-native';
 import { normalizeImageOrientation } from '../../lib/imageOrientation';
+import { extractFunctionError } from '../../lib/paymentError';
 import { supabase } from '../../lib/supabase';
 import { prepareUpload } from '../../lib/uploadHelpers';
 
@@ -129,7 +130,7 @@ export default function VerifiedSellerPayScreen() {
     });
 
     if (fnError || !data?.checkoutUrl) {
-      setError(fnError?.message || data?.error || 'Could not start payment. Please try again.');
+      setError(await extractFunctionError(fnError, data, 'Could not start payment. Please try again.'));
       setPaying(false);
       return;
     }

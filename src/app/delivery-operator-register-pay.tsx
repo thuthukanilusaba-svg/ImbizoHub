@@ -13,6 +13,7 @@ import {
   ActivityIndicator, Linking, Platform, ScrollView, StyleSheet,
   Text, TouchableOpacity, View,
 } from 'react-native';
+import { extractFunctionError } from '../../lib/paymentError';
 import { supabase } from '../../lib/supabase';
 
 const GOLD = '#B8860B';
@@ -178,7 +179,7 @@ export default function DeliveryOperatorRegisterPayScreen() {
     });
 
     if (fnError || !data?.checkoutUrl) {
-      setError(fnError?.message || data?.error || 'Could not start payment. Please try again.');
+      setError(await extractFunctionError(fnError, data, 'Could not start payment. Please try again.'));
       setPaying(false);
       return;
     }

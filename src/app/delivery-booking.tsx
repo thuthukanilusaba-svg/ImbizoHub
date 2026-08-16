@@ -57,6 +57,7 @@ import {
   Text, TextInput, TouchableOpacity, View,
 } from 'react-native';
 import { supabase } from '../../lib/supabase';
+import { extractFunctionError } from '../../lib/paymentError';
 
 const GOLD = '#B8860B';
 const BLACK = '#1A1A18';
@@ -263,7 +264,7 @@ export default function DeliveryBookingScreen() {
     if (createError || createResult?.error || !createResult?.checkoutUrl) {
       setBooking(false);
       setBookingStage('idle');
-      setError(createResult?.error || createError?.message || 'Could not start payment. Please try again.');
+      setError(await extractFunctionError(createError, createResult, 'Could not start payment. Please try again.'));
       return;
     }
 

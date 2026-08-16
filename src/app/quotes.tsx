@@ -43,6 +43,7 @@ import {
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { extractFunctionError } from '../../lib/paymentError';
 import { supabase } from '../../lib/supabase';
 
 const GOLD = '#B8860B';
@@ -278,7 +279,7 @@ export default function QuotesScreen() {
     });
 
     if (fnError || !data?.checkoutUrl) {
-      setPayError(fnError?.message || data?.error || 'Could not start payment. Please try again.');
+      setPayError(await extractFunctionError(fnError, data, 'Could not start payment. Please try again.'));
       setPaying(false);
       return;
     }

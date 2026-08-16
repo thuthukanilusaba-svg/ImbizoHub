@@ -508,6 +508,28 @@ Deno.serve(async (req) => {
     const amountStr = Number(amount).toFixed(2);
     const additionalInfo = additionalInfoFor(kind as PaymentKind);
 
+    // TEMP FIX (found via function_logs, blocking every single payment
+    // kind in the app — unlock fees, all operator registrations,
+    // delivery booking fees, everything): the Paynow Integration ID is
+    // still sitting in Paynow's own "Test" status (a status Paynow
+    // itself assigns to a new integration until they manually review
+    // and activate it for real/live transactions — separate from this
+    // app's own PAYMENT_TEST_MODE flag above). While an integration is
+    // in that state, Paynow rejects any Initiate Transaction request
+    // that includes an authemail unless it exactly equals the
+    // merchant's own registered Paynow account email — so every real
+    // buyer's email sent as authemail caused Paynow to reject with
+    // "The integration ID is in test mode, so if authemail is
+    // specified then it must match the merchants registered email
+    // address", which this function then correctly surfaced as a 502,
+    // but the app's generic error handling only ever showed the
+    // useless "Edge Function returned a non-2xx status code" on
+    // screen. Dropping authemail avoids that specific check entirely
+    // and unblocks real payments right now. Ask Paynow support to
+    // activate this Integration ID for live use, then restore
+    // authemail below (email ? [['authemail', email] as [string,
+    // string]] : []) — customers will start getting Paynow's own
+    // receipt email again once that's back in the request.
     const fields: [string, string][] = [
       ['id', PAYNOW_INTEGRATION_ID],
       ['reference', ourReference],
@@ -515,7 +537,6 @@ Deno.serve(async (req) => {
       ['additionalinfo', additionalInfo],
       ['returnurl', returnUrl],
       ['resulturl', resultUrl],
-      ...(email ? [['authemail', email] as [string, string]] : []),
       ['status', 'Message'],
     ];
 
