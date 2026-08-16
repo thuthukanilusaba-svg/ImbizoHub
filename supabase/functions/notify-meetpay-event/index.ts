@@ -8,14 +8,23 @@
 //     they're now the one being waited on. Closes a real gap — without
 //     it, nobody's told when they've become the last step.
 //   - 'confirmed' for van_hire specifically now notifies BOTH parties
-//     (unlike listings, where only the buyer needs telling — for a
+//     (unlike listings, where only one side needs telling — for a
 //     mutual flow, whoever completes the final confirmation could be
 //     either side, so both get the "trip confirmed" push).
 //
-// Everything below for 'pin_generated' and 'confirmed' on
-// listing/item_request sessions is UNCHANGED — those still use PINs,
-// still notify exactly the same party as before. Only van_hire's
-// behavior is new.
+// CHANGED (PIN-role reversal, reverse_meetpay_pin_roles migration): for
+// listing/item_request sessions, the SELLER now generates the PIN (in
+// person, once both parties are happy) and the BUYER now enters it to
+// confirm — previously it was the other way around. This flips which
+// party each of the two events below notifies:
+//   - 'pin_generated' now tells the BUYER (they're the one waiting to
+//     enter it), not the seller.
+//   - 'confirmed' (non-van_hire branch) now tells the SELLER (they're
+//     the one waiting to hear the buyer confirmed), not the buyer.
+// This function was also out of date with the DB trigger before this
+// deploy — the live version didn't handle 'trip_half_confirmed' at all
+// (the trigger sent it, this function 400'd on it as unrecognized) —
+// this deploy brings it back in sync with notify_meetpay_session_change().
 //
 // Called only by DB triggers on meetpay_sessions (see
 // notify-meetpay-event-trigger.sql) — never by the client directly.
@@ -152,13 +161,15 @@ Deno.serve(async (req) => {
     const itemLabel = await itemLabelFor(session.type, session.reference_id);
 
     if (event === 'pin_generated') {
-      // UNCHANGED — listing/item_request only, never fires for
-      // van_hire anymore (that flow has no PIN to generate).
-      const sellerToken = await pushTokenFor(session.seller_id);
+      // listing/item_request only, never fires for van_hire (that flow
+      // has no PIN to generate). CHANGED (PIN-role reversal): the
+      // SELLER generates the PIN now — the BUYER is the one waiting to
+      // enter it, so they're the one who needs telling it's ready.
+      const buyerToken = await pushTokenFor(session.buyer_id);
       await sendExpoPushNotification(
-        sellerToken,
+        buyerToken,
         'Meet & Pay PIN ready',
-        `The buyer has generated a PIN for "${itemLabel}". Tap to confirm the transaction.`,
+        `The seller has generated a PIN for "${itemLabel}". Tap to enter it and confirm you received it.`,
         { type: 'meetpay', session_id: session.id }
       );
     } else if (event === 'trip_half_confirmed') {
@@ -202,13 +213,14 @@ Deno.serve(async (req) => {
           ),
         ]);
       } else {
-        // UNCHANGED — listing/item_request: seller/responder confirmed
-        // the PIN, buyer is the one waiting to hear it's done.
-        const buyerToken = await pushTokenFor(session.buyer_id);
+        // listing/item_request. CHANGED (PIN-role reversal): the BUYER
+        // confirms now (entering the seller's PIN) — the SELLER is the
+        // one waiting to hear it's done.
+        const sellerToken = await pushTokenFor(session.seller_id);
         await sendExpoPushNotification(
-          buyerToken,
+          sellerToken,
           'Transaction confirmed! ✅',
-          `The deal for "${itemLabel}" has been confirmed. Please leave a rating.`,
+          `The buyer confirmed the deal for "${itemLabel}". Please leave a rating.`,
           { type: 'confirmed', session_id: session.id }
         );
       }
