@@ -183,39 +183,83 @@ export default function ChatScreen() {
             : `listing-${listing_id}`;
         const channelName = `messages-${convoKey}-${receiver_id}-${uid}`;
 
-        const staleChannels = supabase.getChannels().filter((ch) => ch.topic?.includes(channelName));
-        staleChannels.forEach((ch) => supabase.removeChannel(ch));
-
-        const channel = supabase
-          .channel(channelName)
-          .on('postgres_changes', {
-            event: 'INSERT', schema: 'public', table: 'messages',
-          }, (payload) => {
-            const msg = payload.new;
-            const belongsToThisConvo = isItemRequestChat
-              ? item_request_id && msg.item_request_id === item_request_id
-              : isRequestChat
-                ? request_id && msg.request_id === request_id
-                : listing_id && msg.listing_id === parseInt(listing_id as string);
-            if (
-              belongsToThisConvo &&
-              (msg.sender_id === receiver_id || msg.receiver_id === receiver_id ||
-               msg.sender_id === uid || msg.receiver_id === uid)
-            ) {
-              setMessages((prev) => (prev.some((m) => m.id === msg.id) ? prev : [...prev, msg]));
-              if (msg.sender_id !== uid) {
-                notifyNewMessage(
-                  'ImbizoHub',
-                  msg.text,
-                  isItemRequestChat ? String(item_request_id) : isRequestChat ? String(request_id) : String(listing_id)
-                );
-              }
-            }
-          })
-          .subscribe();
-
-        channelRef.current = channel;
+        subscribeToMessages(channelName, uid);
       }
+    }
+
+    // FIX (real bug, reported: "messages are not going through" — the
+    // sender sees their own message, the other party's already-open
+    // chat never gets it): there was a genuine race between the
+    // fetchMessages() snapshot above and this channel actually going
+    // live. subscribe() returns immediately, but the websocket
+    // handshake completing — the point postgres_changes actually starts
+    // pushing events — happens some time after that, and
+    // loadExistingMeetPaySession()'s extra await between the snapshot
+    // and this call widened the gap further. Any message the other
+    // party sent inside that window was in neither the snapshot nor
+    // caught by realtime, and since Postgres Changes never backfills
+    // (only pushes events after a channel is truly subscribed), it
+    // just never arrived until something else forced a resync
+    // (backgrounding the app, leaving and reopening the chat).
+    //
+    // Fixed two ways, both handled by the channel's own status callback
+    // rather than a separate polling loop — this keeps delivery
+    // genuinely event-driven, not degraded to "check every few
+    // seconds":
+    //   1. Once the channel reports SUBSCRIBED (truly listening now),
+    //      do ONE reconciling fetchMessages() call to pick up anything
+    //      sent during the gap. fetchMessages() already does a full
+    //      state replace, so this can't duplicate anything already
+    //      shown.
+    //   2. If the channel reports CHANNEL_ERROR/TIMED_OUT (a dropped
+    //      connection), resubscribe automatically with capped
+    //      exponential backoff instead of leaving the chat silently
+    //      unable to receive anything for the rest of the session.
+    function subscribeToMessages(channelName: string, uid: string, attempt = 0) {
+      if (cancelled) return;
+
+      const staleChannels = supabase.getChannels().filter((ch) => ch.topic?.includes(channelName));
+      staleChannels.forEach((ch) => supabase.removeChannel(ch));
+
+      const channel = supabase
+        .channel(channelName)
+        .on('postgres_changes', {
+          event: 'INSERT', schema: 'public', table: 'messages',
+        }, (payload) => {
+          const msg = payload.new;
+          const belongsToThisConvo = isItemRequestChat
+            ? item_request_id && msg.item_request_id === item_request_id
+            : isRequestChat
+              ? request_id && msg.request_id === request_id
+              : listing_id && msg.listing_id === parseInt(listing_id as string);
+          if (
+            belongsToThisConvo &&
+            (msg.sender_id === receiver_id || msg.receiver_id === receiver_id ||
+             msg.sender_id === uid || msg.receiver_id === uid)
+          ) {
+            setMessages((prev) => (prev.some((m) => m.id === msg.id) ? prev : [...prev, msg]));
+            if (msg.sender_id !== uid) {
+              notifyNewMessage(
+                'ImbizoHub',
+                msg.text,
+                isItemRequestChat ? String(item_request_id) : isRequestChat ? String(request_id) : String(listing_id)
+              );
+            }
+          }
+        })
+        .subscribe((status) => {
+          if (cancelled) return;
+          if (status === 'SUBSCRIBED') {
+            fetchMessages(uid);
+          } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+            const delay = Math.min(30000, 2000 * Math.pow(2, attempt));
+            setTimeout(() => {
+              if (!cancelled) subscribeToMessages(channelName, uid, attempt + 1);
+            }, delay);
+          }
+        });
+
+      channelRef.current = channel;
     }
 
     init();
