@@ -55,6 +55,17 @@
 // in, matching post.tsx's reasoning for checking early rather than
 // letting someone invest effort before finding out they can't proceed.
 //
+// NEW (launch promo): the $2 ImbizoHub booking fee is now free through
+// Jan 31, 2027, same promo window as everything else in the app — we
+// don't have a payment method wired up as a business yet, so charging
+// this fee isn't the point right now. confirmBooking() branches on
+// isPromoActive(): during the promo it calls the new
+// book-delivery-free-promo edge function directly (no Paynow checkout,
+// no polling); afterward it falls back to the existing
+// create-payment -> Paynow -> poll flow, unchanged. The driver's own
+// fee stays cash-on-collection either way — only the platform's $2 cut
+// is waived.
+//
 // FIX (secondary, found in the same pass): findDrivers() validated
 // pickup/dropoff cities but never checked that a "Schedule for later"
 // selection actually had a date picked — someone could toggle
@@ -106,6 +117,17 @@ const webDateInputStyle: any = {
 
 const POLL_INTERVAL_MS = 2000;
 const POLL_MAX_ATTEMPTS = 20;
+
+// NEW: launch promotion — the $2 ImbizoHub booking fee is free until
+// Jan 31, 2027, same window/pattern as every other promo in the app
+// (see unlock.tsx). We don't have a payment method wired up as a
+// business yet, so charging this fee right now isn't the point —
+// waiving it removes the one remaining friction point (and Paynow
+// checkout) between a buyer and a booked driver. The driver's own fee
+// stays cash-on-collection, unchanged; only the platform's $2 cut is
+// waived during the promo.
+const FREE_PROMO_END = new Date('2027-01-31T23:59:59Z');
+const isPromoActive = () => new Date() < FREE_PROMO_END;
 
 const LARGE_VEHICLE_KEYWORDS = ['van', 'truck', 'bakkie', 'pickup', 'pick-up', 'lorry', 'minibus'];
 
@@ -364,10 +386,50 @@ export default function DeliveryBookingScreen() {
     setBooked(true);
   }
 
+  // NEW: promo booking path — calls book-delivery-free-promo directly,
+  // no create-payment/Paynow checkout/poll at all. Kept fully separate
+  // from the paid path below (same reasoning as unlock.tsx's
+  // handleUnlockFreePromo) so each flow stays simple and isolated.
+  async function confirmBookingFreePromo() {
+    setBooking(true);
+    setError('');
+    setBookingStage('starting');
+
+    const { data: promoResult, error: promoError } = await supabase.functions.invoke('book-delivery-free-promo', {
+      body: {
+        listing_id: isFromWantedMatch ? undefined : parseInt(listing_id!),
+        item_request_id: isFromWantedMatch ? item_request_id : undefined,
+        buyer_id: myId,
+        seller_id: seller_id,
+        operator_user_id: selectedDriver.id,
+        pickup_city: pickupCity.trim(),
+        dropoff_city: dropoffCity.trim(),
+        delivery_type: deliveryType,
+        delivery_fee: deliveryFee,
+        parcel_size: parcelSize,
+        parcel_description: parcelDescription.trim() || undefined,
+        scheduled_date: scheduledDate || undefined,
+      },
+    });
+
+    setBooking(false);
+    setBookingStage('idle');
+
+    if (promoError || promoResult?.error) {
+      setError(await extractFunctionError(promoError, promoResult, 'Could not book delivery. Please try again.'));
+      return;
+    }
+
+    setBooked(true);
+  }
+
   async function confirmBooking() {
     if (!selectedDriver) return;
     if (isReassignMode) {
       return reassignDriver();
+    }
+    if (isPromoActive()) {
+      return confirmBookingFreePromo();
     }
     setBooking(true);
     setError('');
@@ -434,6 +496,10 @@ export default function DeliveryBookingScreen() {
 
   function bookingButtonLabel() {
     if (isReassignMode) return booking ? 'Reassigning…' : 'Reassign to this driver';
+    // NEW: promo path never leaves the 'starting' stage (no Paynow
+    // checkout/poll to move through), so give it its own wording rather
+    // than the payment-specific "Starting payment…"/"Opening Paynow…".
+    if (isPromoActive()) return bookingStage === 'starting' ? 'Booking…' : 'Confirm booking';
     if (bookingStage === 'starting') return 'Starting payment…';
     if (bookingStage === 'awaiting_payment') return 'Opening Paynow…';
     if (bookingStage === 'confirming') return 'Confirming payment…';
@@ -475,7 +541,9 @@ export default function DeliveryBookingScreen() {
               ) : (
                 <>Pay them <Text style={{ color: GOLD, fontWeight: '800' }}>${deliveryFee} cash</Text> when they collect.</>
               )}{'\n'}
-              The ${BOOKING_FEE} ImbizoHub booking fee has been paid.
+              {isPromoActive()
+                ? 'The ImbizoHub booking fee was free — launch promotion.'
+                : `The $${BOOKING_FEE} ImbizoHub booking fee has been paid.`}
             </Text>
           )}
           <TouchableOpacity
@@ -551,18 +619,24 @@ export default function DeliveryBookingScreen() {
                 <>
                   <View style={styles.feeRow}>
                     <Text style={styles.feeLabel}>Within same city</Text>
-                    <Text style={styles.feeValue}>$8 to driver + $2 booking fee</Text>
+                    <Text style={styles.feeValue}>
+                      {isPromoActive() ? '$8 to driver + booking fee free (launch promo)' : '$8 to driver + $2 booking fee'}
+                    </Text>
                   </View>
                   <View style={styles.feeDivider} />
                   <View style={styles.feeRow}>
                     <Text style={styles.feeLabel}>Different cities</Text>
-                    <Text style={styles.feeValue}>$12 to driver + $2 booking fee</Text>
+                    <Text style={styles.feeValue}>
+                      {isPromoActive() ? '$12 to driver + booking fee free (launch promo)' : '$12 to driver + $2 booking fee'}
+                    </Text>
                   </View>
                 </>
               ) : (
                 <View style={styles.feeRow}>
                   <Text style={styles.feeLabel}>Large item (local only)</Text>
-                  <Text style={styles.feeValue}>Negotiate with driver + $2 booking fee</Text>
+                  <Text style={styles.feeValue}>
+                    {isPromoActive() ? 'Negotiate with driver + booking fee free (launch promo)' : 'Negotiate with driver + $2 booking fee'}
+                  </Text>
                 </View>
               )}
             </View>
@@ -809,7 +883,9 @@ export default function DeliveryBookingScreen() {
                 <>
                   <View style={styles.confirmDivider} />
                   <Text style={styles.confirmLabel}>ImbizoHub booking fee</Text>
-                  <Text style={styles.confirmValue}>${BOOKING_FEE} — pay now via Paynow</Text>
+                  <Text style={styles.confirmValue}>
+                    {isPromoActive() ? 'Free through Jan 31, 2027 — launch promo' : `$${BOOKING_FEE} — pay now via Paynow`}
+                  </Text>
                 </>
               )}
             </View>
@@ -817,7 +893,14 @@ export default function DeliveryBookingScreen() {
             {isReassignMode && (
               <View style={styles.cashNote}>
                 <Text style={styles.cashNoteText}>
-                  ℹ️ Your ${BOOKING_FEE} booking fee already covers this delivery — no new payment needed to switch drivers.
+                  {/* NEW: reassignBooking carries the ORIGINAL booking's
+                      real booking_fee — could be 0 if that booking was
+                      itself made free under the promo — so this checks
+                      the actual paid amount rather than today's promo
+                      state, which could differ from when it was booked. */}
+                  {reassignBooking?.booking_fee > 0
+                    ? `ℹ️ Your $${reassignBooking.booking_fee} booking fee already covers this delivery — no new payment needed to switch drivers.`
+                    : 'ℹ️ This delivery was booked free under the launch promo — no payment needed to switch drivers.'}
                 </Text>
               </View>
             )}
