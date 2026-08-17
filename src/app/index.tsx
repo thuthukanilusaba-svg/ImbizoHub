@@ -357,11 +357,13 @@ export default function HomeScreen() {
             <Text style={styles.trustIcon}>🔐</Text>
             <View style={{ flex: 1 }}>
               {/* CHANGED (wording, kept in sync with chat.tsx's
-                  seller-facing "Confirm sale and handover" pill/modal —
-                  same terminology, same feature, just described here at
-                  a glance for anyone browsing the home page before
-                  they've ever opened a chat). Text-only. */}
-              <Text style={styles.trustItemTitle}>Confirm sale and handover</Text>
+                  seller-facing "Confirm sale" pill/modal — same
+                  terminology, same feature, just described here at a
+                  glance for anyone browsing the home page before
+                  they've ever opened a chat. Trimmed from "Confirm sale
+                  and handover" alongside chat.tsx's header-pill overflow
+                  fix, applied here too for consistency). Text-only. */}
+              <Text style={styles.trustItemTitle}>Confirm sale</Text>
               <Text style={styles.trustItemSub}>Nothing's marked complete until both sides confirm, in person, with a one-time PIN</Text>
             </View>
           </View>

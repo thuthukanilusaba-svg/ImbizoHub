@@ -1020,8 +1020,15 @@ export default function ChatScreen() {
             </View>
             <View style={styles.onlineDot} />
           </View>
-          <View>
-            <Text style={styles.sellerName}>{otherPersonName || 'ImbizoHub Chat'}</Text>
+          {/* NEW: flex:1 + minWidth:0 so this column actually shrinks
+              instead of pushing the "Confirm sale" pill off-screen —
+              neither View nor Text shrinks by default in RN. Belt-and-
+              braces alongside the wording trim above: a long name alone
+              could still reproduce the same overflow without this. */}
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <Text style={styles.sellerName} numberOfLines={1} ellipsizeMode="tail">
+              {otherPersonName || 'ImbizoHub Chat'}
+            </Text>
             <Text style={styles.onlineStatus}>Online now</Text>
           </View>
         </View>
@@ -1039,18 +1046,22 @@ export default function ChatScreen() {
                 {/* CHANGED (wording, real feedback: "would it be not
                     confusing to read meet and sell/pay" — seller-only):
                     was 'Meet & Pay', the shared feature name, then
-                    briefly 'Generate handoff PIN' (the literal action),
-                    now 'Confirm sale and handover' per direct product
-                    decision — read as "the sale is confirmed, and the
-                    handover happens" rather than "I personally tap
-                    confirm": the seller's actual button inside this
-                    flow still says "Generate PIN", and the buyer is
-                    still the one who literally enters the PIN to
-                    confirm (see confirm_meetpay_pin() and
+                    briefly 'Generate handoff PIN', then 'Confirm sale
+                    and handover'. TRIMMED to just 'Confirm sale' —
+                    the longer version was overflowing off-screen next
+                    to a long buyer/seller name in the header (headerLeft
+                    and this pill don't shrink by default in RN), which
+                    is the actual bug being fixed here; shorter wording
+                    everywhere this label appears ('across the board',
+                    per direct product decision) is a cheaper fix than
+                    reworking the header layout. The seller's actual
+                    button inside this flow still says "Generate PIN",
+                    and the buyer is still the one who literally enters
+                    the PIN to confirm (see confirm_meetpay_pin() and
                     handleConfirmPin() below) — this pill label is just
                     the entry point's name. Text-only change: no logic,
                     PIN flow, or rating eligibility touched. */}
-                {isBuyerRole ? 'Arrange deal' : 'Confirm sale and handover'}
+                {isBuyerRole ? 'Arrange deal' : 'Confirm sale'}
               </Text>
             </TouchableOpacity>
           )}
@@ -1336,11 +1347,12 @@ export default function ChatScreen() {
               // and shows it to the buyer, who enters it to confirm.
               // CHANGED (wording, seller-only — see the matching header
               // pill comment above): was 'Meet & Collect'/'Meet & Pay',
-              // then 'Generate handoff PIN', now 'Confirm sale and
-              // handover' — kept in sync with the header pill that
-              // opens this exact modal. Text-only.
+              // then 'Generate handoff PIN', then 'Confirm sale and
+              // handover', now trimmed to 'Confirm sale' — kept in
+              // sync with the header pill that opens this exact modal.
+              // Text-only.
               <>
-                <Text style={styles.modalTitle}>Confirm sale and handover</Text>
+                <Text style={styles.modalTitle}>Confirm sale</Text>
                 <Text style={styles.modalBody}>
                   {!session
                     ? 'Waiting for the buyer to arrange the deal.'
@@ -1402,8 +1414,13 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#111111' },
   center: { flex: 1, backgroundColor: '#111', alignItems: 'center', justifyContent: 'center' },
   header: { backgroundColor: BLACK, padding: 16, paddingTop: 50, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  headerLeft: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  headerRight: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  // NEW: flexShrink/minWidth so headerLeft actually compresses instead
+  // of overflowing the row (RN views don't shrink by default) — see the
+  // header JSX comment where this is paired with the name's
+  // numberOfLines. headerRight stays flexShrink:0 so the pill keeps its
+  // full size and headerLeft gives way instead.
+  headerLeft: { flexDirection: 'row', alignItems: 'center', gap: 10, flexShrink: 1, minWidth: 0 },
+  headerRight: { flexDirection: 'row', alignItems: 'center', gap: 8, flexShrink: 0 },
   reportIconBtn: { width: 34, height: 34, borderRadius: 17, backgroundColor: DARK, alignItems: 'center', justifyContent: 'center' },
   reportIconText: { color: '#888', fontSize: 14 },
   backBtn: { color: '#fff', fontSize: 22 },
