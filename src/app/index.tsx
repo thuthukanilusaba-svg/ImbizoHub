@@ -355,7 +355,12 @@ export default function HomeScreen() {
           <View style={styles.trustRow}>
             <Text style={styles.trustIcon}>🔐</Text>
             <View style={{ flex: 1 }}>
-              <Text style={styles.trustItemTitle}>PIN-confirmed handovers</Text>
+              {/* CHANGED (wording, kept in sync with chat.tsx's
+                  seller-facing "Confirm sale and handover" pill/modal —
+                  same terminology, same feature, just described here at
+                  a glance for anyone browsing the home page before
+                  they've ever opened a chat). Text-only. */}
+              <Text style={styles.trustItemTitle}>Confirm sale and handover</Text>
               <Text style={styles.trustItemSub}>Nothing's marked complete until both sides confirm, in person, with a one-time PIN</Text>
             </View>
           </View>

@@ -872,7 +872,21 @@ export default function ChatScreen() {
                 {/* CHANGED (PIN-role reversal): the seller no longer
                     confirms a PIN — they generate one, after meeting the
                     buyer and both being happy. */}
-                {isBuyerRole ? 'Arrange deal' : 'Meet & Pay'}
+                {/* CHANGED (wording, real feedback: "would it be not
+                    confusing to read meet and sell/pay" — seller-only):
+                    was 'Meet & Pay', the shared feature name, then
+                    briefly 'Generate handoff PIN' (the literal action),
+                    now 'Confirm sale and handover' per direct product
+                    decision — read as "the sale is confirmed, and the
+                    handover happens" rather than "I personally tap
+                    confirm": the seller's actual button inside this
+                    flow still says "Generate PIN", and the buyer is
+                    still the one who literally enters the PIN to
+                    confirm (see confirm_meetpay_pin() and
+                    handleConfirmPin() below) — this pill label is just
+                    the entry point's name. Text-only change: no logic,
+                    PIN flow, or rating eligibility touched. */}
+                {isBuyerRole ? 'Arrange deal' : 'Confirm sale and handover'}
               </Text>
             </TouchableOpacity>
           )}
@@ -1086,8 +1100,19 @@ export default function ChatScreen() {
               // they meet the seller first, and once the seller
               // generates a PIN, the buyer enters it here to confirm
               // they received the goods.
+              // CHANGED (wording, buyer-only — completes the pairing
+              // with the seller's "Confirm sale and handover" modal:
+              // was 'Meet & Collect'/'Meet & Pay', the shared feature
+              // name — this modal is specifically the buyer's
+              // PIN-entry/confirm screen, so it now says what the buyer
+              // is actually doing here. The initial "Arrange deal"
+              // chooser (a few screens back, where they pick Meet & Pay
+              // vs delivery) is intentionally left unchanged — it's
+              // naming two different options in a menu, not a single
+              // confirm action, so "Confirm handover" wouldn't fit
+              // there. Text-only.
               <>
-                <Text style={styles.modalTitle}>{isItemRequestChat ? 'Meet & Collect' : 'Meet & Pay'}</Text>
+                <Text style={styles.modalTitle}>Confirm handover</Text>
                 <Text style={styles.modalBody}>
                   {session?.pin
                     ? 'Enter the PIN the seller shows you once you\'ve inspected the item and you\'re both happy to complete the deal.'
@@ -1119,7 +1144,7 @@ export default function ChatScreen() {
                     >
                       {confirming
                         ? <ActivityIndicator color={BLACK} />
-                        : <Text style={styles.modalBtnText}>Confirm transaction</Text>
+                        : <Text style={styles.modalBtnText}>Confirm handover</Text>
                       }
                     </TouchableOpacity>
                   </>
@@ -1134,8 +1159,13 @@ export default function ChatScreen() {
               // confirms the buyer's PIN — once they've met the buyer
               // and both are happy, the seller generates the PIN here
               // and shows it to the buyer, who enters it to confirm.
+              // CHANGED (wording, seller-only — see the matching header
+              // pill comment above): was 'Meet & Collect'/'Meet & Pay',
+              // then 'Generate handoff PIN', now 'Confirm sale and
+              // handover' — kept in sync with the header pill that
+              // opens this exact modal. Text-only.
               <>
-                <Text style={styles.modalTitle}>{isItemRequestChat ? 'Meet & Collect' : 'Meet & Pay'}</Text>
+                <Text style={styles.modalTitle}>Confirm sale and handover</Text>
                 <Text style={styles.modalBody}>
                   {!session
                     ? 'Waiting for the buyer to arrange the deal.'
