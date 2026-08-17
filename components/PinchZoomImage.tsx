@@ -17,6 +17,21 @@
 //  - Swipe left/right to move to the next/previous photo (only while
 //    NOT zoomed in, so it never fights with panning a zoomed photo).
 //  - Swipe down to dismiss the viewer (only while NOT zoomed in).
+//
+// FIX (real bug, "photo doesn't fit the screen after rotating"): screen
+// width/height used to come from `Dimensions.get('window')` read ONCE
+// at module load time, then baked into a static StyleSheet.create — a
+// plain snapshot, not reactive. Since the rest of the app is portrait-
+// locked (see _layout.tsx) and this module first loads while the app is
+// still portrait, that snapshot was always the PORTRAIT dimensions,
+// permanently. PhotoZoomViewer.native.tsx unlocks rotation while the
+// viewer is open specifically so photos can rotate with the phone (see
+// its own comment), but this component never noticed — the image/
+// container kept rendering at the old portrait width/height sitting in
+// the corner of the now-landscape screen, leaving the rest black. Fixed
+// by switching to useWindowDimensions(), which re-renders on rotation,
+// and moving width/height off the static stylesheet into inline styles
+// computed from its live value.
 
 import { Image } from 'expo-image';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
@@ -27,9 +42,7 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 import { scheduleOnRN } from 'react-native-worklets';
-import { Dimensions, StyleSheet } from 'react-native';
-
-const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
+import { StyleSheet, useWindowDimensions } from 'react-native';
 
 const MAX_SCALE = 4;
 const DOUBLE_TAP_SCALE = 2.5;
@@ -46,6 +59,13 @@ type Props = {
 };
 
 export default function PinchZoomImage({ uri, onNext, onPrev, onDismiss, hasNext, hasPrev }: Props) {
+  // NEW: live, rotation-aware screen size — see top-of-file FIX comment.
+  // Unlike Dimensions.get('window'), this re-renders whenever the
+  // window's dimensions actually change (including orientation
+  // changes), which is exactly what's needed since PhotoZoomViewer
+  // unlocks rotation while this is on screen.
+  const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = useWindowDimensions();
+
   // Pinch-zoom state
   const scale = useSharedValue(1);
   const savedScale = useSharedValue(1);
@@ -153,10 +173,12 @@ export default function PinchZoomImage({ uri, onNext, onPrev, onDismiss, hasNext
 
   return (
     <GestureDetector gesture={composedGesture}>
-      <Animated.View style={[styles.container, animatedStyle]}>
+      <Animated.View
+        style={[styles.container, { width: SCREEN_WIDTH, height: SCREEN_HEIGHT }, animatedStyle]}
+      >
         <Image
           source={{ uri }}
-          style={styles.image}
+          style={{ width: SCREEN_WIDTH, height: SCREEN_HEIGHT }}
           contentFit="contain"
           transition={0}
         />
@@ -167,13 +189,7 @@ export default function PinchZoomImage({ uri, onNext, onPrev, onDismiss, hasNext
 
 const styles = StyleSheet.create({
   container: {
-    width: SCREEN_WIDTH,
-    height: SCREEN_HEIGHT,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  image: {
-    width: SCREEN_WIDTH,
-    height: SCREEN_HEIGHT,
   },
 });
