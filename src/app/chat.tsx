@@ -64,6 +64,7 @@ import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, AppState, KeyboardAvoidingView, Modal, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
+  notifyAgreedToMeet,
   notifyMeetPayPinGenerated,
   notifyNewMessage,
   notifyTransactionConfirmed
@@ -895,6 +896,38 @@ export default function ChatScreen() {
     }
   }
 
+  // NEW (meetpay_seller_agreed_step migration): formal middle step
+  // between "buyer arranged the deal" and "seller generates the PIN" —
+  // the seller taps this once they're genuinely willing to go through
+  // with the meetup. agree_to_meetpay() checks server-side that the
+  // caller is this session's seller and that it's still pending, same
+  // guard pattern regenerate_meetpay_pin() below already uses.
+  async function agreeToMeet() {
+    if (!session) return;
+    setPinError('');
+
+    const { data, error } = await supabase.rpc('agree_to_meetpay', {
+      p_session_id: session.id,
+    });
+
+    if (error) { setPinError(error.message); return; }
+    setSession(data);
+
+    // Local-device-only reminder for the seller. TRIMMED (deliberate
+    // simplification, meetpay_seller_agreed_trim_push migration): this
+    // event does NOT also push to the buyer's device the way PIN
+    // generation/confirmation do — the buyer instead picks it up
+    // through the realtime subscription already set up in init()
+    // (subscribeToSession / subscribeToNewMeetPaySession), which is
+    // free once a session exists and covers the common case (buyer has
+    // the chat open). The gap this accepts: no OS-level push if the
+    // buyer's app is closed when the seller agrees — considered an
+    // acceptable trade for skipping a second edge-function branch and
+    // DB trigger for a smaller step than PIN generation or final
+    // confirmation.
+    notifyAgreedToMeet(isItemRequestChat ? 'this item' : 'this listing');
+  }
+
   // CHANGED (PIN-role reversal): regenerate_meetpay_pin() now requires
   // the caller to be the session's SELLER (previously the buyer) — see
   // the reverse_meetpay_pin_roles migration. This is now how the seller
@@ -1247,7 +1280,14 @@ export default function ChatScreen() {
                 <Text style={styles.modalBody}>
                   {session?.pin
                     ? 'Enter the PIN the seller shows you once you\'ve inspected the item and you\'re both happy to complete the deal.'
-                    : 'Meet the seller in person first. Once you\'re both happy, ask them to generate a PIN so you can confirm here.'}
+                    : session?.seller_agreed_at
+                      // NEW (meetpay_seller_agreed_step): the seller has
+                      // committed to the meetup — different wording from
+                      // the plain "still waiting" state below, since
+                      // there's now something concrete to act on
+                      // (coordinating a time), not just waiting blind.
+                      ? 'The seller agreed to meet! Coordinate a time in chat, then wait for them to show you the PIN.'
+                      : 'Meet the seller in person first. Once you\'re both happy, ask them to generate a PIN so you can confirm here.'}
                 </Text>
 
                 {pinError ? <Text style={styles.modalError}>⚠️ {pinError}</Text> : null}
@@ -1255,7 +1295,11 @@ export default function ChatScreen() {
                 {!session || !session.pin ? (
                   <View style={styles.waitingBox}>
                     <ActivityIndicator color={GOLD} style={{ marginBottom: 10 }} />
-                    <Text style={styles.waitingText}>Waiting for the seller to generate a PIN...</Text>
+                    <Text style={styles.waitingText}>
+                      {session?.seller_agreed_at
+                        ? 'Waiting for the seller to generate a PIN...'
+                        : 'Waiting for the seller to agree to meet...'}
+                    </Text>
                   </View>
                 ) : (
                   <>
@@ -1300,7 +1344,12 @@ export default function ChatScreen() {
                 <Text style={styles.modalBody}>
                   {!session
                     ? 'Waiting for the buyer to arrange the deal.'
-                    : 'Once you\'ve met the buyer and you\'re both happy, generate a PIN and show it to them to confirm they received the goods.'}
+                    // NEW (meetpay_seller_agreed_step): the middle step —
+                    // a session exists but this seller hasn't yet
+                    // committed to the meetup.
+                    : !session.seller_agreed_at
+                      ? 'The buyer wants to arrange a meetup. Once you\'re genuinely ready to go through with it, agree to meet — then coordinate a time in chat.'
+                      : 'Once you\'ve met the buyer and you\'re both happy, generate a PIN and show it to them to confirm they received the goods.'}
                 </Text>
 
                 {pinError ? <Text style={styles.modalError}>⚠️ {pinError}</Text> : null}
@@ -1310,6 +1359,10 @@ export default function ChatScreen() {
                     <ActivityIndicator color={GOLD} style={{ marginBottom: 10 }} />
                     <Text style={styles.waitingText}>Waiting for the buyer to arrange the deal...</Text>
                   </View>
+                ) : !session.seller_agreed_at ? (
+                  <TouchableOpacity style={styles.modalBtn} onPress={agreeToMeet}>
+                    <Text style={styles.modalBtnText}>Agree to meet</Text>
+                  </TouchableOpacity>
                 ) : !session.pin ? (
                   <TouchableOpacity style={styles.modalBtn} onPress={regeneratePin}>
                     <Text style={styles.modalBtnText}>Generate PIN</Text>

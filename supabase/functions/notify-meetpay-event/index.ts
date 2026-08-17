@@ -26,6 +26,16 @@
 // (the trigger sent it, this function 400'd on it as unrecognized) —
 // this deploy brings it back in sync with notify_meetpay_session_change().
 //
+// NOTE: a "seller agrees to meet" step also exists now (see
+// meetpay_sessions.seller_agreed_at / agree_to_meetpay() /
+// meetpay_seller_agreed_step migration) but deliberately does NOT push
+// a notification through this function — trimmed as a simplification
+// (meetpay_seller_agreed_trim_push migration): chat.tsx already has a
+// realtime subscription on the session row, so a buyer with the chat
+// open sees the change live with no push needed. Only PIN generation
+// and final confirmation are important enough to also reach a
+// closed/backgrounded app.
+//
 // Called only by DB triggers on meetpay_sessions (see
 // notify-meetpay-event-trigger.sql) — never by the client directly.
 // Authenticated via a shared secret (X-Notify-Secret header).

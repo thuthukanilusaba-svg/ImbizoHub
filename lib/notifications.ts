@@ -163,6 +163,22 @@ export function notifyNewMessage(senderName: string, messageText: string, listin
   );
 }
 
+// NEW (seller_agreed step): fires on the seller's own device the
+// moment they tap "Agree to meet" — same local-only self-reminder
+// pattern as notifyMeetPayPinGenerated below. Deliberately NOT paired
+// with a cross-device push to the buyer (trimmed as a simplification,
+// meetpay_seller_agreed_trim_push migration) — the buyer instead picks
+// this up live through chat.tsx's existing realtime subscription on
+// the session row, which is free once a session exists and covers the
+// common case of the buyer having the chat open.
+export function notifyAgreedToMeet(listingTitle: string) {
+  return showLocalNotification(
+    'You agreed to meet',
+    `You confirmed you're ready to meet the buyer for "${listingTitle}". Coordinate a time in chat, then generate a PIN once you're together.`,
+    { type: 'meetpay' }
+  );
+}
+
 // CHANGED (PIN-role reversal): the SELLER now generates the PIN, after
 // meeting the buyer in person and both being happy — the buyer then
 // enters it to confirm they received the goods. This fires only on the
