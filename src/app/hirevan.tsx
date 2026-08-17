@@ -399,7 +399,13 @@ export default function HireVanScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#111111' },
-  content: { padding: 20, paddingTop: Platform.OS === 'ios' ? 56 : 40, paddingBottom: 48 },
+  // NEW: extra scroll headroom below the last field/submit button —
+  // was 48, which can leave content sitting right against the
+  // keyboard's edge on some phones. This is pure safety margin on top
+  // of the KeyboardAvoidingView + ScrollView fix above; doesn't change
+  // anything when the keyboard is closed since it's just trailing
+  // whitespace at the very bottom of a scrollable area.
+  content: { padding: 20, paddingTop: Platform.OS === 'ios' ? 56 : 40, paddingBottom: 140 },
 
   backBtn: { marginBottom: 16 },
   backText: { color: GREY, fontSize: 14 },
