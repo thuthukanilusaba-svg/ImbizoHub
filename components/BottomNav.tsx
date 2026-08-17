@@ -21,12 +21,17 @@
 // scroll actually have somewhere to go, rather than the ScrollView clamping
 // every scrollTo() call back to 0 because nothing overflows.
 //
-// UPDATED AGAIN (product request): "Profile" now shows a "⋯" icon instead
-// of the person glyph — tried a version where "⋯" popped up a small menu
-// you then had to tap "Profile" inside of, but that made getting to
-// Profile a two-step process for the one thing it led to. Tapping "⋯" now
-// goes straight to Profile, same one-tap behavior as every other tab, just
-// with a different icon.
+// UPDATED AGAIN (product request, later reverted): "Profile" briefly
+// showed a "⋯" icon instead of a person glyph — tried a version where
+// "⋯" popped up a small menu you then had to tap "Profile" inside of,
+// but that made getting to Profile a two-step process for the one
+// thing it led to, so it was changed to go straight to Profile on tap,
+// same one-tap behavior as every other tab, just with a different
+// icon. Reverted back to a normal profile icon (👤) per a later product
+// request — same glyph this app already uses elsewhere as the
+// person/avatar fallback (messages.tsx, index.tsx, chat.tsx), so this
+// keeps that vocabulary consistent instead of introducing a new one
+// just for this tab.
 //
 // UPDATED AGAIN (website review): the horizontal-scroll row is genuinely
 // the right call on a phone — swiping to reveal more tabs is a completely
@@ -70,7 +75,7 @@ const POST: PostEntry = { type: 'post', route: '/post' };
 const MESSAGES: TabEntry = { type: 'tab', key: 'messages', icon: '💬', label: 'Messages', route: '/messages' };
 const DASHBOARD: TabEntry = { type: 'tab', key: 'dealer', icon: '🏪', label: 'Dashboard', route: '/dealer' };
 const ADMIN: TabEntry = { type: 'tab', key: 'admin', icon: '🛡️', label: 'Admin', route: '/admin-verification-review' };
-const PROFILE: TabEntry = { type: 'tab', key: 'profile', icon: '⋯', label: 'Profile', route: '/profile' };
+const PROFILE: TabEntry = { type: 'tab', key: 'profile', icon: '👤', label: 'Profile', route: '/profile' };
 
 interface BottomNavProps {
   active: NavKey;
@@ -178,7 +183,6 @@ export default function BottomNav({ active, showDashboardTab, isAdmin }: BottomN
         <Animated.Text
           style={[
             styles.navIcon,
-            entry.key === 'profile' && styles.navIconMore,
             (isActive || isPressed) && styles.navIconActive,
             isPressed && { transform: [{ scale: scaleAnim }] },
           ]}
@@ -267,8 +271,4 @@ const styles = StyleSheet.create({
     position: 'absolute', top: 14, left: 20.5,
     width: 3, height: 16, borderRadius: 1.5, backgroundColor: BLACK,
   },
-  // The ellipsis glyph sits visually smaller/higher than the emoji icons
-  // next to it at the same fontSize, so it gets a small bump + nudge to
-  // read as the same weight/position in the row.
-  navIconMore: { fontSize: 26, marginTop: -4 },
 });

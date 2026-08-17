@@ -589,9 +589,28 @@ const styles = StyleSheet.create({
   // paint over this button in some cases since sibling render order
   // alone no longer guarantees it stays on top.
   backFloat: { position: 'absolute', top: 50, left: 16, width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(0,0,0,0.6)', alignItems: 'center', justifyContent: 'center', zIndex: 10 },
-  // top: 1 nudges the ← glyph down slightly so it optically centers in
-  // the circle — see the FIX comment where this button is used.
-  backFloatText: { color: '#fff', fontSize: 20, position: 'relative', top: 1 },
+  // FIX (real bug, reported again: "the arrow in the back circle is not
+  // centered" — the previous `top: 1` nudge here wasn't enough): a
+  // magic-number position offset only compensates for one font's
+  // specific baseline metrics, and even then only approximately — it's
+  // a guess, not a fix. The actual, reliable cause on Android is
+  // `includeFontPadding` defaulting to true, which adds extra
+  // (asymmetric) padding above/below the glyph that the parent's
+  // alignItems/justifyContent centering has no way to see or account
+  // for. Setting it false removes that padding so the text's own box
+  // is just the glyph itself; giving that box an explicit lineHeight
+  // equal to the circle's own 36px size, plus textAlign/
+  // textAlignVertical: 'center', then centers it deterministically
+  // against the circle's real dimensions instead of eyeballing a
+  // pixel offset.
+  backFloatText: {
+    color: '#fff',
+    fontSize: 20,
+    lineHeight: 36,
+    textAlign: 'center',
+    textAlignVertical: 'center',
+    includeFontPadding: false,
+  },
 
   details: { padding: 20 },
   titleRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10 },
