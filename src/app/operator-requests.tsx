@@ -355,8 +355,15 @@ export default function OperatorRequestsScreen() {
               <View style={styles.successBox}>
                 <Text style={styles.successEmoji}>✅</Text>
                 <Text style={styles.successTitle}>Quote sent!</Text>
+                {/* FIX: was "their deposit unlocks your contact details" —
+                    leftover old terminology from before this app renamed
+                    "deposit" to "commitment fee" everywhere else (see
+                    quotes.tsx, operator-register-pay.tsx's Step 3, and
+                    confirm-payment.ts's trip_deposit branch, all of which
+                    already say "commitment fee"). This was the one screen
+                    that still said "deposit" to a real user. */}
                 <Text style={styles.successBody}>
-                  The customer will review your bid. If they accept, you'll be notified and their deposit unlocks your contact details.
+                  The customer will review your bid. If they accept and pay their commitment fee, you'll be notified and your contact details will be revealed.
                 </Text>
                 <TouchableOpacity style={styles.submitBtn} onPress={() => setModalVisible(false)}>
                   <Text style={styles.submitBtnText}>Done</Text>

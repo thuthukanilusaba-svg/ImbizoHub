@@ -376,7 +376,7 @@ export default function HireVanScreen() {
         <Text style={styles.infoText}>
           {isPromoActive()
             ? '🔒 Your contact details stay private until you choose an operator — free right now, launch promotion through Jan 31, 2027.'
-            : '🔒 Your contact details stay private until you choose an operator and pay a small deposit.'}
+            : '🔒 Your contact details stay private until you choose an operator and pay a small commitment fee.'}
         </Text>
       </View>
 
