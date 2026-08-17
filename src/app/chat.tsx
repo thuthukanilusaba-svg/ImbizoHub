@@ -118,6 +118,24 @@ export default function ChatScreen() {
   const [depositChecked, setDepositChecked] = useState(false);
   const [depositPaid, setDepositPaid] = useState(false);
   const [chatUnlocked, setChatUnlocked] = useState(false);
+  // FIX (real bug, found while investigating whether van-hire chat
+  // actually works for meetups): the operator's only entry point into
+  // a request_id chat is tapping their "quote accepted" push
+  // notification, which deep-links to `/chat?request_id=...` with NO
+  // receiver_id (see _layout.tsx's notification router — it only has
+  // request_id in the notification payload to begin with). Every piece
+  // of message logic below keyed off the raw receiver_id route param,
+  // so arriving without one meant: no realtime subscription (gated on
+  // receiver_id), no name shown in the header, and — the serious part —
+  // any message the operator sent got inserted with receiver_id: null,
+  // which the CUSTOMER's own fetchMessages() then silently filtered out
+  // (it matches strictly on sender/receiver id pairs), so the customer
+  // would simply never see it. checkRole() below resolves the missing
+  // id from data this screen already has read access to (the request's
+  // owner, and the accepted quote's operator) and stores it here so
+  // every downstream call — including ones that fire later, like the
+  // AppState foreground refetch — has a real id to use.
+  const [resolvedReceiverId, setResolvedReceiverId] = useState<string | undefined>(receiver_id as string | undefined);
   const [dealModal, setDealModal] = useState(false);
   const openDealHandled = useRef(false);
   const isBuyerRoleRef = useRef(false);
@@ -134,10 +152,19 @@ export default function ChatScreen() {
       if (cancelled) return;
       setMyId(uid);
 
-      const { owner, sellerIsDealerPro: isDealerProSeller, itemResponseAccepted } = await checkRole(uid);
+      const { owner, sellerIsDealerPro: isDealerProSeller, itemResponseAccepted, resolvedOtherId } = await checkRole(uid);
       if (cancelled) return;
 
-      await fetchOtherPersonName();
+      // See the resolvedReceiverId state declaration above for the full
+      // reasoning. Use a local variable (not just the state setter) so
+      // everything else in this same init() run — which executes before
+      // React has applied the state update — gets the resolved id too.
+      const effectiveReceiverId = (receiver_id as string | undefined) || resolvedOtherId;
+      if (effectiveReceiverId && effectiveReceiverId !== receiver_id) {
+        setResolvedReceiverId(effectiveReceiverId);
+      }
+
+      await fetchOtherPersonName(effectiveReceiverId);
       if (cancelled) return;
 
       if (isItemRequestChat) {
@@ -172,18 +199,18 @@ export default function ChatScreen() {
 
       setDepositChecked(true);
 
-      await fetchMessages(uid);
+      await fetchMessages(uid, effectiveReceiverId);
       await loadExistingMeetPaySession(uid);
 
-      if (!cancelled && (listing_id || request_id || item_request_id) && receiver_id && uid) {
+      if (!cancelled && (listing_id || request_id || item_request_id) && effectiveReceiverId && uid) {
         const convoKey = isItemRequestChat
           ? `item-${item_request_id}`
           : isRequestChat
             ? `req-${request_id}`
             : `listing-${listing_id}`;
-        const channelName = `messages-${convoKey}-${receiver_id}-${uid}`;
+        const channelName = `messages-${convoKey}-${effectiveReceiverId}-${uid}`;
 
-        subscribeToMessages(channelName, uid);
+        subscribeToMessages(channelName, uid, effectiveReceiverId);
       }
     }
 
@@ -215,7 +242,7 @@ export default function ChatScreen() {
     //      connection), resubscribe automatically with capped
     //      exponential backoff instead of leaving the chat silently
     //      unable to receive anything for the rest of the session.
-    function subscribeToMessages(channelName: string, uid: string, attempt = 0) {
+    function subscribeToMessages(channelName: string, uid: string, otherId: string | undefined, attempt = 0) {
       if (cancelled) return;
 
       const staleChannels = supabase.getChannels().filter((ch) => ch.topic?.includes(channelName));
@@ -234,7 +261,7 @@ export default function ChatScreen() {
               : listing_id && msg.listing_id === parseInt(listing_id as string);
           if (
             belongsToThisConvo &&
-            (msg.sender_id === receiver_id || msg.receiver_id === receiver_id ||
+            (msg.sender_id === otherId || msg.receiver_id === otherId ||
              msg.sender_id === uid || msg.receiver_id === uid)
           ) {
             setMessages((prev) => (prev.some((m) => m.id === msg.id) ? prev : [...prev, msg]));
@@ -250,11 +277,11 @@ export default function ChatScreen() {
         .subscribe((status) => {
           if (cancelled) return;
           if (status === 'SUBSCRIBED') {
-            fetchMessages(uid);
+            fetchMessages(uid, otherId);
           } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
             const delay = Math.min(30000, 2000 * Math.pow(2, attempt));
             setTimeout(() => {
-              if (!cancelled) subscribeToMessages(channelName, uid, attempt + 1);
+              if (!cancelled) subscribeToMessages(channelName, uid, otherId, attempt + 1);
             }, delay);
           }
         });
@@ -327,17 +354,18 @@ export default function ChatScreen() {
     return () => subscription.remove();
   }, [myId]);
 
-  async function fetchOtherPersonName() {
-    if (!receiver_id) return;
+  async function fetchOtherPersonName(idOverride?: string) {
+    const id = idOverride || (receiver_id as string | undefined) || resolvedReceiverId;
+    if (!id) return;
     const { data } = await supabase
       .from('profiles')
       .select('full_name')
-      .eq('id', receiver_id as string)
+      .eq('id', id)
       .maybeSingle();
     if (data?.full_name) setOtherPersonName(data.full_name);
   }
 
-  async function checkRole(uid: string): Promise<{ owner: boolean; sellerIsDealerPro: boolean; itemResponseAccepted: boolean }> {
+  async function checkRole(uid: string): Promise<{ owner: boolean; sellerIsDealerPro: boolean; itemResponseAccepted: boolean; resolvedOtherId?: string }> {
     if (isItemRequestChat) {
       if (!item_request_id) return { owner: false, sellerIsDealerPro: false, itemResponseAccepted: false };
       const { data: req } = await supabase
@@ -381,7 +409,32 @@ export default function ChatScreen() {
         const owner = uid === req.user_id;
         setIsOwnerOfListing(owner);
         isBuyerRoleRef.current = !owner;
-        return { owner, sellerIsDealerPro: false, itemResponseAccepted: false };
+
+        // FIX: see the resolvedReceiverId state declaration up top for
+        // the full reasoning — only need to look this up at all when
+        // the route didn't already give us a receiver_id (the
+        // customer's own "Chat with operator" button always does).
+        let resolvedOtherId: string | undefined;
+        if (!receiver_id) {
+          if (owner) {
+            // I'm the customer, arrived some other way than the normal
+            // button (e.g. a stale/bookmarked link) — the other party
+            // is whichever operator's quote actually won.
+            const { data: acceptedQuote } = await supabase
+              .from('quotes')
+              .select('operator_id')
+              .eq('request_id', request_id as string)
+              .eq('status', 'accepted')
+              .maybeSingle();
+            resolvedOtherId = acceptedQuote?.operator_id;
+          } else {
+            // I'm the operator, arrived via the "quote accepted" push
+            // notification — the other party is the request's owner.
+            resolvedOtherId = req.user_id;
+          }
+        }
+
+        return { owner, sellerIsDealerPro: false, itemResponseAccepted: false, resolvedOtherId };
       }
       return { owner: false, sellerIsDealerPro: false, itemResponseAccepted: false };
     }
@@ -486,7 +539,7 @@ export default function ChatScreen() {
     sessionChannelRef.current = channel;
   }
 
-  const fetchMessages = async (uid: string) => {
+  const fetchMessages = async (uid: string, idOverride?: string) => {
     if (!listing_id && !request_id && !item_request_id) { setLoading(false); return; }
 
     let query = supabase.from('messages').select('*');
@@ -504,7 +557,12 @@ export default function ChatScreen() {
       return;
     }
 
-    const otherId = receiver_id as string | undefined;
+    // FIX: falls back through idOverride (passed directly by init()/
+    // subscribeToMessages before the resolvedReceiverId state update
+    // has actually applied) then resolvedReceiverId (for later callers
+    // like the AppState foreground refetch, which have no override to
+    // pass) — see the resolvedReceiverId state declaration up top.
+    const otherId = idOverride || (receiver_id as string | undefined) || resolvedReceiverId;
     const filtered = (data ?? []).filter((m: any) =>
       !otherId ||
       (m.sender_id === uid && m.receiver_id === otherId) ||
@@ -609,7 +667,16 @@ export default function ChatScreen() {
       .insert({
         text: text.trim(),
         sender_id: currentUid,
-        receiver_id: receiver_id || null,
+        // FIX: was `receiver_id || null` — the raw route param. For an
+        // operator arriving via the "quote accepted" push notification
+        // (no receiver_id in that deep link), this silently inserted
+        // receiver_id: null on every message they sent, which the
+        // customer's own fetchMessages() then filtered out entirely —
+        // see the resolvedReceiverId state declaration up top for the
+        // full trace. resolvedReceiverId covers that case; falls back
+        // to the raw param first since it's already correct whenever
+        // present (the customer's own entry point always sets it).
+        receiver_id: (receiver_id as string | undefined) || resolvedReceiverId || null,
         listing_id: !isRequestChat && !isItemRequestChat && listing_id ? parseInt(listing_id as string) : null,
         request_id: isRequestChat ? request_id : null,
         item_request_id: isItemRequestChat ? item_request_id : null,
@@ -809,11 +876,11 @@ export default function ChatScreen() {
               </Text>
             </TouchableOpacity>
           )}
-          {receiver_id && (
+          {(receiver_id || resolvedReceiverId) && (
             <TouchableOpacity
               style={styles.reportIconBtn}
               onPress={() => router.push(
-                `/report-user?user_id=${receiver_id}&name=${encodeURIComponent(otherPersonName || '')}&context=chat`
+                `/report-user?user_id=${receiver_id || resolvedReceiverId}&name=${encodeURIComponent(otherPersonName || '')}&context=chat`
               )}
             >
               <Text style={styles.reportIconText}>⚑</Text>
