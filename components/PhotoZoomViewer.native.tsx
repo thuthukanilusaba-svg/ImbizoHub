@@ -17,10 +17,23 @@
 // actual pinch/pan/double-tap/swipe gesture logic. Because nothing new
 // was added to package.json, this ships as a normal JS/OTA update, not
 // a new native build.
+//
+// FIX #2 (real bug, "photo still doesn't sit properly after rotating" —
+// reported again even after PinchZoomImage.tsx switched to
+// useWindowDimensions()): this whole viewer lives inside a <Modal>,
+// which on Android renders into its own separate native Dialog window.
+// That Dialog's real on-screen size isn't reliably reflected by
+// Dimensions/useWindowDimensions after an in-place rotation — a known
+// RN/Modal gap. Fixed for real this time by measuring THIS container's
+// actual layout via onLayout (which fires with the correct post-rotation
+// size because it's reporting on this exact native surface, not a
+// separate global "window" value) and passing that measured width/height
+// straight down to PinchZoomImage as props, instead of PinchZoomImage
+// computing its own size internally.
 
 import * as ScreenOrientation from 'expo-screen-orientation';
 import { useEffect, useState } from 'react';
-import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
+import { LayoutChangeEvent, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import PinchZoomImage from './PinchZoomImage';
 
@@ -33,6 +46,25 @@ type Props = {
 
 export default function PhotoZoomViewer({ photos, imageIndex, visible, onRequestClose }: Props) {
   const [currentIndex, setCurrentIndex] = useState(imageIndex);
+  // NEW — see FIX #2 above. null until the first onLayout fires, so we
+  // never briefly render PinchZoomImage at a wrong/stale size.
+  const [containerSize, setContainerSize] = useState<{ width: number; height: number } | null>(null);
+
+  // Reset so a fresh measurement is required each time the viewer opens
+  // (rather than trusting whatever size was last measured, which could
+  // be a stale orientation left over from a previous open).
+  useEffect(() => {
+    if (visible) {
+      setContainerSize(null);
+    }
+  }, [visible]);
+
+  function handleLayout(e: LayoutChangeEvent) {
+    const { width, height } = e.nativeEvent.layout;
+    setContainerSize((prev) =>
+      prev && prev.width === width && prev.height === height ? prev : { width, height }
+    );
+  }
 
   // Whenever the viewer is (re)opened, start at whichever photo the
   // caller asked for (e.g. the carousel's currently-active photo) —
@@ -84,16 +116,20 @@ export default function PhotoZoomViewer({ photos, imageIndex, visible, onRequest
           enough for gestures here to work reliably (especially on
           Android). */}
       <GestureHandlerRootView style={styles.flex}>
-        <View style={styles.container}>
-          <PinchZoomImage
-            key={photos[safeIndex]}
-            uri={photos[safeIndex]}
-            hasNext={safeIndex < photos.length - 1}
-            hasPrev={safeIndex > 0}
-            onNext={() => setCurrentIndex((i) => Math.min(i + 1, photos.length - 1))}
-            onPrev={() => setCurrentIndex((i) => Math.max(i - 1, 0))}
-            onDismiss={onRequestClose}
-          />
+        <View style={styles.container} onLayout={handleLayout}>
+          {containerSize && (
+            <PinchZoomImage
+              key={photos[safeIndex]}
+              uri={photos[safeIndex]}
+              width={containerSize.width}
+              height={containerSize.height}
+              hasNext={safeIndex < photos.length - 1}
+              hasPrev={safeIndex > 0}
+              onNext={() => setCurrentIndex((i) => Math.min(i + 1, photos.length - 1))}
+              onPrev={() => setCurrentIndex((i) => Math.max(i - 1, 0))}
+              onDismiss={onRequestClose}
+            />
+          )}
 
           <View style={styles.header} pointerEvents="box-none">
             <Pressable onPress={onRequestClose} hitSlop={16} style={styles.closeBtn}>

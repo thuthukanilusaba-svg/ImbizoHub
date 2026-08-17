@@ -24,15 +24,21 @@
 // plain snapshot, not reactive. Since the rest of the app is portrait-
 // locked (see _layout.tsx) and this module first loads while the app is
 // still portrait, that snapshot was always the PORTRAIT dimensions,
-// permanently. PhotoZoomViewer.native.tsx unlocks rotation while the
-// viewer is open specifically so photos can rotate with the phone (see
-// its own comment), but this component never noticed — the image/
-// container kept rendering at the old portrait width/height sitting in
-// the corner of the now-landscape screen, leaving the rest black. Fixed
-// by switching to useWindowDimensions(), which re-renders on rotation,
-// and moving width/height off the static stylesheet into inline styles
-// computed from its live value.
-
+// permanently.
+//
+// FIX #2 (real bug, reported again after the useWindowDimensions() fix
+// shipped — "still does not sit properly in landscape"): switching to
+// useWindowDimensions() wasn't enough, because this component is always
+// rendered inside a RN <Modal> (see PhotoZoomViewer.native.tsx). RN's
+// Modal renders into its own separate native window/Dialog on Android,
+// and that Dialog's actual on-screen size does not reliably match what
+// Dimensions/useWindowDimensions reports for the app's main window after
+// an in-place rotation — a known RN/Modal gap, not something fixed by
+// swapping which Dimensions API is read. The only value that's
+// guaranteed correct is the Modal content's OWN measured layout size.
+// So sizing is no longer computed here at all: PhotoZoomViewer measures
+// its actual container via onLayout and passes the real width/height
+// down as props, which this component just renders at directly.
 import { Image } from 'expo-image';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
@@ -42,7 +48,7 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 import { scheduleOnRN } from 'react-native-worklets';
-import { StyleSheet, useWindowDimensions } from 'react-native';
+import { StyleSheet } from 'react-native';
 
 const MAX_SCALE = 4;
 const DOUBLE_TAP_SCALE = 2.5;
@@ -51,6 +57,8 @@ const DISMISS_THRESHOLD = 110;
 
 type Props = {
   uri: string;
+  width: number;
+  height: number;
   onNext: () => void;
   onPrev: () => void;
   onDismiss: () => void;
@@ -58,13 +66,7 @@ type Props = {
   hasPrev: boolean;
 };
 
-export default function PinchZoomImage({ uri, onNext, onPrev, onDismiss, hasNext, hasPrev }: Props) {
-  // NEW: live, rotation-aware screen size — see top-of-file FIX comment.
-  // Unlike Dimensions.get('window'), this re-renders whenever the
-  // window's dimensions actually change (including orientation
-  // changes), which is exactly what's needed since PhotoZoomViewer
-  // unlocks rotation while this is on screen.
-  const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = useWindowDimensions();
+export default function PinchZoomImage({ uri, width: SCREEN_WIDTH, height: SCREEN_HEIGHT, onNext, onPrev, onDismiss, hasNext, hasPrev }: Props) {
 
   // Pinch-zoom state
   const scale = useSharedValue(1);
