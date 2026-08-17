@@ -39,6 +39,7 @@ import {
     ActivityIndicator, Image, Platform, ScrollView, Share, StyleSheet,
     Text, TouchableOpacity, View,
 } from 'react-native';
+import { buildListingHref } from '../../lib/listingNav';
 import { supabase } from '../../lib/supabase';
 
 const GOLD = '#B8860B';
@@ -241,7 +242,8 @@ export default function SellerProfileScreen() {
                 <TouchableOpacity
                   key={l.id}
                   style={styles.listingCard}
-                  onPress={() => router.push(`/listing?id=${l.id}`)}
+                  // NEW: swipe-through-postings context — see lib/listingNav.ts.
+                  onPress={() => router.push(buildListingHref(l.id, listings.map((x) => x.id)))}
                   activeOpacity={0.85}
                 >
                   {l.image_url ? (

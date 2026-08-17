@@ -21,6 +21,7 @@ import { useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { buildListingHref } from '../../lib/listingNav';
 import { supabase } from '../../lib/supabase';
 
 const GOLD = '#B8860B';
@@ -103,7 +104,8 @@ export default function MyListingsScreen() {
               <TouchableOpacity
                 key={item.id}
                 style={[styles.card, isSold && styles.cardSold]}
-                onPress={() => router.push(`/listing?id=${item.id}`)}
+                // NEW: swipe-through-postings context — see lib/listingNav.ts.
+                onPress={() => router.push(buildListingHref(item.id, listings.map((l) => l.id)))}
                 activeOpacity={0.8}
               >
                 <View style={styles.imageWrap}>

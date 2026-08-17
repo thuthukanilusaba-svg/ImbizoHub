@@ -75,8 +75,10 @@ import {
   UIManager,
   View,
 } from 'react-native';
+import { Directions, Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import PhotoZoomViewer from '../../components/PhotoZoomViewer';
+import { buildListingHref, parseListingContext } from '../../lib/listingNav';
 import { supabase } from '../../lib/supabase';
 
 const GOLD = '#B8860B';
@@ -113,7 +115,7 @@ const isPromoActive = () => new Date() < FREE_PROMO_END;
 export default function ListingScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { id } = useLocalSearchParams();
+  const { id, ctx } = useLocalSearchParams<{ id: string; ctx?: string }>();
   const [listing, setListing] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [activeIndex, setActiveIndex] = useState(0);
@@ -264,6 +266,44 @@ export default function ListingScreen() {
     }
   }
 
+  // NEW: swipe/tap through postings — the "same order as where you
+  // came from" list of ids Browse/a category/search/a seller's shop/My
+  // Listings hands off via the `ctx` param (see lib/listingNav.ts).
+  // Screens that link here WITHOUT a list (e.g. the home page's single
+  // featured-listing card) just omit ctx, so contextIds is empty and no
+  // prev/next controls or swipe appear — no different from before this
+  // feature existed.
+  const contextIds = parseListingContext(ctx);
+  const currentContextIndex = contextIds.indexOf(Number(id));
+  const prevListingId = currentContextIndex > 0 ? contextIds[currentContextIndex - 1] : null;
+  const nextListingId =
+    currentContextIndex >= 0 && currentContextIndex < contextIds.length - 1
+      ? contextIds[currentContextIndex + 1]
+      : null;
+
+  // router.replace, not push — swiping through 5 postings shouldn't
+  // stack 5 back-stack entries; the device/header back button should
+  // return straight to wherever this browsing session actually started
+  // (the grid), the same way swiping through posts works in other apps.
+  function goToListing(targetId: number | null) {
+    if (targetId == null) return;
+    router.replace(buildListingHref(targetId, contextIds));
+  }
+
+  // Swipe anywhere on the details section (below the photo carousel,
+  // which already uses horizontal swipe for its own photos — scoping
+  // this gesture to the details area avoids the two fighting over the
+  // same touch). Fling (not Pan) specifically: it only fires on a
+  // clear, fast directional swipe, so it coexists with the details
+  // section's own vertical scroll instead of contesting every drag.
+  const swipeToNext = Gesture.Fling()
+    .direction(Directions.LEFT)
+    .onEnd(() => goToListing(nextListingId));
+  const swipeToPrev = Gesture.Fling()
+    .direction(Directions.RIGHT)
+    .onEnd(() => goToListing(prevListingId));
+  const postingSwipeGesture = Gesture.Race(swipeToNext, swipeToPrev);
+
   if (loading) {
     return (
       <View style={styles.center}>
@@ -305,6 +345,14 @@ export default function ListingScreen() {
   );
 
   return (
+    // NEW: wraps the whole screen so the swipe-to-next/prev-posting
+    // Fling gesture below has a root to attach to — same reasoning
+    // PhotoZoomViewer.native.tsx's own comment gives for its Modal:
+    // react-native-gesture-handler needs an explicit
+    // GestureHandlerRootView somewhere in the tree, and this app has
+    // none at the top level (_layout.tsx), only ever adding one locally
+    // where gestures are actually used.
+    <GestureHandlerRootView style={styles.flex}>
     <View style={styles.container}>
       {/* FIX (real bug — "the back arrow hides when you scroll all the
           way down"): this button used to live inside carouselWrap,
@@ -418,7 +466,11 @@ export default function ListingScreen() {
           )}
         </View>
 
-        {/* Details */}
+        {/* Details — wrapped in the swipe-to-next/prev-posting gesture
+            (see postingSwipeGesture above). Scoped to this section
+            rather than the whole screen so it never contests the photo
+            carousel's own horizontal swipe just above it. */}
+        <GestureDetector gesture={postingSwipeGesture}>
         <View style={styles.details}>
           <View style={styles.titleRow}>
             <Text style={styles.title}>{listing.title}</Text>
@@ -512,7 +564,37 @@ export default function ListingScreen() {
               <Text style={styles.reportLinkText}>⚑ Report this seller</Text>
             </TouchableOpacity>
           )}
+
+          {/* NEW: explicit tap targets alongside the swipe gesture above
+              — a swipe-only affordance is easy to never discover, so
+              this gives the same next/prev navigation a visible,
+              tappable fallback. Only rendered when there's actually
+              somewhere to go (i.e. this listing arrived with a `ctx`
+              list and isn't at either end of it). */}
+          {(prevListingId != null || nextListingId != null) && (
+            <View style={styles.postingNavRow}>
+              <TouchableOpacity
+                style={[styles.postingNavBtn, prevListingId == null && styles.postingNavBtnDisabled]}
+                onPress={() => goToListing(prevListingId)}
+                disabled={prevListingId == null}
+              >
+                <Text style={[styles.postingNavBtnText, prevListingId == null && styles.postingNavBtnTextDisabled]}>
+                  ‹ Previous listing
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.postingNavBtn, nextListingId == null && styles.postingNavBtnDisabled]}
+                onPress={() => goToListing(nextListingId)}
+                disabled={nextListingId == null}
+              >
+                <Text style={[styles.postingNavBtnText, nextListingId == null && styles.postingNavBtnTextDisabled]}>
+                  Next listing ›
+                </Text>
+              </TouchableOpacity>
+            </View>
+          )}
         </View>
+        </GestureDetector>
 
         <View style={{ height: 100 + insets.bottom }} />
       </ScrollView>
@@ -553,10 +635,12 @@ export default function ListingScreen() {
         onRequestClose={() => setZoomVisible(false)}
       />
     </View>
+    </GestureHandlerRootView>
   );
 }
 
 const styles = StyleSheet.create({
+  flex: { flex: 1 },
   container: { flex: 1, backgroundColor: '#111111' },
   center: { flex: 1, backgroundColor: '#111', alignItems: 'center', justifyContent: 'center' },
 
@@ -631,6 +715,14 @@ const styles = StyleSheet.create({
 
   categoryChip: { alignSelf: 'flex-start', backgroundColor: DARK, borderRadius: 20, paddingHorizontal: 14, paddingVertical: 8, borderWidth: 0.5, borderColor: '#333' },
   categoryChipText: { color: GREY, fontSize: 12 },
+
+  // NEW: tappable next/prev-posting row — see the swipe-to-next/prev
+  // feature added to this screen.
+  postingNavRow: { flexDirection: 'row', gap: 10, marginTop: 24 },
+  postingNavBtn: { flex: 1, backgroundColor: DARK, borderRadius: 12, paddingVertical: 13, alignItems: 'center', borderWidth: 0.5, borderColor: '#333' },
+  postingNavBtnDisabled: { opacity: 0.35 },
+  postingNavBtnText: { color: '#fff', fontSize: 13, fontWeight: '600' },
+  postingNavBtnTextDisabled: { color: GREY },
 
   statusErrorBox: { backgroundColor: '#3a1a1a', borderRadius: 10, padding: 12, marginTop: 20 },
   promoRow: { marginTop: 16, gap: 10 },

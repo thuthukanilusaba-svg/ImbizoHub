@@ -5,6 +5,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, FlatList, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import BottomNav from '../../components/BottomNav';
+import { buildListingHref } from '../../lib/listingNav';
 import { useIsDesktopWeb } from '../../lib/responsive';
 import { supabase } from '../../lib/supabase';
 
@@ -414,7 +415,8 @@ export default function HomeScreen() {
           return (
             <TouchableOpacity
               style={styles.listingCard}
-              onPress={() => router.push(`/listing?id=${item.id}`)}
+              // NEW: swipe-through-postings context — see lib/listingNav.ts.
+              onPress={() => router.push(buildListingHref(item.id, listings.map((x) => x.id)))}
             >
               {item.image_url ? (
                 <Image

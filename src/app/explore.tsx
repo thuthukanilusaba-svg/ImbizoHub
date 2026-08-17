@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, FlatList, KeyboardAvoidingView, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import BottomNav from '../../components/BottomNav';
+import { buildListingHref } from '../../lib/listingNav';
 import { useIsDesktopWeb } from '../../lib/responsive';
 import { supabase } from '../../lib/supabase';
 
@@ -296,7 +297,14 @@ export default function ExploreScreen() {
             )
           }
           renderItem={({ item }) => (
-            <TouchableOpacity style={styles.listingCard} onPress={() => router.push(`/listing?id=${item.id}`)}>
+            <TouchableOpacity
+              style={styles.listingCard}
+              // NEW: hands this grid's own current id order along so the
+              // listing detail screen can swipe through the SAME set
+              // (respecting whatever search/category is active here),
+              // not a generic unrelated feed. See lib/listingNav.ts.
+              onPress={() => router.push(buildListingHref(item.id, listings.map((l) => l.id)))}
+            >
               {item.image_url ? (
                 <Image source={{ uri: item.image_url }} style={[styles.listingImg, isDesktopWeb && styles.listingImgDesktop]} contentFit="cover" />
               ) : (
