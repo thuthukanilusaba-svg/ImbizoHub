@@ -376,9 +376,14 @@ const styles = StyleSheet.create({
   // on a phone-width button, so they overflowed and clipped. Removed
   // (the RN default is column), so the label stacks above the caption
   // like payBtnSub's own `marginTop: 4` was clearly designed for.
-  payBtn: { backgroundColor: GOLD, borderRadius: 14, paddingVertical: 18, alignItems: 'center', marginBottom: 16, justifyContent: 'center' },
-  payBtnText: { color: BLACK, fontSize: 16, fontWeight: '800' },
-  payBtnSub: { color: '#5a4400', fontSize: 12, marginTop: 4 },
+  // FIX: hardened further — see delivery-operator-register-pay.tsx's
+  // payBtn comment (its twin file) for the full reasoning: added
+  // paddingHorizontal plus explicit textAlign: 'center' so a wrapped
+  // two-line label can't drift left-aligned inside its own auto-shrunk
+  // text box.
+  payBtn: { backgroundColor: GOLD, borderRadius: 14, paddingVertical: 18, paddingHorizontal: 16, alignItems: 'center', marginBottom: 16, justifyContent: 'center' },
+  payBtnText: { color: BLACK, fontSize: 16, fontWeight: '800', textAlign: 'center' },
+  payBtnSub: { color: '#5a4400', fontSize: 12, marginTop: 4, textAlign: 'center' },
 
   successScreen: { flex: 1, backgroundColor: '#111', padding: 28, paddingTop: 60 },
   successEmoji: { fontSize: 56, marginBottom: 16 },

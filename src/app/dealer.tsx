@@ -49,8 +49,12 @@
 // review: the item-size pricing tier and driver-matching filter were
 // built, but nothing ever actually SHOWED the size to the operator
 // deciding whether to accept a job. An operator could see the fee
-// ($15) without any clear signal that meant "large item, bring a
-// van/truck" specifically.
+// without any clear signal that meant "large item, bring a van/truck"
+// specifically.
+//
+// UPDATED (pricing decision): large items no longer show a flat fee —
+// "You earn" reads "Negotiate with buyer" for them, since the price is
+// agreed directly between driver and customer, not fixed by the app.
 //
 // FIX (real race-condition bug, found during a thorough review):
 // acceptJob() and confirmDelivery() both relied on a `.eq('status',
@@ -607,7 +611,14 @@ export default function DealerScreen() {
                       <View style={styles.jobFooter}>
                         <View>
                           <Text style={styles.jobFeeLabel}>You earn</Text>
-                          <Text style={styles.jobFee}>${job.delivery_fee} cash</Text>
+                          {/* UPDATED (pricing decision): job.delivery_fee
+                              still carries a backend placeholder number
+                              for large items (see delivery-booking.tsx's
+                              top-of-file comment) — never show it as a
+                              price here, show that it's negotiated. */}
+                          <Text style={styles.jobFee}>
+                            {job.parcel_size === 'large' ? 'Negotiate with buyer' : `$${job.delivery_fee} cash`}
+                          </Text>
                         </View>
                         <View style={{ flexDirection: 'row', gap: 8 }}>
                           <TouchableOpacity
@@ -665,7 +676,9 @@ export default function DealerScreen() {
                       )}
 
                       <View style={styles.jobFooter}>
-                        <Text style={styles.jobFee}>${job.delivery_fee} cash</Text>
+                        <Text style={styles.jobFee}>
+                          {job.parcel_size === 'large' ? 'Negotiate with buyer' : `$${job.delivery_fee} cash`}
+                        </Text>
                         <View style={{ flexDirection: 'row', gap: 8 }}>
                           {job.status === 'accepted' && (
                             <TouchableOpacity style={styles.statusBtn} onPress={() => markDispatched(job.id)}>

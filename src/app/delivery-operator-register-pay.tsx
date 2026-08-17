@@ -260,7 +260,7 @@ export default function DeliveryOperatorRegisterPayScreen() {
           <Step n="2" text="Accept open delivery requests from your dashboard" />
           <Step n="3" text="Collect the parcel and mark it dispatched, then delivered" />
           <Step n="4" text="Buyer confirms with their PIN — job complete" />
-          <Step n="5" text="You keep the full delivery fee ($8 local / $12 intercity for small items, $15 flat for large)" />
+          <Step n="5" text="You keep the full delivery fee ($8 local / $12 intercity for small items, negotiated directly for large items)" />
         </View>
         <TouchableOpacity style={styles.startBtn} onPress={() => router.replace('/become-operator?type=delivery')}>
           <Text style={styles.startBtnText}>Add your vehicle details →</Text>
@@ -335,9 +335,14 @@ export default function DeliveryOperatorRegisterPayScreen() {
         <View style={styles.pricingRow}>
           <View>
             <Text style={styles.pricingLabel}>Large item</Text>
-            <Text style={styles.pricingNote}>Needs a van/truck, local only — you keep the full amount</Text>
+            {/* UPDATED (pricing decision): large items are no longer a
+                flat $15 — sizes vary too much for one rate, so the price
+                is negotiated directly between driver and customer. You
+                keep 100% of whatever you agree, same as every other
+                tier. */}
+            <Text style={styles.pricingNote}>Needs a van/truck, local only — negotiate directly, you keep the full amount</Text>
           </View>
-          <Text style={[styles.pricingAmount, { color: GREEN }]}>$15</Text>
+          <Text style={[styles.pricingAmount, { color: GREEN, fontSize: 14 }]}>Negotiate</Text>
         </View>
       </View>
 
@@ -446,10 +451,18 @@ const styles = StyleSheet.create({
   termsLink: { color: GOLD, textDecorationLine: 'underline' },
 
   // FIX: same button-text-overlap fix as its twin file,
-  // operator-register-pay.tsx — see the comment there.
-  payBtn: { backgroundColor: GOLD, borderRadius: 14, paddingVertical: 18, alignItems: 'center', marginBottom: 16, justifyContent: 'center' },
-  payBtnText: { color: BLACK, fontSize: 16, fontWeight: '800' },
-  payBtnSub: { color: '#5a4400', fontSize: 12, marginTop: 4 },
+  // operator-register-pay.tsx — see the comment there. Also hardened
+  // further here (reported again, "tabs are not aligned" on the bottom
+  // button): added paddingHorizontal so the label never touches the
+  // button's rounded edges, plus explicit textAlign: 'center' on both
+  // lines. Without it, a long label like "Register free and start
+  // delivering" that wraps to two lines on a narrower phone left-aligns
+  // each line within its own auto-shrunk text box by default — which
+  // reads as "Register" sitting hard against the left edge while the
+  // rest trails off-center, exactly what was reported.
+  payBtn: { backgroundColor: GOLD, borderRadius: 14, paddingVertical: 18, paddingHorizontal: 16, alignItems: 'center', marginBottom: 16, justifyContent: 'center' },
+  payBtnText: { color: BLACK, fontSize: 16, fontWeight: '800', textAlign: 'center' },
+  payBtnSub: { color: '#5a4400', fontSize: 12, marginTop: 4, textAlign: 'center' },
 
   successScreen: { flex: 1, backgroundColor: '#111', padding: 28, paddingTop: 60 },
   successEmoji: { fontSize: 56, marginBottom: 16 },

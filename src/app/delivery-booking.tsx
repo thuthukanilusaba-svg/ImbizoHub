@@ -5,11 +5,24 @@
 // UPDATED (pricing decision): rates now depend on item size, not just
 // distance — a phone and a window frame shouldn't cost the same to
 // move. Two tiers:
-//   Small (fits in a normal car): $8 local / $12 intercity
-//   Large (needs a van or truck): $15 flat — intercity isn't offered
-//     at all for large items; large-item delivery is local-only by
-//     design, per product decision.
+//   Small (fits in a normal car): $8 local / $12 intercity, fixed.
+//   Large (needs a van or truck): NEGOTIATED directly with the driver,
+//     not a fixed rate — sizes vary too much (a bed frame and a
+//     wardrobe are both "large" but not the same job). Intercity isn't
+//     offered at all for large items; large-item delivery is
+//     local-only by design, per product decision.
 // $2 booking fee to ImbizoHub either way, unchanged.
+//
+// UPDATED (large-item pricing → negotiated): every buyer/driver-facing
+// screen now shows "Negotiate with driver" instead of a fixed $ amount
+// for large items. Under the hood, `deliveryFee` still resolves to a
+// real positive number (LARGE_ITEM_REFERENCE_FEE) for large bookings —
+// the create-payment edge function's `!delivery_fee` presence check and
+// the delivery_bookings.delivery_fee NOT NULL column both require a
+// truthy numeric value, and changing either is a backend/schema change
+// out of scope here. That number is never shown to buyer or driver as
+// a price; it's purely a backend placeholder so the existing payment
+// plumbing keeps working unchanged.
 //
 // UPDATED: can now originate from either a marketplace listing (as
 // before) OR a matched Wanted-tab request — chat.tsx's deal modal routes
@@ -261,7 +274,13 @@ export default function DeliveryBookingScreen() {
     && pickupCity.trim() !== '' && dropoffCity.trim() !== '';
   const isIntercity = parcelSize === 'small' && citiesDiffer;
 
-  const deliveryFee = parcelSize === 'large' ? 15 : (isIntercity ? 12 : 8);
+  // NEW: LARGE_ITEM_REFERENCE_FEE is a backend-only placeholder — see
+  // top-of-file comment. Never render it directly for a large booking;
+  // use isNegotiableFee below to branch to "Negotiate with driver" text
+  // instead.
+  const LARGE_ITEM_REFERENCE_FEE = 15;
+  const isNegotiableFee = parcelSize === 'large';
+  const deliveryFee = isNegotiableFee ? LARGE_ITEM_REFERENCE_FEE : (isIntercity ? 12 : 8);
   const deliveryType = parcelSize === 'large' ? 'local' : (isIntercity ? 'intercity' : 'local');
   const BOOKING_FEE = 2;
 
@@ -441,13 +460,21 @@ export default function DeliveryBookingScreen() {
             <Text style={styles.successBody}>
               We've sent this job to {selectedDriver?.full_name}. They'll get a notification and can accept
               or decline — you'll be notified either way.{'\n\n'}
-              Pay them <Text style={{ color: GOLD, fontWeight: '800' }}>${deliveryFee} cash</Text> when they collect.
+              {isNegotiableFee ? (
+                <>Agree a price with them directly and <Text style={{ color: GOLD, fontWeight: '800' }}>pay cash</Text> when they collect.</>
+              ) : (
+                <>Pay them <Text style={{ color: GOLD, fontWeight: '800' }}>${deliveryFee} cash</Text> when they collect.</>
+              )}
             </Text>
           ) : (
             <Text style={styles.successBody}>
               We've sent this job to {selectedDriver?.full_name}. They'll get a notification and need to accept
               it before they head your way — you'll be notified as soon as they do.{'\n\n'}
-              Pay them <Text style={{ color: GOLD, fontWeight: '800' }}>${deliveryFee} cash</Text> when they collect.{'\n'}
+              {isNegotiableFee ? (
+                <>Agree a price with them directly and <Text style={{ color: GOLD, fontWeight: '800' }}>pay cash</Text> when they collect.</>
+              ) : (
+                <>Pay them <Text style={{ color: GOLD, fontWeight: '800' }}>${deliveryFee} cash</Text> when they collect.</>
+              )}{'\n'}
               The ${BOOKING_FEE} ImbizoHub booking fee has been paid.
             </Text>
           )}
@@ -535,7 +562,7 @@ export default function DeliveryBookingScreen() {
               ) : (
                 <View style={styles.feeRow}>
                   <Text style={styles.feeLabel}>Large item (local only)</Text>
-                  <Text style={styles.feeValue}>$15 to driver + $2 booking fee</Text>
+                  <Text style={styles.feeValue}>Negotiate with driver + $2 booking fee</Text>
                 </View>
               )}
             </View>
@@ -570,7 +597,7 @@ export default function DeliveryBookingScreen() {
               <View style={styles.deliveryTypeBadge}>
                 <Text style={styles.deliveryTypeBadgeText}>
                   {parcelSize === 'large'
-                    ? `🚚 Large item — $15`
+                    ? `🚚 Large item — Negotiate with driver`
                     : isIntercity
                       ? '🚌 Intercity delivery — $12'
                       : '🛵 Local delivery — $8'}
@@ -774,7 +801,9 @@ export default function DeliveryBookingScreen() {
 
               <View style={styles.confirmDivider} />
               <Text style={styles.confirmLabel}>Pay driver (cash on collection)</Text>
-              <Text style={[styles.confirmValue, { color: GOLD, fontSize: 20, fontWeight: '800' }]}>${deliveryFee}</Text>
+              <Text style={[styles.confirmValue, { color: GOLD, fontSize: 20, fontWeight: '800' }]}>
+                {isNegotiableFee ? 'Negotiate with driver' : `$${deliveryFee}`}
+              </Text>
 
               {!isReassignMode && (
                 <>
@@ -795,8 +824,13 @@ export default function DeliveryBookingScreen() {
 
             <View style={styles.cashNote}>
               <Text style={styles.cashNoteText}>
-                💵 Pay the driver <Text style={{ color: GOLD, fontWeight: '700' }}>${deliveryFee} in cash</Text> when
-                they collect the parcel from the seller. Do not pay until they have the item in hand.
+                {isNegotiableFee ? (
+                  <>💵 <Text style={{ color: GOLD, fontWeight: '700' }}>Agree a price with the driver directly</Text> and
+                  pay them in cash when they collect the parcel from the seller. Do not pay until they have the item in hand.</>
+                ) : (
+                  <>💵 Pay the driver <Text style={{ color: GOLD, fontWeight: '700' }}>${deliveryFee} in cash</Text> when
+                  they collect the parcel from the seller. Do not pay until they have the item in hand.</>
+                )}
               </Text>
             </View>
 
