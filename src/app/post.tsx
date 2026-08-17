@@ -28,6 +28,7 @@ import { useState } from 'react';
 import {
   ActivityIndicator,
   Image,
+  KeyboardAvoidingView,
   Platform,
   ScrollView as RNScrollView,
   ScrollView,
@@ -285,8 +286,21 @@ export default function PostScreen() {
   }
 
   return (
-    <View style={styles.container}>
-      <ScrollView contentContainerStyle={styles.content}>
+    // FIX (real bug, reported: "when doing listings the description gets
+    // hindered by the keyboard, make it scrollable upwards"): this
+    // screen had a ScrollView but no KeyboardAvoidingView at all, same
+    // root cause and same fix already applied to hirevan.tsx,
+    // browse-wanted.tsx, and post-wanted.tsx earlier — without it,
+    // opening the keyboard for the Description field (a multiline
+    // TextInput near the bottom of the form) doesn't resize/inset the
+    // scrollable area to account for the space the keyboard now covers,
+    // so the field can end up entirely behind it with no amount of
+    // scrolling able to reveal it.
+    <KeyboardAvoidingView
+      style={styles.container}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+    >
+      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
         <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
           <Text style={styles.backText}>← Back</Text>
         </TouchableOpacity>
@@ -427,13 +441,16 @@ export default function PostScreen() {
           {posting ? <ActivityIndicator color="#fff" /> : <Text style={styles.postBtnText}>Post listing</Text>}
         </TouchableOpacity>
       </ScrollView>
-    </View>
+    </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#111111' },
-  content: { padding: 20, paddingBottom: 60 },
+  // paddingBottom raised from 60 — extra scroll headroom below the last
+  // field/submit button so nothing sits right against the keyboard's
+  // edge, same reasoning as hirevan.tsx's matching change.
+  content: { padding: 20, paddingBottom: 140 },
 
   backBtn: { marginBottom: 16 },
   backText: { color: GREY, fontSize: 14 },
