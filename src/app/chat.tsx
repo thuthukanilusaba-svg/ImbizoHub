@@ -140,6 +140,7 @@ export default function ChatScreen() {
   const openDealHandled = useRef(false);
   const isBuyerRoleRef = useRef(false);
   const sessionChannelRef = useRef<any>(null);
+  const newSessionChannelRef = useRef<any>(null);
 
   const [itemIsPhysical, setItemIsPhysical] = useState(true);
 
@@ -200,7 +201,10 @@ export default function ChatScreen() {
       setDepositChecked(true);
 
       await fetchMessages(uid, effectiveReceiverId);
-      await loadExistingMeetPaySession(uid);
+      // FIX: pass the RESOLVED id, not the raw (possibly missing) route
+      // param — see loadExistingMeetPaySession()'s own comment.
+      await loadExistingMeetPaySession(uid, effectiveReceiverId);
+      if (!cancelled) subscribeToNewMeetPaySession(uid, effectiveReceiverId);
 
       if (!cancelled && (listing_id || request_id || item_request_id) && effectiveReceiverId && uid) {
         const convoKey = isItemRequestChat
@@ -301,6 +305,10 @@ export default function ChatScreen() {
         supabase.removeChannel(sessionChannelRef.current);
         sessionChannelRef.current = null;
       }
+      if (newSessionChannelRef.current) {
+        supabase.removeChannel(newSessionChannelRef.current);
+        newSessionChannelRef.current = null;
+      }
     };
   }, []);
 
@@ -380,7 +388,33 @@ export default function ChatScreen() {
       setIsOwnerOfListing(owner);
       isBuyerRoleRef.current = owner;
 
-      const responderIdForThisChat = owner ? (receiver_id as string) : uid;
+      // FIX (real bug, same class as the van-hire request_id fix above:
+      // "meetpay/handoff modal stuck on 'waiting' forever"): the
+      // 'wanted_match' push notification deep-links to
+      // `/chat?item_request_id=...` with no receiver_id (see
+      // _layout.tsx's notification router) — same gap as request_id
+      // chats had. Resolved the same way: when I'm the responder
+      // (seller) and arrived without one, the buyer is unambiguous —
+      // it's the post's own owner, already fetched above. When I'm the
+      // owner (buyer) and arrived without one, fall back to whichever
+      // response is actually accepted — the only one there's a live
+      // chat with.
+      let resolvedOtherId: string | undefined;
+      if (!receiver_id) {
+        if (!owner) {
+          resolvedOtherId = req.user_id;
+        } else {
+          const { data: acceptedResponse } = await supabase
+            .from('item_responses')
+            .select('responder_id')
+            .eq('item_request_id', item_request_id as string)
+            .eq('status', 'accepted')
+            .maybeSingle();
+          resolvedOtherId = acceptedResponse?.responder_id;
+        }
+      }
+
+      const responderIdForThisChat = owner ? ((receiver_id as string) || resolvedOtherId) : uid;
       let responseStatus: string | null = null;
       if (responderIdForThisChat) {
         const { data: response } = await supabase
@@ -395,7 +429,7 @@ export default function ChatScreen() {
         }
       }
 
-      return { owner, sellerIsDealerPro: false, itemResponseAccepted: responseStatus === 'accepted' };
+      return { owner, sellerIsDealerPro: false, itemResponseAccepted: responseStatus === 'accepted', resolvedOtherId };
     }
 
     if (isRequestChat) {
@@ -465,7 +499,39 @@ export default function ChatScreen() {
       );
       setSellerIsDealerPro(isDealerPro);
 
-      return { owner, sellerIsDealerPro: isDealerPro, itemResponseAccepted: false };
+      // FIX (real bug, reported: "Confirm sale and handover" stuck
+      // forever on "Waiting for the buyer to arrange the deal" — same
+      // missing-receiver_id class as the two fixes above, for the most
+      // common chat type in the app): the "New message" and "unlock"
+      // push notifications deep-link to `/chat?listing_id=...` with no
+      // receiver_id at all (see _layout.tsx's notification router). A
+      // buyer arriving this way is unambiguous — the seller is just the
+      // listing's own owner, already fetched above. A SELLER arriving
+      // this way is genuinely ambiguous — the same listing can have
+      // several different buyers messaging about it — so this falls
+      // back to whichever buyer they most recently exchanged a message
+      // with on this listing, which is reliably the conversation that
+      // actually triggered the notification they just tapped.
+      let resolvedOtherId: string | undefined;
+      if (!receiver_id) {
+        if (!owner) {
+          resolvedOtherId = listing.user_id;
+        } else {
+          const { data: lastMsg } = await supabase
+            .from('messages')
+            .select('sender_id, receiver_id')
+            .eq('listing_id', parsedId)
+            .or(`sender_id.eq.${uid},receiver_id.eq.${uid}`)
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+          if (lastMsg) {
+            resolvedOtherId = lastMsg.sender_id === uid ? lastMsg.receiver_id : lastMsg.sender_id;
+          }
+        }
+      }
+
+      return { owner, sellerIsDealerPro: isDealerPro, itemResponseAccepted: false, resolvedOtherId };
     }
     return { owner: false, sellerIsDealerPro: false, itemResponseAccepted: false };
   }
@@ -493,15 +559,23 @@ export default function ChatScreen() {
     return !!data;
   }
 
-  async function loadExistingMeetPaySession(currentUserId: string) {
+  // FIX (real bug, part of the same "stuck on waiting forever" report):
+  // this used to filter on the raw `receiver_id` route param directly —
+  // which is exactly the param that's missing/wrong on every
+  // notification-deep-link entry point fixed above in checkRole(). Now
+  // takes the RESOLVED id explicitly instead of quietly closing over
+  // the possibly-empty route param, so a session created by the other
+  // party is actually found even when this visit started from a push
+  // notification.
+  async function loadExistingMeetPaySession(currentUserId: string, otherId?: string) {
     const referenceId = isItemRequestChat ? item_request_id : listing_id;
-    if (!referenceId) return;
+    if (!referenceId || !otherId) return;
 
     const { data } = await supabase
       .from('meetpay_sessions')
       .select('*')
       .eq('reference_id', String(referenceId))
-      .or(`and(buyer_id.eq.${currentUserId},seller_id.eq.${receiver_id}),and(buyer_id.eq.${receiver_id},seller_id.eq.${currentUserId})`)
+      .or(`and(buyer_id.eq.${currentUserId},seller_id.eq.${otherId}),and(buyer_id.eq.${otherId},seller_id.eq.${currentUserId})`)
       .order('created_at', { ascending: false })
       .limit(1)
       .maybeSingle();
@@ -515,6 +589,52 @@ export default function ChatScreen() {
       // backing out of the modal and reopening it.
       subscribeToSession(data.id);
     }
+  }
+
+  // NEW (part of the same "stuck on waiting forever" fix): even with a
+  // correct otherId, loadExistingMeetPaySession() above only runs ONCE,
+  // at mount. If the OTHER party creates the session AFTER this screen
+  // is already open — the normal case, since arranging a deal is rarely
+  // instant — there was no live subscription watching for that INSERT
+  // (subscribeToSession() only ever subscribes to UPDATEs on a session
+  // id this side already knows), so the side that didn't just create it
+  // had no way to find out short of leaving and reopening the whole
+  // chat screen. This listens from the moment the screen opens, so a
+  // session created any time after is picked up live, no reopen needed.
+  function subscribeToNewMeetPaySession(currentUserId: string, otherId?: string) {
+    const referenceId = isItemRequestChat ? item_request_id : listing_id;
+    if (!referenceId || !otherId) return;
+
+    if (newSessionChannelRef.current) {
+      supabase.removeChannel(newSessionChannelRef.current);
+      newSessionChannelRef.current = null;
+    }
+
+    const channel = supabase
+      .channel(`chat-meetpay-new-${referenceId}-${currentUserId}`)
+      .on('postgres_changes', {
+        event: 'INSERT', schema: 'public', table: 'meetpay_sessions',
+        // postgres_changes filters can only compare one column — this
+        // narrows to the right listing/item_request, but the same
+        // reference_id can have sessions for OTHER buyer/seller pairs
+        // (a listing can have several different buyers), so the pair
+        // itself is verified client-side below before accepting it.
+        filter: `reference_id=eq.${String(referenceId)}`,
+      }, (payload) => {
+        const row = payload.new as any;
+        if (!row) return;
+        const belongsToThisPair =
+          (row.buyer_id === currentUserId && row.seller_id === otherId) ||
+          (row.seller_id === currentUserId && row.buyer_id === otherId);
+        if (belongsToThisPair) {
+          setSession(row);
+          if (row.status === 'confirmed') setConfirmed(true);
+          subscribeToSession(row.id);
+        }
+      })
+      .subscribe();
+
+    newSessionChannelRef.current = channel;
   }
 
   function subscribeToSession(sessionId: string) {
@@ -761,6 +881,17 @@ export default function ChatScreen() {
       subscribeToSession(data.id);
     } else if (session) {
       subscribeToSession(session.id);
+    } else {
+      // NEW (belt-and-braces, same reasoning as elsewhere in this app):
+      // the live subscribeToNewMeetPaySession() listener set up in
+      // init() should already catch a session the other party creates
+      // while this screen is open — but if that channel silently
+      // dropped (e.g. the app was backgrounded a long time and
+      // reconnected wrong, a real possibility with realtime
+      // websockets), reopening this modal re-queries fresh instead of
+      // trusting possibly-stale local state forever.
+      const otherId = resolvedReceiverId || (receiver_id as string | undefined);
+      if (otherId) loadExistingMeetPaySession(myId, otherId);
     }
   }
 
