@@ -179,6 +179,44 @@ async function notifyQuotesDeclined(supabase: SupabaseClient, operatorIds: strin
   }
 }
 
+// NEW: notifies every responder whose offer was declined when a buyer
+// accepted a DIFFERENT response on the same wanted post — the exact
+// same gap notifyQuotesDeclined above closes for van-hire quotes,
+// closed here too. Previously the only signal a losing responder got
+// was their offer quietly disappearing, with no explicit "you weren't
+// picked" moment. Takes an array since multiple people can respond to
+// (and lose) the same wanted post at once.
+async function notifyResponsesDeclined(supabase: SupabaseClient, responderIds: string[], itemRequestId: string) {
+  if (responderIds.length === 0) return;
+  try {
+    let requestTitle = 'a wanted post';
+    const { data: request } = await supabase
+      .from('item_requests')
+      .select('title')
+      .eq('id', itemRequestId)
+      .maybeSingle();
+    if (request?.title) requestTitle = request.title;
+
+    const { data: profiles } = await supabase
+      .from('profiles')
+      .select('id, push_token')
+      .in('id', responderIds);
+
+    await Promise.all(
+      (profiles ?? []).map((p) =>
+        sendExpoPushNotification(
+          p.push_token,
+          'Offer not selected',
+          `The buyer chose a different offer for "${requestTitle}". Keep an eye out for new wanted posts.`,
+          { type: 'response_declined', item_request_id: itemRequestId }
+        )
+      )
+    );
+  } catch (err) {
+    console.error('confirmPaymentIntent: notifyResponsesDeclined failed', err);
+  }
+}
+
 async function notifyDeliveryBooked(supabase: SupabaseClient, sellerId: string, itemTitle: string) {
   try {
     const { data: sellerProfile } = await supabase
@@ -300,12 +338,18 @@ export async function confirmPaymentIntent(
       return { ok: false, error: 'DB error' };
     }
 
-    await supabase
+    // FIX: was a bare update with no .select() — the declined rows'
+    // responder_ids were discarded, so there was no way to notify them.
+    // Selecting them back (Postgres returns the updated rows for free
+    // in the same round trip) is what makes notifyResponsesDeclined
+    // below possible.
+    const { data: declinedResponses } = await supabase
       .from('item_responses')
       .update({ status: 'declined' })
       .eq('item_request_id', intent.item_request_id)
       .neq('id', intent.item_response_id)
-      .eq('status', 'pending');
+      .eq('status', 'pending')
+      .select('responder_id');
 
     const { error: requestError } = await supabase
       .from('item_requests')
@@ -326,6 +370,11 @@ export async function confirmPaymentIntent(
     });
 
     await notifyWantedMatchAccepted(supabase, intent.seller_id, intent.item_request_id);
+    await notifyResponsesDeclined(
+      supabase,
+      (declinedResponses ?? []).map((r: any) => r.responder_id),
+      intent.item_request_id
+    );
 
   } else if (intent.kind === 'trip_deposit') {
     const { data: quote, error: quoteFetchError } = await supabase

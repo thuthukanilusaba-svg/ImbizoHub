@@ -175,6 +175,13 @@ export default function RootLayout() {
           router.push(`/chat?request_id=${data.request_id}`);
         } else if (data?.type === 'quote_declined') {
           router.push('/operator-requests');
+        } else if (data?.type === 'response_declined') {
+          // NEW: same treatment as quote_declined above, for the
+          // Wanted-tab equivalent — routes back to the browse screen so
+          // they can look for other wants to respond to, rather than
+          // deep-linking to a specific request that's already matched
+          // to someone else.
+          router.push('/browse-wanted');
         } else if (data?.type === 'registration_expiring') {
           router.push(
             data?.operator_type === 'delivery'

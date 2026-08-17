@@ -86,6 +86,40 @@ async function notifyWantedMatchAccepted(sellerId: string, itemRequestId: string
   }
 }
 
+// NEW: same helper as confirm-payment.ts's notifyResponsesDeclined,
+// inlined here rather than imported (same pattern as
+// notifyWantedMatchAccepted above) — notifies every responder whose
+// offer was declined when the buyer accepted a DIFFERENT response on
+// the same wanted post. Mirrors accept-quote-free-promo's
+// notifyQuotesDeclined for the exact same reason: previously the only
+// signal a losing responder got was their offer quietly disappearing,
+// with no explicit "you weren't picked" moment.
+async function notifyResponsesDeclined(responderIds: string[], itemRequestId: string) {
+  if (responderIds.length === 0) return;
+  try {
+    let requestTitle = 'a wanted post';
+    const { data: request } = await supabase
+      .from('item_requests').select('title').eq('id', itemRequestId).maybeSingle();
+    if (request?.title) requestTitle = request.title;
+
+    const { data: profiles } = await supabase
+      .from('profiles').select('id, push_token').in('id', responderIds);
+
+    await Promise.all(
+      (profiles ?? []).map((p) =>
+        sendExpoPushNotification(
+          p.push_token,
+          'Offer not selected',
+          `The buyer chose a different offer for "${requestTitle}". Keep an eye out for new wanted posts.`,
+          { type: 'response_declined', item_request_id: itemRequestId }
+        )
+      )
+    );
+  } catch (err) {
+    console.error('accept-response-free-promo: notifyResponsesDeclined failed', err);
+  }
+}
+
 Deno.serve(async (req) => {
   if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
 
@@ -128,12 +162,16 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ error: 'DB error' }), { status: 500 });
     }
 
-    await supabase
+    // FIX: was a bare update with no .select() — see confirm-payment.ts's
+    // matching FIX comment. Selecting the declined rows back is what
+    // makes notifyResponsesDeclined below possible.
+    const { data: declinedResponses } = await supabase
       .from('item_responses')
       .update({ status: 'declined' })
       .eq('item_request_id', item_request_id)
       .neq('id', item_response_id)
-      .eq('status', 'pending');
+      .eq('status', 'pending')
+      .select('responder_id');
 
     const { error: requestError } = await supabase
       .from('item_requests')
@@ -154,6 +192,10 @@ Deno.serve(async (req) => {
     });
 
     await notifyWantedMatchAccepted(seller_id, item_request_id);
+    await notifyResponsesDeclined(
+      (declinedResponses ?? []).map((r: any) => r.responder_id),
+      item_request_id
+    );
 
     return new Response(JSON.stringify({ ok: true }), {
       status: 200,
