@@ -251,6 +251,27 @@ export default function HomeScreen() {
           <Text style={styles.vanBannerArrow}>›</Text>
         </TouchableOpacity>
 
+        {/* MOVED (product decision): this used to sit down in
+            ListFooter, below "Recent listings" and right above the
+            trust section — now grouped here instead, between "See what
+            people want" and "Selling on WhatsApp?", alongside the
+            app's other secondary/utility entry points rather than
+            trailing at the very bottom of the whole feed. */}
+        <TouchableOpacity
+          style={styles.vanBanner}
+          onPress={() => router.push('/hirevan')}
+          activeOpacity={0.85}
+        >
+          <View style={styles.vanBannerLeft}>
+            <Text style={styles.vanBannerEmoji}>🚐</Text>
+            <View style={styles.vanBannerTextCol}>
+              <Text style={styles.vanBannerTitle}>Hire Transport</Text>
+              <Text style={styles.vanBannerSub}>Post a trip — operators bid for your job</Text>
+            </View>
+          </View>
+          <Text style={styles.vanBannerArrow}>›</Text>
+        </TouchableOpacity>
+
         <TouchableOpacity
           style={styles.whatsappBanner}
           onPress={() => router.push('/whatsapp-import')}
@@ -329,28 +350,13 @@ export default function HomeScreen() {
           <ActivityIndicator color={GOLD} style={{ marginVertical: 16 }} />
         )}
 
-        <View style={styles.section}>
-          <TouchableOpacity
-            style={styles.vanBanner}
-            onPress={() => router.push('/hirevan')}
-            activeOpacity={0.85}
-          >
-            <View style={styles.vanBannerLeft}>
-              <Text style={styles.vanBannerEmoji}>🚐</Text>
-              <View style={styles.vanBannerTextCol}>
-                <Text style={styles.vanBannerTitle}>Hire Transport</Text>
-                <Text style={styles.vanBannerSub}>Post a trip — operators bid for your job</Text>
-              </View>
-            </View>
-            <Text style={styles.vanBannerArrow}>›</Text>
-          </TouchableOpacity>
-        </View>
-
         {/* MOVED (product decision): this used to sit up in ListHeader,
             right after the WhatsApp banner and before the featured
-            listing/categories/recent listings — now sits below the
-            Hire Transport banner instead, as the last thing before the
-            bottom spacer. */}
+            listing/categories/recent listings — then briefly sat here in
+            ListFooter, below a "Hire Transport" banner that has since
+            moved back up into ListHeader too (see its own comment there).
+            This trust section is now the only thing left in ListFooter,
+            as the last thing before the bottom spacer. */}
         <View style={styles.trustSection}>
           <Text style={styles.trustTitle}>How ImbizoHub keeps you safe</Text>
           <View style={styles.trustRow}>
@@ -479,7 +485,11 @@ const styles = StyleSheet.create({
   greeting: { color: GREY, fontSize: 12, marginTop: 2 },
   avatar: { width: 36, height: 36, backgroundColor: GOLD, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
   avatarText: { color: BLACK, fontSize: 13, fontWeight: '700' },
-  vanBanner: { backgroundColor: '#1a1a2e', borderRadius: 14, marginHorizontal: 16, marginTop: 12, marginBottom: 4, paddingHorizontal: 18, paddingVertical: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderWidth: 0.5, borderColor: '#3a3a5e' },
+  // CHANGED: marginTop trimmed from 12 to 4 now that this banner sits
+  // between browseWantedBanner and whatsappBanner (both marginTop: 4)
+  // instead of trailing alone after "Recent listings" — 12 read as an
+  // odd, larger gap than its new neighbors use between each other.
+  vanBanner: { backgroundColor: '#1a1a2e', borderRadius: 14, marginHorizontal: 16, marginTop: 4, marginBottom: 4, paddingHorizontal: 18, paddingVertical: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderWidth: 0.5, borderColor: '#3a3a5e' },
   wantedBanner: { backgroundColor: '#1a2e1a', borderRadius: 14, marginHorizontal: 16, marginTop: 12, marginBottom: 4, paddingHorizontal: 18, paddingVertical: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderWidth: 0.5, borderColor: '#3a5e3a' },
   browseWantedBanner: { backgroundColor: '#2e2a1a', borderRadius: 14, marginHorizontal: 16, marginTop: 4, marginBottom: 4, paddingHorizontal: 18, paddingVertical: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderWidth: 0.5, borderColor: '#5e5a3a' },
   whatsappBanner: { backgroundColor: '#1a2e22', borderRadius: 14, marginHorizontal: 16, marginTop: 4, marginBottom: 4, paddingHorizontal: 18, paddingVertical: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderWidth: 0.5, borderColor: '#25D366' },
