@@ -374,7 +374,8 @@ export default function QuotesScreen() {
         <FlatList
           data={quotes}
           keyExtractor={(item) => item.id}
-          contentContainerStyle={styles.list}
+          style={styles.listContainer}
+          contentContainerStyle={[styles.list, { paddingBottom: 40 + insets.bottom }]}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={GOLD} />}
           ListHeaderComponent={
             quotes.length > 0 ? (
@@ -655,7 +656,15 @@ const styles = StyleSheet.create({
   // boundaries, not something to trust for vertical spacing here.
   // Replaced with marginBottom on the card style itself, matching the
   // already-established, proven fix.
-  list: { padding: 16, paddingBottom: 40 },
+  // FIX: same missing-bounded-height bug found and fixed in
+  // operator-requests.tsx — FlatList had no `style`, only
+  // contentContainerStyle, so it sized to its full content instead of
+  // the remaining screen space and wouldn't actually scroll once there
+  // were enough quotes to overflow one screen. Also folded insets.bottom
+  // into the existing paddingBottom so the last card/button doesn't sit
+  // flush against the phone's home-indicator/gesture bar.
+  listContainer: { flex: 1 },
+  list: { padding: 16 },
 
   card: {
     backgroundColor: BLACK, borderRadius: 14, padding: 16,

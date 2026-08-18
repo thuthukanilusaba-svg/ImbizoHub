@@ -333,6 +333,7 @@ export default function BrowseWantedScreen() {
       <FlatList
         data={requests}
         keyExtractor={(item) => item.id}
+        style={styles.listContainer}
         contentContainerStyle={[styles.list, { paddingBottom: 16 + insets.bottom }]}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={GOLD} />}
         ListEmptyComponent={
@@ -541,6 +542,12 @@ const styles = StyleSheet.create({
   postWantBtnBottom: { backgroundColor: GOLD, borderRadius: 14, paddingVertical: 16, alignItems: 'center', marginTop: 4, marginBottom: 20 },
   postWantBtnBottomText: { color: BLACK, fontSize: 14, fontWeight: '800' },
 
+  // FIX: same missing-bounded-height bug found and fixed in
+  // operator-requests.tsx — FlatList had no `style`, only
+  // contentContainerStyle, so it sized to its full content instead of
+  // the remaining screen space and wouldn't actually scroll once there
+  // were enough requests to overflow one screen.
+  listContainer: { flex: 1 },
   list: { padding: 16 },
   card: {
     backgroundColor: BLACK, borderRadius: 14, padding: 16,

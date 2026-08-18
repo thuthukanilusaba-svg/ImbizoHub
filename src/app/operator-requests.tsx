@@ -276,7 +276,8 @@ export default function OperatorRequestsScreen() {
       <FlatList
         data={requests}
         keyExtractor={(item) => item.id}
-        contentContainerStyle={styles.list}
+        style={styles.listContainer}
+        contentContainerStyle={[styles.list, { paddingBottom: 16 + insets.bottom }]}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={GOLD} />}
         ListEmptyComponent={
           <View style={styles.empty}>
@@ -464,6 +465,17 @@ const styles = StyleSheet.create({
   // boundaries, not something to trust for vertical spacing here.
   // Replaced with marginBottom on the card style itself, matching the
   // already-established, proven fix.
+  // FIX: FlatList had no `style`, only `contentContainerStyle` — without
+  // a bounded height/flex, React Native sizes it to its full content
+  // height instead of the remaining screen space below the header. With
+  // only 2-3 open requests this looked fine (content fit on one
+  // screen), but with more items the list wouldn't actually be
+  // scrollable — the extra cards would render past the screen edge
+  // with no way to reach them. Also added insets.bottom to the
+  // content's bottom padding (matching browse-wanted.tsx's existing
+  // pattern) so the last card doesn't sit flush against the phone's
+  // home-indicator/gesture bar.
+  listContainer: { flex: 1 },
   list: { padding: 16 },
   card: {
     backgroundColor: BLACK, borderRadius: 14, padding: 16,

@@ -46,6 +46,7 @@ import {
   ActivityIndicator, FlatList, Platform, RefreshControl,
   StyleSheet, Text, TouchableOpacity, View,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { supabase } from '../../lib/supabase';
 
 const GOLD = '#B8860B';
@@ -75,6 +76,7 @@ function budgetLabel(min: number | null, max: number | null): string | null {
 
 export default function MyWantedPostsScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [posts, setPosts] = useState<WantedPost[]>([]);
@@ -190,7 +192,8 @@ export default function MyWantedPostsScreen() {
       <FlatList
         data={posts}
         keyExtractor={(item) => item.id}
-        contentContainerStyle={styles.list}
+        style={styles.listContainer}
+        contentContainerStyle={[styles.list, { paddingBottom: 16 + insets.bottom }]}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={GOLD} />}
         ListEmptyComponent={
           <View style={styles.empty}>
@@ -275,6 +278,14 @@ const styles = StyleSheet.create({
 
   // FIX: was `gap: 14` here — see top-of-file comment. marginBottom
   // moved onto the card style itself instead.
+  // FIX: same missing-bounded-height bug found and fixed in
+  // operator-requests.tsx — FlatList had no `style`, only
+  // contentContainerStyle, so it sized to its full content instead of
+  // the remaining screen space and wouldn't actually scroll once there
+  // were enough posts to overflow one screen. Also added insets.bottom
+  // to the content's bottom padding so the last card doesn't sit flush
+  // against the phone's home-indicator/gesture bar.
+  listContainer: { flex: 1 },
   list: { padding: 16 },
   card: {
     backgroundColor: BLACK, borderRadius: 14, padding: 16,
