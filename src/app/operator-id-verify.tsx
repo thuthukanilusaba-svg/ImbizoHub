@@ -242,7 +242,7 @@ export default function OperatorIdVerifyScreen() {
       <View style={styles.container}>
         <ScrollView contentContainerStyle={styles.content}>
           <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-            <Text style={styles.backText}>‹ Back</Text>
+            <Text style={styles.backText}><Text style={styles.backArrow}>‹</Text> Back</Text>
           </TouchableOpacity>
           <View style={styles.successCard}>
             <Text style={styles.successEmoji}>✅</Text>
@@ -262,7 +262,7 @@ export default function OperatorIdVerifyScreen() {
       <View style={styles.container}>
         <ScrollView contentContainerStyle={styles.content}>
           <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-            <Text style={styles.backText}>‹ Back</Text>
+            <Text style={styles.backText}><Text style={styles.backArrow}>‹</Text> Back</Text>
           </TouchableOpacity>
           <View style={styles.pendingCard}>
             <Text style={styles.pendingEmoji}>🕐</Text>
@@ -283,7 +283,7 @@ export default function OperatorIdVerifyScreen() {
     <View style={styles.container}>
       <ScrollView contentContainerStyle={styles.content}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-          <Text style={styles.backText}>‹ Back</Text>
+          <Text style={styles.backText}><Text style={styles.backArrow}>‹</Text> Back</Text>
         </TouchableOpacity>
 
         <Text style={styles.heading}>{copy.emoji} {copy.title}</Text>
@@ -351,6 +351,8 @@ const styles = StyleSheet.create({
 
   backBtn: { marginBottom: 16 },
   backText: { color: GREY, fontSize: 14 },
+  // NEW: bigger than the label text so the '‹' glyph reads clearly — direct product decision ("back symbol too small").
+  backArrow: { fontSize: 20 },
   heading: { fontSize: 22, fontWeight: '800', color: '#fff', marginBottom: 6 },
   subheading: { fontSize: 13, color: GREY, marginBottom: 24 },
 

@@ -177,7 +177,7 @@ export default function FeatureListingPayScreen() {
       <View style={styles.container}>
         <ScrollView contentContainerStyle={styles.content}>
           <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-            <Text style={styles.backText}>‹ Back</Text>
+            <Text style={styles.backText}><Text style={styles.backArrow}>‹</Text> Back</Text>
           </TouchableOpacity>
           <View style={styles.successCard}>
             <Text style={styles.successEmoji}>⭐</Text>
@@ -200,7 +200,7 @@ export default function FeatureListingPayScreen() {
     <View style={styles.container}>
       <ScrollView contentContainerStyle={styles.content}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-          <Text style={styles.backText}>‹ Back</Text>
+          <Text style={styles.backText}><Text style={styles.backArrow}>‹</Text> Back</Text>
         </TouchableOpacity>
 
         <Text style={styles.heading}>Feature this listing</Text>
@@ -252,6 +252,8 @@ const styles = StyleSheet.create({
 
   backBtn: { marginBottom: 16 },
   backText: { color: GREY, fontSize: 14 },
+  // NEW: bigger than the label text so the '‹' glyph reads clearly — direct product decision ("back symbol too small").
+  backArrow: { fontSize: 20 },
   backLink: { marginTop: 16 },
   backLinkText: { color: GOLD, fontSize: 14 },
   heading: { fontSize: 24, fontWeight: '800', color: '#fff', marginBottom: 6 },

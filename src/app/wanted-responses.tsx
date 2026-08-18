@@ -264,7 +264,7 @@ export default function WantedResponsesScreen() {
     return (
       <View style={styles.container}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-          <Text style={styles.backText}>‹ Back</Text>
+          <Text style={styles.backText}><Text style={styles.backArrow}>‹</Text> Back</Text>
         </TouchableOpacity>
         <View style={styles.center}>
           <Text style={styles.emptyText}>This isn't your wanted post.</Text>
@@ -276,7 +276,7 @@ export default function WantedResponsesScreen() {
   return (
     <View style={styles.container}>
       <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-        <Text style={styles.backText}>‹ Back</Text>
+        <Text style={styles.backText}><Text style={styles.backArrow}>‹</Text> Back</Text>
       </TouchableOpacity>
 
       <Text style={styles.heading}>Responses to your want</Text>
@@ -345,6 +345,8 @@ const styles = StyleSheet.create({
 
   backBtn: { marginBottom: 16 },
   backText: { color: GREY, fontSize: 14 },
+  // NEW: bigger than the label text so the '‹' glyph reads clearly — direct product decision ("back symbol too small").
+  backArrow: { fontSize: 20 },
   heading: { fontSize: 22, fontWeight: '800', color: '#fff', marginBottom: 4 },
   subheading: { fontSize: 13, color: GREY, marginBottom: 20 },
 

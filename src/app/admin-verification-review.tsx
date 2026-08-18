@@ -174,7 +174,7 @@ export default function AdminVerificationReviewScreen() {
         <Text style={styles.deniedTitle}>Not authorized</Text>
         <Text style={styles.deniedBody}>This screen is only available to admin accounts.</Text>
         <TouchableOpacity style={styles.backBtnCentered} onPress={() => router.replace('/')}>
-          <Text style={styles.backBtnCenteredText}>‹ Back to home</Text>
+          <Text style={styles.backBtnCenteredText}><Text style={styles.backArrow}>‹</Text> Back to home</Text>
         </TouchableOpacity>
       </View>
     );
@@ -188,7 +188,7 @@ export default function AdminVerificationReviewScreen() {
       >
         <View style={styles.topRow}>
           <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-            <Text style={styles.backText}>‹ Back</Text>
+            <Text style={styles.backText}><Text style={styles.backArrow}>‹</Text> Back</Text>
           </TouchableOpacity>
           <TouchableOpacity onPress={() => router.push('/admin-reports-review')}>
             <Text style={styles.crossLinkText}>Reports →</Text>
@@ -328,6 +328,8 @@ const styles = StyleSheet.create({
   topRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
   backBtn: {},
   backText: { color: GREY, fontSize: 14 },
+  // NEW: bigger than the label text so the '‹' glyph reads clearly — direct product decision ("back symbol too small").
+  backArrow: { fontSize: 20 },
   crossLinkText: { color: GOLD, fontSize: 13, fontWeight: '700' },
   heading: { fontSize: 24, fontWeight: '800', color: '#fff', marginBottom: 6 },
   subheading: { fontSize: 13, color: GREY, marginBottom: 16 },

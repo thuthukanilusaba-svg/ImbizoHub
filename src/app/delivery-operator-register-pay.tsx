@@ -237,7 +237,7 @@ export default function DeliveryOperatorRegisterPayScreen() {
             this and the twin back button below used to need is dropped
             along with the arrow glyph it was compensating for. */}
         <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-          <Text style={styles.backText}>‹ Back</Text>
+          <Text style={styles.backText}><Text style={styles.backArrow}>‹</Text> Back</Text>
         </TouchableOpacity>
         <Text style={styles.successEmoji}>⚠️</Text>
         <Text style={styles.successTitle}>No operator profile yet</Text>
@@ -280,7 +280,7 @@ export default function DeliveryOperatorRegisterPayScreen() {
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-        <Text style={styles.backText}>‹ Back</Text>
+        <Text style={styles.backText}><Text style={styles.backArrow}>‹</Text> Back</Text>
       </TouchableOpacity>
 
       <Text style={styles.heading}>Delivery operator registration</Text>
@@ -434,6 +434,8 @@ const styles = StyleSheet.create({
 
   backBtn: { marginBottom: 16 },
   backText: { color: GREY, fontSize: 14 },
+  // NEW: bigger than the label text so the '‹' glyph reads clearly — direct product decision ("back symbol too small").
+  backArrow: { fontSize: 20 },
   heading: { fontSize: 24, fontWeight: '800', color: '#fff', marginBottom: 8 },
   subheading: { fontSize: 13, color: GREY, lineHeight: 19, marginBottom: 24 },
 

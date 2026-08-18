@@ -136,7 +136,7 @@ export default function BecomeOperatorScreen() {
     <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
       <ScrollView contentContainerStyle={styles.content}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-          <Text style={styles.backText}>‹ Back</Text>
+          <Text style={styles.backText}><Text style={styles.backArrow}>‹</Text> Back</Text>
         </TouchableOpacity>
 
         <Text style={styles.title}>
@@ -188,6 +188,8 @@ const styles = StyleSheet.create({
   content: { padding: 24, paddingBottom: 48 },
   backBtn: { marginBottom: 16 },
   backText: { color: GREY, fontSize: 14 },
+  // NEW: bigger than the label text so the '‹' glyph reads clearly — direct product decision ("back symbol too small").
+  backArrow: { fontSize: 20 },
   title: { fontSize: 20, fontWeight: '800', color: '#fff', marginBottom: 8 },
   subtitle: { fontSize: 13, color: GREY, lineHeight: 19, marginBottom: 24 },
   label: { color: '#ccc', fontSize: 14, marginBottom: 6, marginTop: 12 },

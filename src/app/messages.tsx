@@ -262,7 +262,7 @@ export default function MessagesScreen() {
       <View style={styles.container}>
         <View style={styles.header}>
           <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-            <Text style={styles.backText}>‹ Back</Text>
+            <Text style={styles.backText}><Text style={styles.backArrow}>‹</Text> Back</Text>
           </TouchableOpacity>
           <Text style={styles.heading}>Messages</Text>
         </View>
@@ -292,7 +292,7 @@ export default function MessagesScreen() {
     <View style={styles.container}>
       <View style={styles.header}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-          <Text style={styles.backText}>‹ Back</Text>
+          <Text style={styles.backText}><Text style={styles.backArrow}>‹</Text> Back</Text>
         </TouchableOpacity>
         <Text style={styles.heading}>Messages</Text>
       </View>
@@ -371,6 +371,8 @@ const styles = StyleSheet.create({
   header: { padding: 20, paddingTop: 56, backgroundColor: BLACK, borderBottomWidth: 0.5, borderBottomColor: DARK },
   backBtn: { marginBottom: 12 },
   backText: { color: GREY, fontSize: 14 },
+  // NEW: bigger than the label text so the '‹' glyph reads clearly — direct product decision ("back symbol too small").
+  backArrow: { fontSize: 20 },
   heading: { fontSize: 22, fontWeight: '800', color: '#fff' },
 
   filterBanner: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#3a2800', paddingHorizontal: 16, paddingVertical: 10, borderBottomWidth: 0.5, borderBottomColor: DARK },

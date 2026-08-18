@@ -579,7 +579,7 @@ export default function DeliveryBookingScreen() {
           style={styles.backBtn}
         >
           <Text style={styles.backText}>
-            ‹ {isReassignMode ? 'Back' : step === 'details' ? 'Back' : 'Change details'}
+            <Text style={styles.backArrow}>‹</Text> {isReassignMode ? 'Back' : step === 'details' ? 'Back' : 'Change details'}
           </Text>
         </TouchableOpacity>
 
@@ -948,6 +948,8 @@ const styles = StyleSheet.create({
 
   backBtn: { marginBottom: 8 },
   backText: { color: GREY, fontSize: 13 },
+  // NEW: bigger than the label text so the '‹' glyph reads clearly — direct product decision ("back symbol too small").
+  backArrow: { fontSize: 20 },
   heading: { fontSize: 24, fontWeight: '800', color: '#fff', marginBottom: 8 },
   subheading: { fontSize: 13, color: GREY, lineHeight: 19, marginBottom: 20 },
 

@@ -178,7 +178,7 @@ export default function OperatorRequestsScreen() {
     return (
       <View style={styles.blockedScreen}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backBtnSmall}>
-          <Text style={styles.backTextSmall}>‹ Back</Text>
+          <Text style={styles.backTextSmall}><Text style={styles.backArrow}>‹</Text> Back</Text>
         </TouchableOpacity>
         <Text style={styles.blockedEmoji}>🔒</Text>
         <Text style={styles.blockedTitle}>Registration required</Text>
@@ -214,7 +214,7 @@ export default function OperatorRequestsScreen() {
     <View style={styles.container}>
       <View style={styles.header}>
         <TouchableOpacity onPress={() => router.back()}>
-          <Text style={styles.backText}>‹ Back</Text>
+          <Text style={styles.backText}><Text style={styles.backArrow}>‹</Text> Back</Text>
         </TouchableOpacity>
         <Text style={styles.heading}>Open trip requests</Text>
         {/* FIX: was "you keep 97% per job" — a stale claim from before
@@ -397,6 +397,8 @@ const styles = StyleSheet.create({
     borderBottomWidth: 0.5, borderBottomColor: DARK,
   },
   backText: { color: GREY, fontSize: 14, marginBottom: 12 },
+  // NEW: bigger than the label text so the '‹' glyph reads clearly — direct product decision ("back symbol too small").
+  backArrow: { fontSize: 20 },
   heading: { color: '#fff', fontSize: 22, fontWeight: '800' },
   subheading: { color: GREY, fontSize: 13, marginTop: 4 },
 

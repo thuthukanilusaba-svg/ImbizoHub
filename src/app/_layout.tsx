@@ -19,6 +19,7 @@ import { useEffect, useRef } from 'react';
 import { Platform, StyleSheet, useWindowDimensions, View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { useIsDesktopWeb } from '../../lib/responsive';
+import { supabase } from '../../lib/supabase';
 import { theme } from '../../lib/theme';
 import { registerForPushNotifications, registerNotificationListeners, savePushToken } from '../../lib/notifications';
 
@@ -129,9 +130,33 @@ export default function RootLayout() {
   }, []);
 
   useEffect(() => {
-    // Register for push notifications and save token to profile
-    registerForPushNotifications().then((token) => {
-      if (token) savePushToken(token);
+    // FIX (real, confirmed bug — found while investigating "delivery
+    // did not receive the message"): every profile in the DB had
+    // push_token = null, with zero exceptions. Root cause: this used to
+    // run registration exactly once, on this effect's very first mount,
+    // completely independent of auth state. savePushToken() itself
+    // silently no-ops if supabase.auth.getUser() returns no user (see
+    // its own early `if (!user) return`) — and on a cold app launch the
+    // persisted session is restored from storage ASYNCHRONOUSLY, so this
+    // effect's registerForPushNotifications() call frequently resolves
+    // and calls savePushToken() BEFORE the session exists yet. The
+    // permission prompt still fires and a token still gets generated —
+    // it just never reaches the database, silently, every time.
+    //
+    // Fixed by re-running registration whenever Supabase actually
+    // confirms a session (onAuthStateChange fires with a non-null
+    // session both for a fresh sign-in AND once the persisted session
+    // finishes restoring on launch), instead of relying on this effect's
+    // one-shot mount timing.
+    const registerPush = () => {
+      registerForPushNotifications().then((token) => {
+        if (token) savePushToken(token);
+      });
+    };
+
+    registerPush();
+    const { data: authListener } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (session) registerPush();
     });
 
     // Listen for notifications received while app is open, and handle taps.
@@ -234,6 +259,7 @@ export default function RootLayout() {
 
     return () => {
       unsubscribeRef.current();
+      authListener?.subscription?.unsubscribe();
     };
   }, []);
 

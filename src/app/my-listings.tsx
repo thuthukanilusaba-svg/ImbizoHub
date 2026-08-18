@@ -72,7 +72,7 @@ export default function MyListingsScreen() {
     <View style={styles.container}>
       <View style={styles.header}>
         <TouchableOpacity onPress={() => router.back()}>
-          <Text style={styles.backText}>‹ Back</Text>
+          <Text style={styles.backText}><Text style={styles.backArrow}>‹</Text> Back</Text>
         </TouchableOpacity>
         <Text style={styles.headerTitle}>My Listings</Text>
         <View style={{ width: 50 }} />
@@ -143,6 +143,8 @@ const styles = StyleSheet.create({
     padding: 16, paddingTop: 50, backgroundColor: BLACK,
   },
   backText: { color: GOLD, fontSize: 14 },
+  // NEW: bigger than the label text so the '‹' glyph reads clearly — direct product decision ("back symbol too small").
+  backArrow: { fontSize: 20 },
   headerTitle: { color: '#fff', fontSize: 16, fontWeight: '700' },
   countSummary: { color: GREY, fontSize: 12, paddingHorizontal: 16, paddingTop: 12, paddingBottom: 4 },
   emptyState: { alignItems: 'center', marginTop: 60 },

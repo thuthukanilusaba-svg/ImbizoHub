@@ -351,7 +351,7 @@ export default function QuotesScreen() {
     <View style={styles.container}>
       <View style={styles.header}>
         <TouchableOpacity onPress={() => router.back()}>
-          <Text style={styles.backText}>‹ Back</Text>
+          <Text style={styles.backText}><Text style={styles.backArrow}>‹</Text> Back</Text>
         </TouchableOpacity>
         <Text style={styles.heading}>Quotes for your trip</Text>
         {request && (
@@ -636,6 +636,8 @@ const styles = StyleSheet.create({
     borderBottomWidth: 0.5, borderBottomColor: DARK,
   },
   backText: { color: GREY, fontSize: 14, marginBottom: 12 },
+  // NEW: bigger than the label text so the '‹' glyph reads clearly — direct product decision ("back symbol too small").
+  backArrow: { fontSize: 20 },
   heading: { color: '#fff', fontSize: 22, fontWeight: '800' },
   subheading: { color: GREY, fontSize: 13, marginTop: 4 },
 

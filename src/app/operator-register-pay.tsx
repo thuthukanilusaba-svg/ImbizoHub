@@ -218,7 +218,7 @@ export default function OperatorRegisterPayScreen() {
             its own in a plain Text node, so the workaround is dropped
             along with the glyph it was compensating for. Worth a quick
             visual check on a device regardless. */}
-        <Text style={styles.backText}>‹ Back</Text>
+        <Text style={styles.backText}><Text style={styles.backArrow}>‹</Text> Back</Text>
       </TouchableOpacity>
 
       <Text style={styles.heading}>Transport operator registration</Text>
@@ -341,6 +341,8 @@ const styles = StyleSheet.create({
 
   backBtn: { marginBottom: 16 },
   backText: { color: GREY, fontSize: 14 },
+  // NEW: bigger than the label text so the '‹' glyph reads clearly — direct product decision ("back symbol too small").
+  backArrow: { fontSize: 20 },
   heading: { fontSize: 24, fontWeight: '800', color: '#fff', marginBottom: 8 },
   subheading: { fontSize: 13, color: GREY, lineHeight: 19, marginBottom: 24 },
 

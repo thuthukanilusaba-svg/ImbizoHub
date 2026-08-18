@@ -112,7 +112,7 @@ export default function ReportUserScreen() {
     <View style={styles.container}>
       <ScrollView contentContainerStyle={styles.content}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-          <Text style={styles.backText}>‹ Cancel</Text>
+          <Text style={styles.backText}><Text style={styles.backArrow}>‹</Text> Cancel</Text>
         </TouchableOpacity>
 
         <Text style={styles.heading}>Report {name || 'this user'}</Text>
@@ -168,6 +168,8 @@ const styles = StyleSheet.create({
 
   backBtn: { marginBottom: 16 },
   backText: { color: GREY, fontSize: 14 },
+  // NEW: bigger than the label text so the '‹' glyph reads clearly — direct product decision ("back symbol too small").
+  backArrow: { fontSize: 20 },
   heading: { fontSize: 22, fontWeight: '800', color: '#fff', marginBottom: 8 },
   subheading: { fontSize: 13, color: GREY, lineHeight: 19, marginBottom: 24 },
 

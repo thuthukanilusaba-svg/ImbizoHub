@@ -317,7 +317,7 @@ export default function ListingScreen() {
       <View style={styles.center}>
         <Text style={{ color: GREY }}>Listing not found.</Text>
         <TouchableOpacity onPress={() => router.back()} style={{ marginTop: 16 }}>
-          <Text style={{ color: GOLD }}>‹ Back</Text>
+          <Text style={{ color: GOLD }}><Text style={{ fontSize: 20 }}>‹</Text> Back</Text>
         </TouchableOpacity>
       </View>
     );

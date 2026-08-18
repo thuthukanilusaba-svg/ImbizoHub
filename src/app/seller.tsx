@@ -170,7 +170,7 @@ export default function SellerProfileScreen() {
         <Text style={styles.notFoundEmoji}>🔍</Text>
         <Text style={styles.notFoundTitle}>Seller not found</Text>
         <TouchableOpacity style={styles.backBtnCentered} onPress={() => router.replace('/')}>
-          <Text style={styles.backBtnCenteredText}>‹ Back to home</Text>
+          <Text style={styles.backBtnCenteredText}><Text style={styles.backArrow}>‹</Text> Back to home</Text>
         </TouchableOpacity>
       </View>
     );
@@ -181,7 +181,7 @@ export default function SellerProfileScreen() {
       <ScrollView contentContainerStyle={styles.content}>
         <View style={styles.topRow}>
           <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-            <Text style={styles.backText}>‹ Back</Text>
+            <Text style={styles.backText}><Text style={styles.backArrow}>‹</Text> Back</Text>
           </TouchableOpacity>
           <TouchableOpacity onPress={handleShare} style={styles.shareBtn}>
             <Text style={styles.shareBtnText}>Share ↗</Text>
@@ -298,6 +298,8 @@ const styles = StyleSheet.create({
   topRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
   backBtn: {},
   backText: { color: GREY, fontSize: 14 },
+  // NEW: bigger than the label text so the '‹' glyph reads clearly — direct product decision ("back symbol too small").
+  backArrow: { fontSize: 20 },
   shareBtn: { backgroundColor: DARK, borderRadius: 20, paddingHorizontal: 14, paddingVertical: 8, borderWidth: 0.5, borderColor: GOLD },
   shareBtnText: { color: GOLD, fontSize: 13, fontWeight: '700' },
 

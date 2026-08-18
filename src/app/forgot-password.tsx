@@ -146,7 +146,7 @@ export default function ForgotPasswordScreen() {
          fold on a shorter viewport with no way to scroll down to it. */}
       <ScrollView contentContainerStyle={styles.content}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-          <Text style={styles.backText}>‹ Back</Text>
+          <Text style={styles.backText}><Text style={styles.backArrow}>‹</Text> Back</Text>
         </TouchableOpacity>
 
         <Text style={styles.heading}>Forgot your password?</Text>
@@ -188,6 +188,8 @@ const styles = StyleSheet.create({
   content: { padding: 20, paddingTop: Platform.OS === 'ios' ? 56 : 40 },
   backBtn: { marginBottom: 16 },
   backText: { color: GREY, fontSize: 14 },
+  // NEW: bigger than the label text so the '‹' glyph reads clearly — direct product decision ("back symbol too small").
+  backArrow: { fontSize: 20 },
   heading: { fontSize: 22, fontWeight: '800', color: '#fff', marginBottom: 8 },
   subheading: { fontSize: 13, color: GREY, lineHeight: 19, marginBottom: 24 },
   label: { fontSize: 13, fontWeight: '700', color: '#fff', marginBottom: 8 },

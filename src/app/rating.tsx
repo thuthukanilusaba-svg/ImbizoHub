@@ -188,7 +188,7 @@ export default function RatingScreen() {
     // reach the submit button.
     <ScrollView contentContainerStyle={styles.container}>
       <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-        <Text style={styles.backText}>‹ Skip for now</Text>
+        <Text style={styles.backText}><Text style={styles.backArrow}>‹</Text> Skip for now</Text>
       </TouchableOpacity>
 
       <Text style={styles.heading}>Rate your experience</Text>
@@ -264,6 +264,8 @@ const styles = StyleSheet.create({
   },
   backBtn: { marginBottom: 8 },
   backText: { color: GREY, fontSize: 13 },
+  // NEW: bigger than the label text so the '‹' glyph reads clearly — direct product decision ("back symbol too small").
+  backArrow: { fontSize: 20 },
 
   heading: { fontSize: 24, fontWeight: '800', color: '#fff', marginBottom: 8, marginTop: 8 },
   subheading: { fontSize: 13, color: GREY, lineHeight: 19, marginBottom: 32 },
