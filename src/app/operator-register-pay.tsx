@@ -241,8 +241,16 @@ export default function OperatorRegisterPayScreen() {
       </View>
 
       <View style={styles.pricingCard}>
+        {/* FIX (preventative, same root cause found and fixed in the
+            twin file delivery-operator-register-pay.tsx — screenshotted
+            there with its "Negotiate" text pushed off-screen on web):
+            pricingRow is a plain space-between flex row with no shrink
+            constraint on its left column, so a long enough note here
+            would do the same thing to the amount text. This row's note
+            is short today, but pricingLeft (flex: 1, minWidth: 0) below
+            closes the gap before it ever becomes visible. */}
         <View style={styles.pricingRow}>
-          <View>
+          <View style={styles.pricingLeft}>
             <Text style={styles.pricingLabel}>Registration fee</Text>
             <Text style={styles.pricingNote}>
               {isPromoActive()
@@ -347,9 +355,10 @@ const styles = StyleSheet.create({
 
   pricingCard: { backgroundColor: BLACK, borderRadius: 14, padding: 18, marginBottom: 20, borderWidth: 0.5, borderColor: '#333' },
   pricingRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 4 },
+  pricingLeft: { flex: 1, minWidth: 0, paddingRight: 12 },
   pricingLabel: { fontSize: 14, fontWeight: '600', color: '#fff' },
   pricingNote: { fontSize: 11, color: GREY, marginTop: 2 },
-  pricingAmount: { fontSize: 20, fontWeight: '800', color: '#fff' },
+  pricingAmount: { fontSize: 20, fontWeight: '800', color: '#fff', flexShrink: 0 },
 
   // NEW: terms checkbox row styles, matching register.tsx's pattern
   termsRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 16, gap: 10 },

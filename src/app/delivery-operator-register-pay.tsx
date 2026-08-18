@@ -304,7 +304,7 @@ export default function DeliveryOperatorRegisterPayScreen() {
 
       <View style={styles.pricingCard}>
         <View style={styles.pricingRow}>
-          <View>
+          <View style={styles.pricingLeft}>
             <Text style={styles.pricingLabel}>Registration fee</Text>
             <Text style={styles.pricingNote}>
               {isPromoActive()
@@ -320,7 +320,7 @@ export default function DeliveryOperatorRegisterPayScreen() {
         </View>
         <View style={styles.divider} />
         <View style={styles.pricingRow}>
-          <View>
+          <View style={styles.pricingLeft}>
             <Text style={styles.pricingLabel}>Small item, local</Text>
             <Text style={styles.pricingNote}>Fits in a car — you keep the full amount</Text>
           </View>
@@ -328,15 +328,27 @@ export default function DeliveryOperatorRegisterPayScreen() {
         </View>
         <View style={styles.divider} />
         <View style={styles.pricingRow}>
-          <View>
+          <View style={styles.pricingLeft}>
             <Text style={styles.pricingLabel}>Small item, intercity</Text>
             <Text style={styles.pricingNote}>You keep the full amount</Text>
           </View>
           <Text style={[styles.pricingAmount, { color: GREEN }]}>$12</Text>
         </View>
         <View style={styles.divider} />
+        {/* FIX (real bug, screenshotted on web: "Negotiate" clipped off
+            the right edge of the screen): pricingRow is a plain
+            space-between flex row with no shrink/wrap constraint on its
+            left column, so this row's long note text ("Needs a
+            van/truck, local only — negotiate directly, you keep the
+            full amount") pushed the whole row wider than its card,
+            shoving the amount text right off screen — same root cause
+            as chat.tsx's header pill overflow fixed earlier. pricingLeft
+            below (flex: 1, minWidth: 0) lets this column actually
+            shrink/wrap instead, applied to all four rows in this card
+            for consistency even though only this one's note was long
+            enough to visibly break. */}
         <View style={styles.pricingRow}>
-          <View>
+          <View style={styles.pricingLeft}>
             <Text style={styles.pricingLabel}>Large item</Text>
             {/* UPDATED (pricing decision): large items are no longer a
                 flat $15 — sizes vary too much for one rate, so the price
@@ -436,9 +448,13 @@ const styles = StyleSheet.create({
 
   pricingCard: { backgroundColor: BLACK, borderRadius: 14, padding: 18, marginBottom: 20, borderWidth: 0.5, borderColor: '#333' },
   pricingRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 4 },
+  // NEW: lets this column shrink/wrap instead of pushing pricingAmount
+  // off-screen when its note text is long — see the FIX comment above
+  // where this is used.
+  pricingLeft: { flex: 1, minWidth: 0, paddingRight: 12 },
   pricingLabel: { fontSize: 14, fontWeight: '600', color: '#fff' },
   pricingNote: { fontSize: 11, color: GREY, marginTop: 2 },
-  pricingAmount: { fontSize: 20, fontWeight: '800', color: '#fff' },
+  pricingAmount: { fontSize: 20, fontWeight: '800', color: '#fff', flexShrink: 0 },
   divider: { height: 0.5, backgroundColor: '#2a2a2a', marginVertical: 12 },
 
   // NEW: terms checkbox row styles
