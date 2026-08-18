@@ -82,6 +82,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import BottomNav from '../../components/BottomNav';
+import { DELIVERY_BOOKING_ENABLED, DELIVERY_OPERATOR_SIGNUP_PAUSED_MESSAGE, DELIVERY_PAUSED_TITLE } from '../../lib/featureFlags';
 import { normalizeImageOrientation } from '../../lib/imageOrientation';
 import { supabase } from '../../lib/supabase';
 import { prepareUpload } from '../../lib/uploadHelpers';
@@ -281,6 +282,17 @@ export default function ProfileScreen() {
   }
 
   async function handleBecomeDeliveryOperator() {
+    // NEW: new delivery-operator registrations are paused — see
+    // lib/featureFlags.ts's own header comment for why. Checked before
+    // touching auth/DB at all, so this is a pure no-op besides the
+    // message when paused. Existing operators (accountType === 'delivery'
+    // already) never reach this handler in the first place — the
+    // MenuRow that calls it is conditionally hidden for them.
+    if (!DELIVERY_BOOKING_ENABLED) {
+      Alert.alert(DELIVERY_PAUSED_TITLE, DELIVERY_OPERATOR_SIGNUP_PAUSED_MESSAGE);
+      return;
+    }
+
     const { data: { user } } = await supabase.auth.getUser();
     if (!user || user.is_anonymous) { router.push('/register'); return; }
 

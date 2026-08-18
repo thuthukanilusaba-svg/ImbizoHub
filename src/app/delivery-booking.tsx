@@ -77,9 +77,10 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import * as WebBrowser from 'expo-web-browser';
 import { createElement, useEffect, useState } from 'react';
 import {
-  ActivityIndicator, KeyboardAvoidingView, Modal, Platform, ScrollView, StyleSheet,
+  ActivityIndicator, Alert, KeyboardAvoidingView, Modal, Platform, ScrollView, StyleSheet,
   Text, TextInput, TouchableOpacity, View,
 } from 'react-native';
+import { DELIVERY_BOOKING_ENABLED, DELIVERY_PAUSED_MESSAGE, DELIVERY_PAUSED_TITLE } from '../../lib/featureFlags';
 import { supabase } from '../../lib/supabase';
 import { extractFunctionError } from '../../lib/paymentError';
 
@@ -156,6 +157,17 @@ export default function DeliveryBookingScreen() {
 
   const isFromWantedMatch = !listing_id && !!item_request_id;
 
+  // NEW (lightweight payment-visibility step, built with a future real
+  // escrow flow in mind — see delivery_item_price_and_payment_status
+  // migration): listing_price arrived as a route param from chat.tsx's
+  // "Book delivery" option but was never actually used anywhere in this
+  // file — the buyer was never even reminded what they owe the seller.
+  // Parsed once here and threaded through to both booking paths below
+  // and shown on the confirm step. Null for Wanted-match origin (no
+  // fixed listing price exists there), same as every other listing-only
+  // field in this file.
+  const itemPrice = listing_price ? parseFloat(listing_price) : null;
+
   const [checkingAuth, setCheckingAuth] = useState(true);
   const [myId, setMyId] = useState('');
   const [myEmail, setMyEmail] = useState('');
@@ -211,6 +223,21 @@ export default function DeliveryBookingScreen() {
       router.replace('/register');
       return;
     }
+
+    // NEW: defense-in-depth — chat.tsx's "Book delivery" option already
+    // blocks this before ever navigating here (see lib/featureFlags.ts),
+    // but this screen is reachable directly (deep link, back button,
+    // stale bookmark), so it needs its own check too. Reassignment is
+    // deliberately EXEMPTED — that's picking a new driver for a booking
+    // that was already made (and already paid its $2 fee) before the
+    // pause, not a new booking, so it must keep working.
+    if (!DELIVERY_BOOKING_ENABLED && !isReassignMode) {
+      Alert.alert(DELIVERY_PAUSED_TITLE, DELIVERY_PAUSED_MESSAGE, [
+        { text: 'OK', onPress: () => router.back() },
+      ]);
+      return;
+    }
+
     setMyId(user.id);
     setMyEmail(user.email ?? '');
 
@@ -409,6 +436,7 @@ export default function DeliveryBookingScreen() {
         parcel_size: parcelSize,
         parcel_description: parcelDescription.trim() || undefined,
         scheduled_date: scheduledDate || undefined,
+        item_price: itemPrice ?? undefined,
       },
     });
 
@@ -452,6 +480,7 @@ export default function DeliveryBookingScreen() {
         parcel_size: parcelSize,
         parcel_description: parcelDescription.trim() || undefined,
         scheduled_date: scheduledDate || undefined,
+        item_price: itemPrice ?? undefined,
       },
     });
 
@@ -854,6 +883,22 @@ export default function DeliveryBookingScreen() {
             </Text>
 
             <View style={styles.confirmCard}>
+              {/* NEW (lightweight payment-visibility step — see
+                  itemPrice's own comment above): surfaces the item's
+                  price here instead of silently dropping it. Only shown
+                  for a real listing — a Wanted-match origin has no fixed
+                  price to show, same as every other listing-only field
+                  in this screen. */}
+              {itemPrice != null && (
+                <>
+                  <Text style={styles.confirmLabel}>Item price</Text>
+                  <Text style={[styles.confirmValue, { color: GOLD, fontSize: 20, fontWeight: '800' }]}>
+                    ${itemPrice}
+                  </Text>
+                  <View style={styles.confirmDivider} />
+                </>
+              )}
+
               <Text style={styles.confirmLabel}>Driver</Text>
               <Text style={styles.confirmValue}>{selectedDriver.full_name}</Text>
 
@@ -916,6 +961,20 @@ export default function DeliveryBookingScreen() {
                 )}
               </Text>
             </View>
+
+            {/* NEW: same lightweight payment-visibility step — the
+                driver's fee above is separate from what's actually owed
+                to the SELLER for the item itself, which this app does
+                not collect or protect today. Spelled out explicitly so
+                it isn't confused with the cash note above. */}
+            {itemPrice != null && (
+              <View style={styles.cashNote}>
+                <Text style={styles.cashNoteText}>
+                  ℹ️ The ${itemPrice} item price is separate from the driver's fee above and is arranged directly with
+                  the seller — ImbizoHub does not collect or hold this payment yet.
+                </Text>
+              </View>
+            )}
 
             {error ? <Text style={styles.errorText}>⚠️ {error}</Text> : null}
 

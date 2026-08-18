@@ -242,6 +242,24 @@ export default function DeliveryTrackScreen() {
           </View>
         )}
 
+        {/* NEW: lightweight payment-visibility step, built with a future
+            real escrow flow in mind — see
+            delivery_item_price_and_payment_status migration. Not
+            escrow: no money for the item moves through the app here,
+            this just stops the price from being silently dropped the
+            way it used to be, and shows whether the seller has
+            acknowledged being paid. */}
+        {booking.item_price != null && (
+          <View style={styles.paymentBox}>
+            <Text style={styles.paymentBoxText}>
+              Item price: <Text style={{ color: GOLD, fontWeight: '800' }}>${booking.item_price}</Text> — arrange this directly with the seller, ImbizoHub does not collect or hold it.
+            </Text>
+            {booking.payment_status === 'seller_confirmed' && (
+              <Text style={styles.paymentConfirmedText}>✅ The seller confirmed they received this payment.</Text>
+            )}
+          </View>
+        )}
+
         {error ? (
           <View style={styles.errorBox}><Text style={styles.errorText}>⚠️ {error}</Text></View>
         ) : null}
@@ -406,6 +424,11 @@ const styles = StyleSheet.create({
 
   errorBox: { backgroundColor: '#3a1a1a', borderRadius: 10, padding: 12, marginBottom: 16 },
   errorText: { color: '#ff8a8a', fontSize: 13, textAlign: 'center' },
+
+  // NEW: lightweight payment-visibility step — see the JSX above's own comment.
+  paymentBox: { backgroundColor: DARK, borderRadius: 10, padding: 12, marginBottom: 16 },
+  paymentBoxText: { color: GREY, fontSize: 12, lineHeight: 17 },
+  paymentConfirmedText: { color: GREEN, fontSize: 12, fontWeight: '700', marginTop: 8 },
 
   timelineCard: { backgroundColor: BLACK, borderRadius: 14, padding: 18, marginBottom: 16, borderWidth: 0.5, borderColor: '#333' },
   timelineRow: { flexDirection: 'row', alignItems: 'flex-start' },

@@ -61,8 +61,9 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, AppState, KeyboardAvoidingView, Modal, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Alert, AppState, KeyboardAvoidingView, Modal, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { DELIVERY_BOOKING_ENABLED, DELIVERY_PAUSED_MESSAGE, DELIVERY_PAUSED_TITLE } from '../../lib/featureFlags';
 import {
   notifyAgreedToMeet,
   notifyMeetPayPinGenerated,
@@ -1200,6 +1201,16 @@ export default function ChatScreen() {
               <TouchableOpacity
                 style={styles.dealOption}
                 onPress={() => {
+                  // NEW: Book & Deliver is paused for new bookings — see
+                  // lib/featureFlags.ts's own header comment for why.
+                  // Keeps the option visible (per product decision) but
+                  // explains it's temporary instead of silently doing
+                  // nothing or navigating to a broken/empty flow.
+                  if (!DELIVERY_BOOKING_ENABLED) {
+                    setDealModal(false);
+                    Alert.alert(DELIVERY_PAUSED_TITLE, DELIVERY_PAUSED_MESSAGE);
+                    return;
+                  }
                   setDealModal(false);
                   const deliveryParams = isItemRequestChat
                     ? `item_request_id=${item_request_id}&seller_id=${receiver_id}`

@@ -77,6 +77,12 @@ export default function SellerDeliveriesScreen() {
   const [error, setError] = useState('');
   const [uploadingId, setUploadingId] = useState<string | null>(null);
   const [uploadErrors, setUploadErrors] = useState<Record<string, string>>({});
+  // NEW: lightweight payment-visibility step, built with a future real
+  // escrow flow in mind — see delivery_item_price_and_payment_status
+  // migration. Not escrow; no money moves through the app here, this is
+  // just an explicit, timestamped acknowledgment instead of the item
+  // payment going completely unrecorded the way it did before.
+  const [confirmingPaymentId, setConfirmingPaymentId] = useState<string | null>(null);
 
   useEffect(() => {
     init();
@@ -110,6 +116,45 @@ export default function SellerDeliveriesScreen() {
 
     if (fetchError) { setError(fetchError.message); return; }
     setBookings(data ?? []);
+  }
+
+  // NEW: lightweight payment-visibility step (see confirmingPaymentId's
+  // own comment above). Deliberately non-blocking — this does not gate
+  // the dispatch-photo upload or any status transition above, since the
+  // app has no fixed rule about whether the item payment happens before
+  // or after the parcel changes hands. It's purely a record: "the
+  // seller says they were paid," with who and when attached.
+  async function confirmPaymentReceived(bookingId: string) {
+    Alert.alert(
+      'Confirm payment received?',
+      'This marks the item payment as received from the buyer. It does not affect the delivery itself.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Yes, I received it',
+          onPress: async () => {
+            setConfirmingPaymentId(bookingId);
+            const { error: updateError } = await supabase
+              .from('delivery_bookings')
+              .update({
+                payment_status: 'seller_confirmed',
+                payment_confirmed_at: new Date().toISOString(),
+                payment_confirmed_by: myId,
+              })
+              .eq('id', bookingId);
+            setConfirmingPaymentId(null);
+
+            if (updateError) {
+              Alert.alert('Something went wrong', updateError.message);
+              return;
+            }
+            setBookings(prev => prev.map(b => b.id === bookingId
+              ? { ...b, payment_status: 'seller_confirmed', payment_confirmed_at: new Date().toISOString() }
+              : b));
+          },
+        },
+      ]
+    );
   }
 
   async function uploadDispatchUri(bookingId: string, uri: string) {
@@ -247,6 +292,32 @@ export default function SellerDeliveriesScreen() {
                   <Text style={styles.itemText}>Item: {itemTitle}</Text>
                 )}
 
+                {/* NEW: lightweight payment-visibility step — see
+                    confirmingPaymentId's own comment above. Only shown
+                    when a price actually exists (listing origin; a
+                    Wanted-match has no fixed price). */}
+                {booking.item_price != null && (
+                  <View style={styles.paymentBox}>
+                    <Text style={styles.paymentBoxText}>
+                      Item price: <Text style={{ color: GOLD, fontWeight: '800' }}>${booking.item_price}</Text> — arranged directly with the buyer, not through ImbizoHub.
+                    </Text>
+                    {booking.payment_status === 'seller_confirmed' ? (
+                      <Text style={styles.paymentConfirmedText}>✅ You confirmed you received this payment.</Text>
+                    ) : (
+                      <TouchableOpacity
+                        style={[styles.paymentConfirmBtn, confirmingPaymentId === booking.id && { opacity: 0.6 }]}
+                        onPress={() => confirmPaymentReceived(booking.id)}
+                        disabled={confirmingPaymentId === booking.id}
+                      >
+                        {confirmingPaymentId === booking.id
+                          ? <ActivityIndicator color={BLACK} size="small" />
+                          : <Text style={styles.paymentConfirmBtnText}>I've received this payment</Text>
+                        }
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                )}
+
                 {/* NEW: item-size badge — closes a real gap found in a
                     later review pass. dealer.tsx (the operator's job
                     list) and buyer-deliveries.tsx both got this badge
@@ -381,4 +452,11 @@ const styles = StyleSheet.create({
   photoThumb: { width: 56, height: 56, borderRadius: 10 },
   photoDoneTitle: { color: '#fff', fontSize: 12, fontWeight: '700', marginBottom: 3 },
   photoDoneSub: { color: GREY, fontSize: 11, lineHeight: 15 },
+
+  // NEW: lightweight payment-visibility step — see confirmPaymentReceived's comment.
+  paymentBox: { backgroundColor: DARK, borderRadius: 10, padding: 12, marginBottom: 10 },
+  paymentBoxText: { color: GREY, fontSize: 12, lineHeight: 17, marginBottom: 10 },
+  paymentConfirmedText: { color: GREEN, fontSize: 12, fontWeight: '700' },
+  paymentConfirmBtn: { backgroundColor: GOLD, borderRadius: 10, paddingVertical: 10, alignItems: 'center' },
+  paymentConfirmBtnText: { color: BLACK, fontSize: 13, fontWeight: '800' },
 });
