@@ -178,7 +178,7 @@ export default function PostWantedScreen() {
     >
       <ScrollView style={styles.container} contentContainerStyle={styles.content}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-          <Text style={styles.backText}>← Back</Text>
+          <Text style={styles.backText}>‹ Back</Text>
         </TouchableOpacity>
 
         <Text style={styles.heading}>Post what you're looking for</Text>

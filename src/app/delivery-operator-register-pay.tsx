@@ -231,8 +231,13 @@ export default function DeliveryOperatorRegisterPayScreen() {
   if (noProfileFound) {
     return (
       <View style={styles.successScreen}>
+        {/* CHANGED (app-wide, direct product decision): "‹" swapped for
+            "‹" — see operator-register-pay.tsx's matching comment for
+            the full reasoning; the vertical-nudge nested-Text workaround
+            this and the twin back button below used to need is dropped
+            along with the arrow glyph it was compensating for. */}
         <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-          <Text style={styles.backText}><Text style={styles.backArrow}>←</Text> Back</Text>
+          <Text style={styles.backText}>‹ Back</Text>
         </TouchableOpacity>
         <Text style={styles.successEmoji}>⚠️</Text>
         <Text style={styles.successTitle}>No operator profile yet</Text>
@@ -275,9 +280,7 @@ export default function DeliveryOperatorRegisterPayScreen() {
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-        {/* FIX: same "back arrow not centered" fix as its twin file,
-            operator-register-pay.tsx — see the comment there. */}
-        <Text style={styles.backText}><Text style={styles.backArrow}>←</Text> Back</Text>
+        <Text style={styles.backText}>‹ Back</Text>
       </TouchableOpacity>
 
       <Text style={styles.heading}>Delivery operator registration</Text>
@@ -419,7 +422,6 @@ const styles = StyleSheet.create({
 
   backBtn: { marginBottom: 16 },
   backText: { color: GREY, fontSize: 14 },
-  backArrow: { position: 'relative', top: 1 },
   heading: { fontSize: 24, fontWeight: '800', color: '#fff', marginBottom: 8 },
   subheading: { fontSize: 13, color: GREY, lineHeight: 19, marginBottom: 24 },
 

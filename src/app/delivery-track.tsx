@@ -210,7 +210,7 @@ export default function DeliveryTrackScreen() {
     <View style={styles.container}>
       <ScrollView contentContainerStyle={styles.content}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-          <Text style={styles.backText}>← Back</Text>
+          <Text style={styles.backText}>‹ Back</Text>
         </TouchableOpacity>
 
         <Text style={styles.heading}>Track delivery</Text>

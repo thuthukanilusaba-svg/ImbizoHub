@@ -133,7 +133,7 @@ export default function AnalyticsScreen() {
       <View style={styles.container}>
         <ScrollView contentContainerStyle={styles.content}>
           <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-            <Text style={styles.backText}>← Back</Text>
+            <Text style={styles.backText}>‹ Back</Text>
           </TouchableOpacity>
           <View style={styles.lockedBox}>
             <Text style={styles.lockedEmoji}>🔒</Text>
@@ -155,7 +155,7 @@ export default function AnalyticsScreen() {
     <View style={styles.container}>
       <ScrollView contentContainerStyle={styles.content}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-          <Text style={styles.backText}>← Back</Text>
+          <Text style={styles.backText}>‹ Back</Text>
         </TouchableOpacity>
 
         <Text style={styles.heading}>Listing performance</Text>

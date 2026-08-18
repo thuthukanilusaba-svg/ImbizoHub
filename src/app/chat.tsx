@@ -1012,7 +1012,7 @@ export default function ChatScreen() {
       <View style={styles.header}>
         <View style={styles.headerLeft}>
           <TouchableOpacity onPress={() => router.back()}>
-            <Text style={styles.backBtn}>←</Text>
+            <Text style={styles.backBtn}>‹</Text>
           </TouchableOpacity>
           <View style={styles.avatarWrap}>
             <View style={styles.avatar}>

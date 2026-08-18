@@ -264,7 +264,7 @@ export default function WantedResponsesScreen() {
     return (
       <View style={styles.container}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-          <Text style={styles.backText}>← Back</Text>
+          <Text style={styles.backText}>‹ Back</Text>
         </TouchableOpacity>
         <View style={styles.center}>
           <Text style={styles.emptyText}>This isn't your wanted post.</Text>
@@ -276,7 +276,7 @@ export default function WantedResponsesScreen() {
   return (
     <View style={styles.container}>
       <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-        <Text style={styles.backText}>← Back</Text>
+        <Text style={styles.backText}>‹ Back</Text>
       </TouchableOpacity>
 
       <Text style={styles.heading}>Responses to your want</Text>

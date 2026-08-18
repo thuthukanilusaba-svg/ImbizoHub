@@ -351,7 +351,7 @@ export default function QuotesScreen() {
     <View style={styles.container}>
       <View style={styles.header}>
         <TouchableOpacity onPress={() => router.back()}>
-          <Text style={styles.backText}>← Back</Text>
+          <Text style={styles.backText}>‹ Back</Text>
         </TouchableOpacity>
         <Text style={styles.heading}>Quotes for your trip</Text>
         {request && (

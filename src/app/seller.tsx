@@ -170,7 +170,7 @@ export default function SellerProfileScreen() {
         <Text style={styles.notFoundEmoji}>🔍</Text>
         <Text style={styles.notFoundTitle}>Seller not found</Text>
         <TouchableOpacity style={styles.backBtnCentered} onPress={() => router.replace('/')}>
-          <Text style={styles.backBtnCenteredText}>← Back to home</Text>
+          <Text style={styles.backBtnCenteredText}>‹ Back to home</Text>
         </TouchableOpacity>
       </View>
     );
@@ -181,7 +181,7 @@ export default function SellerProfileScreen() {
       <ScrollView contentContainerStyle={styles.content}>
         <View style={styles.topRow}>
           <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-            <Text style={styles.backText}>← Back</Text>
+            <Text style={styles.backText}>‹ Back</Text>
           </TouchableOpacity>
           <TouchableOpacity onPress={handleShare} style={styles.shareBtn}>
             <Text style={styles.shareBtnText}>Share ↗</Text>

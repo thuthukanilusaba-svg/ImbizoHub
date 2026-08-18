@@ -317,7 +317,7 @@ export default function ListingScreen() {
       <View style={styles.center}>
         <Text style={{ color: GREY }}>Listing not found.</Text>
         <TouchableOpacity onPress={() => router.back()} style={{ marginTop: 16 }}>
-          <Text style={{ color: GOLD }}>← Back</Text>
+          <Text style={{ color: GOLD }}>‹ Back</Text>
         </TouchableOpacity>
       </View>
     );
@@ -364,24 +364,27 @@ export default function ListingScreen() {
           spot regardless of scroll position, the way a floating back
           button normally behaves. */}
       {/* FIX (real bug, reported: "back arrow not centered and feels
-          unresponsive"): two separate issues. (1) the ← glyph sits
-          visibly high within its own line box in this font — nudged
-          down slightly so it optically centers in the circle. (2) the
-          circle itself is only 36x36, below the ~44x44 minimum touch
-          target both Apple's and Google's own guidelines recommend —
-          over a busy photo background that made it genuinely easy to
-          miss-tap, which reads as "unresponsive" even though the
-          handler itself fires instantly. hitSlop expands the tappable
-          area without changing the visual size of the button, and
-          activeOpacity gives clear, deliberate press feedback instead
-          of relying on TouchableOpacity's default. */}
+          unresponsive"): two separate issues. (1) the glyph used to sit
+          visibly high within its own line box in this font — see
+          backFloatText below, which centers deterministically via
+          includeFontPadding/lineHeight rather than eyeballing an
+          offset, so it holds up correctly for whichever glyph is used
+          here (now "‹" — see the app-wide back-indicator change).
+          (2) the circle itself is only 36x36, below the ~44x44 minimum
+          touch target both Apple's and Google's own guidelines
+          recommend — over a busy photo background that made it
+          genuinely easy to miss-tap, which reads as "unresponsive" even
+          though the handler itself fires instantly. hitSlop expands the
+          tappable area without changing the visual size of the button,
+          and activeOpacity gives clear, deliberate press feedback
+          instead of relying on TouchableOpacity's default. */}
       <TouchableOpacity
         style={styles.backFloat}
         onPress={() => router.back()}
         activeOpacity={0.7}
         hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
       >
-        <Text style={styles.backFloatText}>←</Text>
+        <Text style={styles.backFloatText}>‹</Text>
       </TouchableOpacity>
 
       <ScrollView>

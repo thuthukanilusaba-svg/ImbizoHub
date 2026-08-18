@@ -6,7 +6,7 @@
 //
 // NEW: added the shared bottom nav (Home/Browse/+/Messages/Dashboard/Profile)
 // for consistency with Home, Explore, and Dealer — this screen previously
-// had no bottom nav at all, only a "← Back" header, which meant there was
+// had no bottom nav at all, only a "‹ Back" header, which meant there was
 // no way to jump to Home/Browse/Post/Dashboard/Profile from here without
 // first going back.
 //
@@ -262,7 +262,7 @@ export default function MessagesScreen() {
       <View style={styles.container}>
         <View style={styles.header}>
           <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-            <Text style={styles.backText}>← Back</Text>
+            <Text style={styles.backText}>‹ Back</Text>
           </TouchableOpacity>
           <Text style={styles.heading}>Messages</Text>
         </View>
@@ -292,7 +292,7 @@ export default function MessagesScreen() {
     <View style={styles.container}>
       <View style={styles.header}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-          <Text style={styles.backText}>← Back</Text>
+          <Text style={styles.backText}>‹ Back</Text>
         </TouchableOpacity>
         <Text style={styles.heading}>Messages</Text>
       </View>

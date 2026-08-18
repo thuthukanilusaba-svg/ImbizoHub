@@ -242,7 +242,7 @@ export default function HireVanScreen() {
     >
     <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
       <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-        <Text style={styles.backText}>← Back</Text>
+        <Text style={styles.backText}>‹ Back</Text>
       </TouchableOpacity>
 
       <Text style={styles.heading}>Hire a Van</Text>

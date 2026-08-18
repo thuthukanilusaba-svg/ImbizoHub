@@ -211,7 +211,7 @@ export default function SellerDeliveriesScreen() {
     <View style={styles.container}>
       <ScrollView contentContainerStyle={styles.content}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-          <Text style={styles.backText}>← Back</Text>
+          <Text style={styles.backText}>‹ Back</Text>
         </TouchableOpacity>
 
         <Text style={styles.heading}>My deliveries</Text>

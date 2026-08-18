@@ -171,7 +171,7 @@ export default function AdminReportsReviewScreen() {
         <Text style={styles.deniedTitle}>Not authorized</Text>
         <Text style={styles.deniedBody}>This screen is only available to admin accounts.</Text>
         <TouchableOpacity style={styles.backBtnCentered} onPress={() => router.replace('/')}>
-          <Text style={styles.backBtnCenteredText}>← Back to home</Text>
+          <Text style={styles.backBtnCenteredText}>‹ Back to home</Text>
         </TouchableOpacity>
       </View>
     );
@@ -185,7 +185,7 @@ export default function AdminReportsReviewScreen() {
       >
         <View style={styles.topRow}>
           <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-            <Text style={styles.backText}>← Back</Text>
+            <Text style={styles.backText}>‹ Back</Text>
           </TouchableOpacity>
           <View style={styles.crossLinkRow}>
             <TouchableOpacity onPress={() => router.push('/admin-verification-review')}>

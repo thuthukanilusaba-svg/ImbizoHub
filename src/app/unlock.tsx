@@ -328,7 +328,7 @@ export default function DepositScreen() {
     // pattern already found and fixed on login.tsx/etc. this pass.
     <ScrollView contentContainerStyle={styles.container}>
       <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-        <Text style={styles.backText}>← Back</Text>
+        <Text style={styles.backText}>‹ Back</Text>
       </TouchableOpacity>
 
       <Text style={styles.heading}>Pay to arrange this deal</Text>

@@ -185,7 +185,7 @@ export default function DealerProPayScreen() {
       <View style={styles.container}>
         <ScrollView contentContainerStyle={styles.content}>
           <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-            <Text style={styles.backText}>← Back</Text>
+            <Text style={styles.backText}>‹ Back</Text>
           </TouchableOpacity>
           <View style={styles.successCard}>
             <Text style={styles.successEmoji}>⭐</Text>
@@ -217,7 +217,7 @@ export default function DealerProPayScreen() {
       <View style={styles.container}>
         <ScrollView contentContainerStyle={styles.content}>
           <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-            <Text style={styles.backText}>← Back</Text>
+            <Text style={styles.backText}>‹ Back</Text>
           </TouchableOpacity>
           <View style={styles.successCard}>
             <Text style={styles.successEmoji}>⭐</Text>
@@ -239,7 +239,7 @@ export default function DealerProPayScreen() {
     <View style={styles.container}>
       <ScrollView contentContainerStyle={styles.content}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-          <Text style={styles.backText}>← Back</Text>
+          <Text style={styles.backText}>‹ Back</Text>
         </TouchableOpacity>
 
         <Text style={styles.heading}>Dealer Pro</Text>

@@ -579,7 +579,7 @@ export default function DeliveryBookingScreen() {
           style={styles.backBtn}
         >
           <Text style={styles.backText}>
-            ← {isReassignMode ? 'Back' : step === 'details' ? 'Back' : 'Change details'}
+            ‹ {isReassignMode ? 'Back' : step === 'details' ? 'Back' : 'Change details'}
           </Text>
         </TouchableOpacity>
 
@@ -810,7 +810,7 @@ export default function DeliveryBookingScreen() {
 
             {availableDrivers.length === 0 && (
               <TouchableOpacity style={styles.primaryBtn} onPress={() => router.back()}>
-                <Text style={styles.primaryBtnText}>← Back to chat</Text>
+                <Text style={styles.primaryBtnText}>‹ Back to chat</Text>
               </TouchableOpacity>
             )}
 

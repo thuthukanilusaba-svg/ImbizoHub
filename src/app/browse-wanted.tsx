@@ -322,7 +322,7 @@ export default function BrowseWantedScreen() {
     <View style={styles.container}>
       <View style={styles.header}>
         <TouchableOpacity onPress={() => router.back()}>
-          <Text style={styles.backText}>← Back</Text>
+          <Text style={styles.backText}>‹ Back</Text>
         </TouchableOpacity>
         <Text style={styles.heading}>What people are looking for</Text>
         <Text style={styles.subheading}>

@@ -146,7 +146,7 @@ export default function ForgotPasswordScreen() {
          fold on a shorter viewport with no way to scroll down to it. */}
       <ScrollView contentContainerStyle={styles.content}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-          <Text style={styles.backText}>← Back</Text>
+          <Text style={styles.backText}>‹ Back</Text>
         </TouchableOpacity>
 
         <Text style={styles.heading}>Forgot your password?</Text>

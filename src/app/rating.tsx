@@ -188,7 +188,7 @@ export default function RatingScreen() {
     // reach the submit button.
     <ScrollView contentContainerStyle={styles.container}>
       <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-        <Text style={styles.backText}>← Skip for now</Text>
+        <Text style={styles.backText}>‹ Skip for now</Text>
       </TouchableOpacity>
 
       <Text style={styles.heading}>Rate your experience</Text>
