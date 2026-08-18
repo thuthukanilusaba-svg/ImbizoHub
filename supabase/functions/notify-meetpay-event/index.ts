@@ -198,6 +198,18 @@ Deno.serve(async (req) => {
       );
     } else {
       // event === 'confirmed'
+      // FIX (real bug, found while answering "what message does the
+      // seller get after PIN exchange"): _layout.tsx's tap handler for
+      // a 'confirmed' notification requires BOTH data.reviewee_id and
+      // data.role to navigate to /rating — and deliberately does
+      // nothing if either is missing (see its own comment). Every push
+      // sent below used to omit both, so tapping any of these
+      // notifications silently did nothing instead of opening the
+      // rating screen. reviewee_id/role/listing_id are purely cosmetic
+      // display params for rating.tsx — submit_rating() re-derives the
+      // real reviewee and role server-side from session_id regardless
+      // of what's passed here (see rating.tsx's own header comment), so
+      // this is a safe, non-security-relevant fix.
       if (session.type === 'van_hire') {
         // NEW behavior for van_hire: whoever completes the final
         // confirmation could be either side (mutual flow, unlike a
@@ -213,13 +225,23 @@ Deno.serve(async (req) => {
             buyerToken,
             'Trip confirmed! ✅',
             `${itemLabel} has been confirmed complete by both sides. Please leave a rating.`,
-            { type: 'confirmed', session_id: session.id }
+            {
+              type: 'confirmed',
+              session_id: session.id,
+              reviewee_id: session.seller_id,
+              role: 'buyer',
+            }
           ),
           sendExpoPushNotification(
             sellerToken,
             'Trip confirmed! ✅',
             `${itemLabel} has been confirmed complete by both sides. Please leave a rating.`,
-            { type: 'confirmed', session_id: session.id }
+            {
+              type: 'confirmed',
+              session_id: session.id,
+              reviewee_id: session.buyer_id,
+              role: 'seller',
+            }
           ),
         ]);
       } else {
@@ -231,7 +253,16 @@ Deno.serve(async (req) => {
           sellerToken,
           'Transaction confirmed! ✅',
           `The buyer confirmed the deal for "${itemLabel}". Please leave a rating.`,
-          { type: 'confirmed', session_id: session.id }
+          {
+            type: 'confirmed',
+            session_id: session.id,
+            reviewee_id: session.buyer_id,
+            role: 'seller',
+            // Only a real listing has a listing_id to pass — an
+            // item_request deal has none, same distinction chat.tsx's
+            // own in-app "Rate this transaction" button already makes.
+            ...(session.type === 'listing' ? { listing_id: session.reference_id } : {}),
+          }
         );
       }
     }
