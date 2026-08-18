@@ -37,9 +37,10 @@
 // responder — buyer and seller can discuss details, ask questions,
 // before any money changes hands. Contact info specifically (phone
 // numbers, emails) is what stays protected in that chat until a
-// response is accepted and the 5% commission is paid, exactly mirroring
-// how a regular listing's unlock fee protects contact info the same
-// way. The note now describes that accurately.
+// response is accepted and the 5% commission (capped at $15, floored
+// at $1.50 — see wanted-responses.tsx's COMMISSION_CAP/MIN) is paid,
+// exactly mirroring how a regular listing's unlock fee protects
+// contact info the same way. The note now describes that accurately.
 
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
@@ -270,7 +271,7 @@ export default function PostWantedScreen() {
               chat model that no longer exists. */}
           <Text style={styles.infoText}>
             💬 You can chat with anyone who responds, right away — ask questions, discuss details.
-            Contact details stay hidden until you accept a response and pay the small 5% commission.
+            Contact details stay hidden until you accept a response and pay the small 5% commission (capped at $15).
           </Text>
         </View>
 

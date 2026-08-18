@@ -1,5 +1,5 @@
 // app/quotes.tsx
-// Customer sees quotes, accepts one, pays a 7% commitment fee (capped
+// Customer sees quotes, accepts one, pays a 7% platform fee (capped
 // at $15) → contact revealed. Remaining balance paid cash or through
 // app (operator's choice), directly to the operator, at the actual
 // trip/handover.
@@ -93,6 +93,7 @@ type Quote = {
   created_at: string;
   operator_name?: string;
   operator_phone?: string;
+  operator_area?: string;
 };
 
 type Request = {
@@ -170,19 +171,20 @@ export default function QuotesScreen() {
     }
 
     const operatorIds = [...new Set((quotesData ?? []).map((q: any) => q.operator_id))];
-    const profileMap: Record<string, { full_name: string; phone: string }> = {};
+    const profileMap: Record<string, { full_name: string; phone: string; operating_area: string }> = {};
     if (operatorIds.length > 0) {
       const { data: profiles } = await supabase
         .from('profiles')
-        .select('id, full_name, phone')
+        .select('id, full_name, phone, operating_area')
         .in('id', operatorIds);
-      (profiles ?? []).forEach((p: any) => { profileMap[p.id] = { full_name: p.full_name, phone: p.phone }; });
+      (profiles ?? []).forEach((p: any) => { profileMap[p.id] = { full_name: p.full_name, phone: p.phone, operating_area: p.operating_area }; });
     }
 
     setQuotes((quotesData ?? []).map((q: any) => ({
       ...q,
       operator_name: profileMap[q.operator_id]?.full_name ?? 'Operator',
       operator_phone: profileMap[q.operator_id]?.phone ?? '',
+      operator_area: profileMap[q.operator_id]?.operating_area ?? '',
     })));
     setLoading(false);
   }
@@ -381,7 +383,7 @@ export default function QuotesScreen() {
                   {quotes.length} quote{quotes.length !== 1 ? 's' : ''} · sorted cheapest first ·{' '}
                   {isPromoActive()
                     ? 'accept free \u2014 launch promo through Jan 31, 2027'
-                    : 'accept to pay 7% commitment fee (capped at $15)'}
+                    : 'accept to pay 7% platform fee (capped at $15)'}
                 </Text>
               </View>
             ) : null
@@ -417,10 +419,13 @@ export default function QuotesScreen() {
                   <View style={{ flex: 1 }}>
                     <Text style={styles.operatorName}>{item.operator_name}</Text>
                     <Text style={styles.vehicleText}>{item.vehicle}</Text>
+                    {item.operator_area ? (
+                      <Text style={styles.areaText}>📍 Based in {item.operator_area}</Text>
+                    ) : null}
                   </View>
                   <View style={{ alignItems: 'flex-end' }}>
                     <Text style={styles.priceText}>${item.price}</Text>
-                    <Text style={styles.depositHint}>Commitment fee: ${dep}</Text>
+                    <Text style={styles.depositHint}>Platform fee: ${dep}</Text>
                   </View>
                 </View>
 
@@ -429,7 +434,7 @@ export default function QuotesScreen() {
                 {!isDeclined && !isAccepted && request.status === 'open' && (
                   <TouchableOpacity style={styles.pickBtn} onPress={() => openModal(item)} activeOpacity={0.85}>
                     <Text style={styles.pickBtnText}>
-                      {isPromoActive() ? 'Accept \u2014 free (launch promo)' : `Accept — pay $${dep} commitment fee`}
+                      {isPromoActive() ? 'Accept \u2014 free (launch promo)' : `Accept — pay $${dep} platform fee`}
                     </Text>
                   </TouchableOpacity>
                 )}
@@ -460,7 +465,7 @@ export default function QuotesScreen() {
                 <Text style={styles.modalSub}>
                   {isPromoActive()
                     ? 'Accept this quote for free \u2014 launch promotion through January 31, 2027 \u2014 to lock in this operator and reveal their contact details.'
-                    : 'Pay a 7% commitment fee (capped at $15) to lock in this operator and reveal their contact details.'}
+                    : 'Pay a 7% platform fee (capped at $15) to lock in this operator and reveal their contact details.'}
                 </Text>
 
                 {/* Summary */}
@@ -470,9 +475,9 @@ export default function QuotesScreen() {
                   <SummaryRow label="Total fare" value={`$${chosenQuote.price}`} />
                   <View style={styles.divider} />
                   {isPromoActive() ? (
-                    <SummaryRow label="Commitment fee" value="FREE (launch promo)" gold />
+                    <SummaryRow label="Platform fee" value="FREE (launch promo)" gold />
                   ) : (
-                    <SummaryRow label="Commitment fee (7%, capped at $15)" value={`$${deposit}`} gold />
+                    <SummaryRow label="Platform fee (7%, capped at $15)" value={`$${deposit}`} gold />
                   )}
                   <SummaryRow label="Balance remaining" value={`$${isPromoActive() ? chosenQuote.price : balance}`} />
                 </View>
@@ -531,7 +536,7 @@ export default function QuotesScreen() {
                   ) : isPromoActive() ? (
                     <Text style={styles.payBtnText}>Accept free — launch promo</Text>
                   ) : (
-                    <Text style={styles.payBtnText}>Pay ${deposit} commitment fee</Text>
+                    <Text style={styles.payBtnText}>Pay ${deposit} platform fee</Text>
                   )}
                 </TouchableOpacity>
 
@@ -544,7 +549,7 @@ export default function QuotesScreen() {
             {step === 'revealed' && chosenQuote && (
               <>
                 <Text style={styles.modalTitle}>Booking confirmed 🎉</Text>
-                <Text style={styles.modalSub}>Commitment fee paid. Here are your operator's contact details.</Text>
+                <Text style={styles.modalSub}>Platform fee paid. Here are your operator's contact details.</Text>
 
                 <View style={styles.contactBox}>
                   <Text style={styles.contactLabel}>Operator</Text>
@@ -557,7 +562,7 @@ export default function QuotesScreen() {
                 <View style={styles.balanceReminder}>
                   {/* FIX (real bug, found during a final pre-submission
                       review): this always showed `balance`, computed as
-                      price minus the real 7%-capped commitment fee —
+                      price minus the real 7%-capped platform fee —
                       even when accepted for free during the launch
                       promo, when nothing was actually deducted. That
                       understated what the buyer actually owes their
@@ -668,6 +673,7 @@ const styles = StyleSheet.create({
   quoteTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 },
   operatorName: { fontSize: 15, fontWeight: '700', color: '#fff' },
   vehicleText: { fontSize: 13, color: GREY, marginTop: 2 },
+  areaText: { fontSize: 12, color: GREY, marginTop: 2 },
   priceText: { fontSize: 24, fontWeight: '800', color: GOLD },
   depositHint: { fontSize: 11, color: GREY, marginTop: 2 },
   messageText: { fontSize: 13, color: '#ccc', fontStyle: 'italic', marginBottom: 8, lineHeight: 18 },

@@ -116,6 +116,18 @@ export default function ProfileScreen() {
   const [recentReviews, setRecentReviews] = useState<any[]>([]);
   const [isActiveOperator, setIsActiveOperator] = useState(false);
   const [wantedResponseCount, setWantedResponseCount] = useState(0);
+  // NEW: per-row counts for the "My activity" card — used to grey out
+  // rows with nothing in them yet (see MenuRow's new `dimmed` prop).
+  // Purely visual: every row stays tappable regardless of count, since
+  // an empty list screen usually has its own "nothing here yet"/"go do
+  // X" state that's worth reaching even at zero. This is about
+  // reducing visual noise for the common case (a mostly-empty account),
+  // not restricting navigation.
+  const [deliveriesToMeCount, setDeliveriesToMeCount] = useState(0);
+  const [deliveriesFromMeCount, setDeliveriesFromMeCount] = useState(0);
+  const [tripRequestCount, setTripRequestCount] = useState(0);
+  const [wantedPostCount, setWantedPostCount] = useState(0);
+  const [messageCount, setMessageCount] = useState(0);
 
   const [draftName, setDraftName] = useState('');
   const [draftPhone, setDraftPhone] = useState('');
@@ -195,6 +207,28 @@ export default function ProfileScreen() {
     } else {
       setWantedResponseCount(0);
     }
+
+    // NEW: counts feeding the "My activity" card's grey-out treatment.
+    // Cheap head-only count queries, same pattern as listingCount above
+    // — run in parallel rather than sequentially awaited one-by-one.
+    const [
+      { count: deliveriesToMe },
+      { count: deliveriesFromMe },
+      { count: tripRequests },
+      { count: wantedPosts },
+      { count: messages },
+    ] = await Promise.all([
+      supabase.from('delivery_bookings').select('*', { count: 'exact', head: true }).eq('buyer_id', user.id),
+      supabase.from('delivery_bookings').select('*', { count: 'exact', head: true }).eq('seller_id', user.id),
+      supabase.from('requests').select('*', { count: 'exact', head: true }).eq('user_id', user.id),
+      supabase.from('item_requests').select('*', { count: 'exact', head: true }).eq('user_id', user.id),
+      supabase.from('messages').select('*', { count: 'exact', head: true }).or(`sender_id.eq.${user.id},receiver_id.eq.${user.id}`),
+    ]);
+    setDeliveriesToMeCount(deliveriesToMe ?? 0);
+    setDeliveriesFromMeCount(deliveriesFromMe ?? 0);
+    setTripRequestCount(tripRequests ?? 0);
+    setWantedPostCount(wantedPosts ?? 0);
+    setMessageCount(messages ?? 0);
 
     setLoading(false);
   }
@@ -467,19 +501,28 @@ export default function ProfileScreen() {
                 profile — leaning into today's strategy work turning
                 the ratings system into real lock-in. */}
             <MenuRow icon="🔗" label="View my public profile" onPress={() => router.push(`/seller?id=${userId}`)} />
-            <MenuRow icon="🏷️" label="My listings" onPress={() => router.push('/my-listings')} />
-            <MenuRow icon="📥" label="Deliveries to me" onPress={() => router.push('/buyer-deliveries')} />
-            <MenuRow icon="📤" label="Deliveries from my listings" onPress={() => router.push('/seller-deliveries')} />
-            <MenuRow icon="🚐" label="My trip requests" onPress={() => router.push('/quotes')} />
+            <MenuRow icon="🏷️" label="My listings" dimmed={listingCount === 0} onPress={() => router.push('/my-listings')} />
+            <MenuRow icon="📥" label="Deliveries to me" dimmed={deliveriesToMeCount === 0} onPress={() => router.push('/buyer-deliveries')} />
+            <MenuRow icon="📤" label="Deliveries from my listings" dimmed={deliveriesFromMeCount === 0} onPress={() => router.push('/seller-deliveries')} />
+            <MenuRow icon="🚐" label="My trip requests" dimmed={tripRequestCount === 0} onPress={() => router.push('/quotes')} />
             <MenuRow
               icon="🔍"
               label="My wanted posts"
+              dimmed={wantedPostCount === 0}
               badge={wantedResponseCount > 0 ? wantedResponseCount : undefined}
               onPress={() => router.push('/my-wanted-posts')}
             />
-            <MenuRow icon="💬" label="Messages" onPress={() => router.push('/messages')} />
+            <MenuRow icon="💬" label="Messages" dimmed={messageCount === 0} onPress={() => router.push('/messages')} />
             {accountType === 'transport_operator' && (
-              <MenuRow icon="📋" label="Browse trip requests" onPress={() => router.push('/operator-requests')} />
+              // RENAMED: was "Browse trip requests" — shortened and made
+              // more explicit about the actual action taken on this
+              // screen (submitting a quote), and reads more distinctly
+              // from "My trip requests" two rows up (the buyer-side
+              // list), which "Browse trip requests" was easy to
+              // confuse with at a glance. Not part of the dimmed/empty
+              // treatment above — this is a discovery/browse action for
+              // operators, not a personal data list that can be "empty".
+              <MenuRow icon="📋" label="Quote on trips" onPress={() => router.push('/operator-requests')} />
             )}
           </View>
 
@@ -609,20 +652,31 @@ function InfoRow({ label, value }: { label: string; value: string }) {
 // treatment used by the "Earn with ImbizoHub" card. Every other
 // MenuRow usage on this screen omits the prop entirely (defaults to
 // false) and renders exactly as it did before this change.
-function MenuRow({ icon, label, badge, onPress, highlighted }: { icon: string; label: string; badge?: number; onPress: () => void; highlighted?: boolean }) {
+//
+// NEW: `dimmed` prop — lowers opacity on the icon/label/arrow for rows
+// whose underlying list is currently empty (0 deliveries, 0 messages,
+// etc. — see the count queries in loadProfile()). Purely a visual
+// de-emphasis, not a disabled state: onPress is completely unchanged,
+// so an empty row is still fully tappable and lands on that screen's
+// own empty state. Ignored when a badge is present (badge!=null &&
+// badge>0 already implies real content, so it wins over dimmed even
+// if the caller passed both) and never combined with `highlighted` in
+// practice — no screen currently needs both at once.
+function MenuRow({ icon, label, badge, onPress, highlighted, dimmed }: { icon: string; label: string; badge?: number; onPress: () => void; highlighted?: boolean; dimmed?: boolean }) {
+  const isDimmed = dimmed && !(badge != null && badge > 0);
   return (
     <TouchableOpacity
       style={[styles.menuRow, highlighted && styles.menuRowHighlighted]}
       onPress={onPress}
     >
-      <Text style={styles.menuIcon}>{icon}</Text>
-      <Text style={[styles.menuLabel, highlighted && styles.menuLabelHighlighted]}>{label}</Text>
+      <Text style={[styles.menuIcon, isDimmed && styles.menuIconDimmed]}>{icon}</Text>
+      <Text style={[styles.menuLabel, highlighted && styles.menuLabelHighlighted, isDimmed && styles.menuLabelDimmed]}>{label}</Text>
       {badge != null && badge > 0 ? (
         <View style={styles.menuBadge}>
           <Text style={styles.menuBadgeText}>{badge}</Text>
         </View>
       ) : null}
-      <Text style={[styles.menuArrow, highlighted && { color: GOLD }]}>›</Text>
+      <Text style={[styles.menuArrow, highlighted && { color: GOLD }, isDimmed && styles.menuArrowDimmed]}>›</Text>
     </TouchableOpacity>
   );
 }
@@ -715,6 +769,13 @@ const styles = StyleSheet.create({
   menuIcon: { fontSize: 18, marginRight: 12 },
   menuLabel: { flex: 1, fontSize: 14, color: '#fff' },
   menuLabelHighlighted: { fontWeight: '700', color: GOLD },
+  // NEW: grey-out treatment for empty rows — see MenuRow's `dimmed`
+  // prop. Opacity rather than a different color, so it stays a clear
+  // "less relevant right now" signal without introducing a whole new
+  // muted-text color into the palette.
+  menuIconDimmed: { opacity: 0.4 },
+  menuLabelDimmed: { color: GREY, opacity: 0.7 },
+  menuArrowDimmed: { opacity: 0.4 },
   menuBadge: { backgroundColor: GOLD, borderRadius: 10, minWidth: 20, height: 20, paddingHorizontal: 6, alignItems: 'center', justifyContent: 'center', marginRight: 8 },
   menuBadgeText: { color: BLACK, fontSize: 11, fontWeight: '800' },
   menuArrow: { fontSize: 18, color: GREY },

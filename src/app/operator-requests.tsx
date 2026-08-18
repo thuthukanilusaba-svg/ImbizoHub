@@ -48,6 +48,15 @@ export default function OperatorRequestsScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [operatorActive, setOperatorActive] = useState<boolean | null>(null);
+  // FIX (real user report): this screen never tracked which open
+  // requests the current operator had already quoted, so every card
+  // always showed "Submit a quote" — even seconds after successfully
+  // submitting one, going straight back to the list. Same
+  // myResponseIds pattern already used in browse-wanted.tsx for wanted
+  // post responses. A DB-level unique constraint
+  // (quotes_request_operator_unique) now also backstops this, so even
+  // a stale list can no longer produce a duplicate quote row.
+  const [myQuoteRequestIds, setMyQuoteRequestIds] = useState<Set<string>>(new Set());
 
   const [modalVisible, setModalVisible] = useState(false);
   const [selected, setSelected] = useState<Request | null>(null);
@@ -117,6 +126,23 @@ export default function OperatorRequestsScreen() {
       .eq('status', 'open')
       .order('created_at', { ascending: false });
     setRequests(data ?? []);
+
+    // FIX: see myQuoteRequestIds' declaration above — without this,
+    // the list had no idea which of these open requests the current
+    // operator had already quoted.
+    const { data: { user } } = await supabase.auth.getUser();
+    if (user && !user.is_anonymous && data && data.length > 0) {
+      const ids = data.map((r) => r.id);
+      const { data: myQuotes } = await supabase
+        .from('quotes')
+        .select('request_id')
+        .eq('operator_id', user.id)
+        .in('request_id', ids);
+      setMyQuoteRequestIds(new Set((myQuotes ?? []).map((q) => q.request_id)));
+    } else {
+      setMyQuoteRequestIds(new Set());
+    }
+
     setLoading(false);
   }
 
@@ -169,7 +195,25 @@ export default function OperatorRequestsScreen() {
     });
 
     setSubmitting(false);
-    if (error) { setSubmitError(error.message); return; }
+    if (error) {
+      // FIX: the new quotes_request_operator_unique constraint means a
+      // duplicate submission (e.g. two devices on the same account, or
+      // this list being stale) now fails here with a clear DB error
+      // instead of silently creating a second quote row. Surface it as
+      // a normal, friendly message rather than the raw Postgres text.
+      if (error.code === '23505') {
+        setSubmitError('You already submitted a quote for this trip.');
+        setMyQuoteRequestIds((prev) => new Set(prev).add(selected!.id));
+      } else {
+        setSubmitError(error.message);
+      }
+      return;
+    }
+    // FIX: update local state immediately so the card behind this
+    // modal already shows "Quote sent" the moment it closes — no need
+    // to wait for a manual pull-to-refresh. See myQuoteRequestIds'
+    // declaration above.
+    setMyQuoteRequestIds((prev) => new Set(prev).add(selected!.id));
     setSubmitted(true);
   }
 
@@ -241,7 +285,12 @@ export default function OperatorRequestsScreen() {
             <Text style={styles.emptySubtext}>Pull down to refresh.</Text>
           </View>
         }
-        renderItem={({ item }) => (
+        renderItem={({ item }) => {
+          // FIX: see myQuoteRequestIds' declaration above — this is
+          // what actually makes the card stop offering "Submit a
+          // quote" once this operator already has.
+          const alreadyQuoted = myQuoteRequestIds.has(item.id);
+          return (
           <View style={styles.card}>
             <View style={styles.routeRow}>
               <View style={styles.dotGreen} />
@@ -262,11 +311,18 @@ export default function OperatorRequestsScreen() {
               <Text style={styles.notes} numberOfLines={2}>{item.description}</Text>
             ) : null}
 
-            <TouchableOpacity style={styles.bidBtn} onPress={() => openModal(item)} activeOpacity={0.85}>
-              <Text style={styles.bidBtnText}>Submit a quote</Text>
-            </TouchableOpacity>
+            {alreadyQuoted ? (
+              <View style={styles.quotedBadge}>
+                <Text style={styles.quotedBadgeText}>✓ Quote sent</Text>
+              </View>
+            ) : (
+              <TouchableOpacity style={styles.bidBtn} onPress={() => openModal(item)} activeOpacity={0.85}>
+                <Text style={styles.bidBtnText}>Submit a quote</Text>
+              </TouchableOpacity>
+            )}
           </View>
-        )}
+          );
+        }}
       />
 
       {/* Quote modal */}
@@ -363,7 +419,7 @@ export default function OperatorRequestsScreen() {
                     already say "commitment fee"). This was the one screen
                     that still said "deposit" to a real user. */}
                 <Text style={styles.successBody}>
-                  The customer will review your bid. If they accept and pay their commitment fee, you'll be notified and your contact details will be revealed.
+                  The customer will review your bid. If they accept and pay their platform fee, you'll be notified and your contact details will be revealed.
                 </Text>
                 <TouchableOpacity style={styles.submitBtn} onPress={() => setModalVisible(false)}>
                   <Text style={styles.submitBtnText}>Done</Text>
@@ -424,6 +480,10 @@ const styles = StyleSheet.create({
   notes: { fontSize: 13, color: GREY, marginTop: 10, lineHeight: 18 },
   bidBtn: { marginTop: 14, backgroundColor: GOLD, borderRadius: 10, paddingVertical: 12, alignItems: 'center' },
   bidBtnText: { color: BLACK, fontWeight: '800', fontSize: 14 },
+  // Same colors/shape as browse-wanted.tsx's respondedBadge, for the
+  // same "you already acted on this" state.
+  quotedBadge: { marginTop: 14, backgroundColor: '#1a2a1a', borderRadius: 10, paddingVertical: 12, alignItems: 'center', borderWidth: 0.5, borderColor: '#2a4a2a' },
+  quotedBadgeText: { color: GREEN, fontWeight: '700', fontSize: 13 },
 
   empty: { alignItems: 'center', paddingTop: 60 },
   emptyEmoji: { fontSize: 40, marginBottom: 12 },

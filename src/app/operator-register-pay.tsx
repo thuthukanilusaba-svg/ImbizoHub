@@ -191,7 +191,7 @@ export default function OperatorRegisterPayScreen() {
           <Text style={styles.successCardTitle}>What happens next</Text>
           <Step n="1" text="Browse open trip requests from customers" />
           <Step n="2" text="Submit a quote with your price and vehicle" />
-          <Step n="3" text="If accepted, the customer's commitment fee (7%, capped at $15) reveals your contact details" />
+          <Step n="3" text="If accepted, the customer's platform fee (7%, capped at $15) reveals your contact details" />
           <Step n="4" text="Agree on how the remaining balance gets paid" />
           <Step n="5" text="You keep 100% of your quoted fare — no additional commission" />
         </View>

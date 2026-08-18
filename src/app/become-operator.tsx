@@ -61,6 +61,7 @@ export default function BecomeOperatorScreen() {
 
   const [vehicleType, setVehicleType] = useState('');
   const [vehicleCapacity, setVehicleCapacity] = useState('');
+  const [operatingArea, setOperatingArea] = useState('');
   const [deliveryVehicleType, setDeliveryVehicleType] = useState('');
   const [deliveryArea, setDeliveryArea] = useState('');
 
@@ -96,6 +97,10 @@ export default function BecomeOperatorScreen() {
         account_type: storedType,
         vehicle_type: isDelivery ? deliveryVehicleType : vehicleType,
         vehicle_capacity: isDelivery ? null : (parseInt(vehicleCapacity) || null),
+        // Informational only — shown on the quote card so buyers can see
+        // roughly where an operator is based before accepting. Not used
+        // as a filter anywhere; trip requests stay nationwide by design.
+        operating_area: isDelivery ? null : (operatingArea.trim() || null),
       })
       .eq('id', user.id);
 
@@ -170,6 +175,12 @@ export default function BecomeOperatorScreen() {
             <Text style={styles.label}>Passenger Capacity</Text>
             <TextInput style={styles.input} placeholder="e.g. 8" placeholderTextColor="#888"
               value={vehicleCapacity} onChangeText={setVehicleCapacity} keyboardType="numeric" />
+            <Text style={styles.label}>Where are you based? (optional)</Text>
+            <TextInput style={styles.input} placeholder="e.g. Harare, Bulawayo, or both" placeholderTextColor="#888"
+              value={operatingArea} onChangeText={setOperatingArea} />
+            <Text style={styles.hint}>
+              Shown to buyers on your quotes — trip requests are still visible nationwide.
+            </Text>
           </>
         )}
 
@@ -194,6 +205,7 @@ const styles = StyleSheet.create({
   subtitle: { fontSize: 13, color: GREY, lineHeight: 19, marginBottom: 24 },
   label: { color: '#ccc', fontSize: 14, marginBottom: 6, marginTop: 12 },
   input: { backgroundColor: DARK, color: '#fff', borderRadius: 8, padding: 12, fontSize: 16, borderWidth: 1, borderColor: '#444' },
+  hint: { color: '#888', fontSize: 12, marginTop: 6 },
   note: { backgroundColor: '#1a1a2e', borderRadius: 8, padding: 12, marginTop: 16, borderWidth: 0.5, borderColor: '#3a3a5e' },
   noteText: { color: '#8888aa', fontSize: 11, lineHeight: 16 },
   error: { color: '#ff6b6b', marginTop: 16, textAlign: 'center' },

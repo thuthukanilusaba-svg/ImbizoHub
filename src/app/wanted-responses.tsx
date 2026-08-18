@@ -1,7 +1,8 @@
 // app/wanted-responses.tsx
 // Buyer views responses to their "wanted" post and can now chat with
 // any responder immediately (see chat.tsx's item-request handling), or
-// accept one — paying a small 5% commission to unlock contact info and
+// accept one — paying a small 5% commission (capped at $15, floored at
+// $1.50 — see COMMISSION_CAP/MIN below) to unlock contact info and
 // fulfillment (Meet & Collect / delivery) with that seller — same
 // unlock-fee-style pattern as unlock.tsx, just for the Wanted flow
 // instead of a regular listing.
@@ -62,6 +63,24 @@ const GREEN = '#4fc96e';
 
 const POLL_INTERVAL_MS = 2000;
 const POLL_MAX_ATTEMPTS = 20;
+
+// FIX (real gap, found while comparing this fee against unlock.tsx's):
+// this commission was a flat 5% with NO cap and NO floor — unlike
+// unlock.tsx's structurally identical "pay to unlock contact info" fee,
+// which is capped at $15 and floored at $1.50. A buyer requesting
+// something expensive through Wanted (sourcing a car, a bulk order)
+// would owe an unbounded commission just to unlock a seller's contact
+// info — e.g. $150 to unlock a $3,000 want, when the same action on a
+// regular listing costs at most $15 regardless of price. This file's
+// own top comment already said this was meant to be the "same
+// unlock-fee-style pattern as unlock.tsx" — the cap/floor just never
+// actually got added. Now mirrors unlock.tsx's UNLOCK_FEE_CAP/MIN
+// exactly, both here and in create-payment's server-side validation
+// (which must match or every non-promo accept would be rejected as
+// "Incorrect amount").
+const COMMISSION_PCT = 0.05;
+const COMMISSION_CAP = 15;
+const COMMISSION_MIN = 1.50;
 
 // NEW: launch promotion — accepting a response is free until Jan 31,
 // 2027, same window as every other promo built today. See
@@ -196,7 +215,12 @@ export default function WantedResponsesScreen() {
     setError('');
     setAcceptingId(response.id);
 
-    const commission = parseFloat((response.price * 0.05).toFixed(2));
+    // FIX: was `parseFloat((response.price * 0.05).toFixed(2))` — no
+    // cap, no floor. See COMMISSION_CAP/MIN's declaration above.
+    const rawCommission = response.price * COMMISSION_PCT;
+    const commission = parseFloat(
+      Math.max(Math.min(rawCommission, COMMISSION_CAP), COMMISSION_MIN).toFixed(2)
+    );
 
     const { data, error: fnError } = await supabase.functions.invoke('create-payment', {
       body: {

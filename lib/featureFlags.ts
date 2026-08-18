@@ -27,9 +27,12 @@
 // directly without going through chat.tsx).
 export const DELIVERY_BOOKING_ENABLED = false;
 
-export const DELIVERY_PAUSED_TITLE = 'Delivery temporarily paused';
+export const DELIVERY_PAUSED_TITLE = 'Delivery coming soon';
 export const DELIVERY_PAUSED_MESSAGE =
   "We're building a safer way to protect your payment for Book & Deliver orders. It's paused for new bookings in the meantime — check back soon. Meet & Pay is still available for same-city deals.";
 
+// NOTE: existing delivery-operator accounts will be cleaned up before this
+// relaunches, so this message must not promise already-registered accounts
+// are unaffected — that's no longer true.
 export const DELIVERY_OPERATOR_SIGNUP_PAUSED_MESSAGE =
-  "New delivery-operator registration is paused while we build a safer payment system for Book & Deliver. Check back soon — if you're already registered, your account is unaffected.";
+  'New delivery-operator registration is paused while we build a safer payment system for Book & Deliver. Check back soon.';
