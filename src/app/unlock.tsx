@@ -338,13 +338,17 @@ export default function DepositScreen() {
         the seller agree on a different price.
       </Text>
 
-      {hasFreeUnlock && (
-        <View style={styles.freeBanner}>
-          <Text style={styles.freeBannerText}>
-            🎁 You have {freeUnlocksRemaining} free unlock{freeUnlocksRemaining === 1 ? '' : 's'} remaining
-          </Text>
-        </View>
-      )}
+      {/* REMOVED (real user feedback: "remove you have 5 unlocks, it's
+          misleading"): this banner advertised a 5-unlock allowance
+          while the launch promotion (through Jan 31, 2027) already
+          makes every unlock free for everyone — so the screen said
+          "you have 5 free unlocks remaining" directly above "FREE —
+          free for everyone through Jan 31, 2027". Those two claims
+          contradict each other, and the smaller number is the one that
+          reads as the real limit. The underlying free-unlock allowance
+          (my_free_unlocks_remaining / claim_free_unlock) is untouched
+          and still applies once the promo ends — this only stops
+          advertising a count that isn't the binding constraint today. */}
 
       {error ? (
         <View style={styles.errorBox}><Text style={styles.errorText}>⚠️ {error}</Text></View>
@@ -359,7 +363,11 @@ export default function DepositScreen() {
         <View style={styles.divider} />
         <View style={styles.summaryRow}>
           <Text style={styles.summaryLabelBold}>
-            {isCapped ? 'Arrange-deal fee (capped)' : isMinimum ? 'Arrange-deal fee (minimum)' : 'Arrange-deal fee (5%)'}
+            {/* RENAMED (product decision): "Arrange-deal fee" -> "App
+                fee", matching the same rename already applied to the
+                hire-a-van "Platform fee" — plain wording a buyer can
+                actually parse at checkout. */}
+            {isCapped ? 'App fee (capped)' : isMinimum ? 'App fee (minimum)' : 'App fee (5%)'}
           </Text>
           {isPromoActive() || hasFreeUnlock ? (
             <Text style={styles.summaryValueFree}>FREE</Text>
