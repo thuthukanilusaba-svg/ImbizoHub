@@ -6,11 +6,11 @@
   "rewrites": [
     {
       "source": "/seller",
-      "destination": "https://goughfxpcwxwsfthlmii.supabase.co/functions/v1/seller-preview"
+      "destination": "/api/seller"
     },
     {
       "source": "/seller/:id",
-      "destination": "https://goughfxpcwxwsfthlmii.supabase.co/functions/v1/seller-preview/:id"
+      "destination": "/api/seller?id=:id"
     },
     {
       "source": "/app/:path*",
@@ -18,18 +18,6 @@
     }
   ],
   "headers": [
-    {
-      "source": "/seller",
-      "headers": [
-        { "key": "Content-Type", "value": "text/html; charset=utf-8" }
-      ]
-    },
-    {
-      "source": "/seller/(.*)",
-      "headers": [
-        { "key": "Content-Type", "value": "text/html; charset=utf-8" }
-      ]
-    },
     {
       "source": "/.well-known/apple-app-site-association",
       "headers": [
