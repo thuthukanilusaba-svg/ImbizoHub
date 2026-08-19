@@ -1012,7 +1012,17 @@ export default function ChatScreen() {
 
       <View style={styles.header}>
         <View style={styles.headerLeft}>
-          <TouchableOpacity onPress={() => router.back()}>
+          {/* FIX (real user report: "the back tab is not reacting"):
+              plain router.back() has nothing to go back to when this
+              screen is the first thing on the stack — and chat.tsx is
+              the deep-link destination for 11 different push
+              notification types (see _layout.tsx's notification
+              response handler: message, unlock, wanted_match,
+              trip_deposit, meetpay, etc. all router.push('/chat...')).
+              Tapping a notification to cold-launch the app lands here
+              with no screen behind it, so the back arrow silently did
+              nothing. Falls back to the conversations list instead. */}
+          <TouchableOpacity onPress={() => (router.canGoBack() ? router.back() : router.replace('/messages'))}>
             <Text style={styles.backBtn}>‹</Text>
           </TouchableOpacity>
           <View style={styles.avatarWrap}>
