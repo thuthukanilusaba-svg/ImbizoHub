@@ -162,16 +162,31 @@
   }
   .promo strong{color:var(--green)}
   .promo p{margin:7px 0 0;color:var(--muted);font-size:15.5px}
-  table{width:100%;border-collapse:collapse;font-size:16px}
-  th,td{text-align:left;padding:14px 12px;border-bottom:1px solid var(--line);vertical-align:top}
-  th{color:var(--muted);font-weight:600;font-size:13px;text-transform:uppercase;letter-spacing:.04em}
-  td:last-child{text-align:right;white-space:nowrap;font-weight:700;color:var(--gold-bright)}
+  /* Pricing table.
+     FIX: the COST header was text-align:left while its values were
+     text-align:right, so the column header never sat above its own
+     numbers. Both are now right-aligned and the column has a fixed
+     width, so the prices form a clean edge. */
+  table{width:100%;border-collapse:collapse;font-size:16px;table-layout:fixed}
+  th,td{text-align:left;padding:16px 0;border-bottom:1px solid var(--line);vertical-align:top}
+  th{color:var(--muted);font-weight:600;font-size:13px;text-transform:uppercase;
+     letter-spacing:.04em;padding-bottom:10px}
+  th:last-child,td:last-child{text-align:right;width:30%}
+  td:last-child{white-space:nowrap;font-weight:700;color:var(--gold-bright)}
   td .d{display:block;color:var(--muted);font-size:15px;font-weight:400;margin-top:5px;line-height:1.6}
-  @media(max-width:600px){
-    td:last-child{text-align:left;padding-top:0;border-bottom:none}
-    tr{display:block;border-bottom:1px solid var(--line);padding:6px 0}
-    td{border-bottom:none;padding:6px 12px}
+
+  /* FIX: on narrow screens the price used to drop BELOW the description,
+     which separated each item from its own cost. Now the row becomes a
+     flex pair — label left, price right, on the same line — so the two
+     stay visually joined however narrow the screen gets. */
+  @media(max-width:620px){
     thead{display:none}
+    table,tbody{display:block;width:100%}
+    tr{display:flex;justify-content:space-between;align-items:flex-start;gap:18px;
+       border-bottom:1px solid var(--line);padding:14px 0}
+    td{border-bottom:none;padding:0}
+    td:first-child{flex:1 1 auto;min-width:0}
+    td:last-child{flex:0 0 auto;width:auto;text-align:right}
   }
 
   /* ---------- trust ---------- */
