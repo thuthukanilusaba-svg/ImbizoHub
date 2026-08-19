@@ -26,6 +26,10 @@
 <meta name="twitter:description" content="Post what you're looking for and let sellers come to you with a price. Chat is always free.">
 <meta name="twitter:image" content="https://imbizohub.com/og-image.png">
 
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;800&display=swap" rel="stylesheet">
+
 <link rel="icon" href="/favicon.png">
 
 <script type="application/ld+json">
@@ -48,7 +52,7 @@
     --gold:#B8860B;
     --gold-bright:#E8B44A;
     --text:#FFFFFF;
-    --muted:#C2C2BB;
+    --muted:#D6D6CF;
     --green:#4FC96E;
     --maxw:1080px;
   }
@@ -59,9 +63,10 @@
     margin:0;
     background:var(--bg);
     color:var(--text);
-    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
-    font-size:17px;
-    line-height:1.65;
+    font-family:"Inter",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    font-size:18px;
+    line-height:1.7;
+    letter-spacing:.005em;
     -webkit-font-smoothing:antialiased;
   }
   a{color:var(--gold-bright);text-decoration:none}
@@ -105,8 +110,8 @@
     padding:6px 13px;border-radius:999px;margin-bottom:22px;
   }
   h1{
-    font-size:clamp(32px,5.4vw,54px);line-height:1.1;margin:0 0 18px;
-    font-weight:800;letter-spacing:-.02em;
+    font-size:clamp(34px,5.6vw,56px);line-height:1.12;margin:0 0 20px;
+    font-weight:800;letter-spacing:-.025em;
   }
   h1 em{font-style:normal;color:var(--gold)}
   .sub{
@@ -119,7 +124,7 @@
   /* ---------- sections ---------- */
   section{padding:56px 0;border-top:1px solid var(--line)}
   h2{font-size:clamp(23px,3.2vw,31px);margin:0 0 10px;font-weight:800;letter-spacing:-.01em}
-  .lede{color:var(--muted);margin:0 0 34px;max-width:660px;font-size:17.5px}
+  .lede{color:var(--muted);margin:0 0 34px;max-width:660px;font-size:18px;line-height:1.7}
 
   /* ---------- four cards ---------- */
   .cards{display:grid;grid-template-columns:repeat(2,1fr);gap:16px}
@@ -130,7 +135,7 @@
   }
   .card .ico{font-size:26px;line-height:1;flex:0 0 auto;margin-top:2px}
   .card h3{margin:0 0 7px;font-size:18.5px;font-weight:800}
-  .card p{margin:0;color:var(--muted);font-size:15.5px;line-height:1.6}
+  .card p{margin:0;color:var(--muted);font-size:16px;line-height:1.65;font-weight:400}
   .card.a{border-color:#25452A}
   .card.b{border-color:#4A3A12}
   .card.c{border-color:#20304F}
@@ -148,7 +153,7 @@
     display:grid;place-items:center;font-weight:900;font-size:14px;margin-bottom:12px;
   }
   .step h3{margin:0 0 7px;font-size:17px;font-weight:800}
-  .step p{margin:0;color:var(--muted);font-size:15.5px}
+  .step p{margin:0;color:var(--muted);font-size:16px;line-height:1.65}
 
   /* ---------- pricing ---------- */
   .promo{
@@ -161,7 +166,7 @@
   th,td{text-align:left;padding:14px 12px;border-bottom:1px solid var(--line);vertical-align:top}
   th{color:var(--muted);font-weight:600;font-size:13px;text-transform:uppercase;letter-spacing:.04em}
   td:last-child{text-align:right;white-space:nowrap;font-weight:700;color:var(--gold-bright)}
-  td .d{display:block;color:var(--muted);font-size:14.5px;font-weight:400;margin-top:4px;line-height:1.55}
+  td .d{display:block;color:var(--muted);font-size:15px;font-weight:400;margin-top:5px;line-height:1.6}
   @media(max-width:600px){
     td:last-child{text-align:left;padding-top:0;border-bottom:none}
     tr{display:block;border-bottom:1px solid var(--line);padding:6px 0}
@@ -176,7 +181,7 @@
      background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:20px}
   .t .ico{font-size:21px;line-height:1;margin-top:2px}
   .t h3{margin:0 0 6px;font-size:16.5px;font-weight:800}
-  .t p{margin:0;color:var(--muted);font-size:15.5px}
+  .t p{margin:0;color:var(--muted);font-size:16px;line-height:1.65}
 
   /* ---------- closing ---------- */
   .close{text-align:center;background:var(--panel);border-radius:20px;padding:48px 24px;margin:56px 0}
@@ -187,6 +192,25 @@
   footer{border-top:1px solid var(--line);padding:34px 0;color:#9E9E97;font-size:15px}
   .fnav{display:flex;gap:22px;flex-wrap:wrap;margin-bottom:16px}
   .fnav a{color:var(--muted)}
+
+  /* ---------- theme ---------- */
+  body{
+    background-image:url('/theme-hub.png');
+    background-size:cover;
+    background-position:top center;
+    background-attachment:fixed;
+    background-repeat:no-repeat;
+  }
+  /* Panels get a near-opaque backing so copy never sits directly on the
+     pattern. The texture stays visible in the gutters, which is where it
+     belongs. */
+  .card,.step,.t,.close{background:rgba(22,22,20,.93)}
+  header{background:rgba(15,15,15,.94)}
+  .promo{background:rgba(18,42,23,.94)}
+  /* Hero text gets a soft shadow purely for separation from the glow. */
+  .hero h1,.hero .sub{text-shadow:0 2px 18px rgba(0,0,0,.65)}
+  /* Reading measure — long lines are tiring regardless of contrast. */
+  .lede,.card p,.step p,.t p{max-width:62ch}
 </style>
 </head>
 
