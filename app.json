@@ -16,7 +16,7 @@
     "ios": {
       "icon": "./assets/expo.icon",
       "bundleIdentifier": "com.imbizohub.app",
-      "associatedDomains": ["applinks:imbizohub.app"]
+      "associatedDomains": ["applinks:imbizohub.com", "applinks:imbizohub.app"]
     },
     "android": {
       "adaptiveIcon": {
@@ -32,6 +32,11 @@
           "action": "VIEW",
           "autoVerify": true,
           "data": [
+            {
+              "scheme": "https",
+              "host": "imbizohub.com",
+              "pathPrefix": "/seller"
+            },
             {
               "scheme": "https",
               "host": "imbizohub.app",
@@ -65,7 +70,8 @@
     ],
     "experiments": {
       "typedRoutes": true,
-      "reactCompiler": true
+      "reactCompiler": true,
+      "baseUrl": "/app"
     },
     "extra": {
       "router": {},

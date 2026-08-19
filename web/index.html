@@ -1,0 +1,437 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+
+<title>ImbizoHub — Buy, sell and move things in Zimbabwe</title>
+<meta name="description" content="Post what you're looking for and let sellers come to you with a price. Hire a van with operators bidding for the job. Chat is always free — you only pay a small app fee when you're ready to do a deal.">
+<link rel="canonical" href="https://imbizohub.com/">
+<meta name="theme-color" content="#111111">
+
+<!-- Open Graph — this is what WhatsApp, Facebook and Twitter read when
+     someone shares the link. Without these the preview comes up blank. -->
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="ImbizoHub">
+<meta property="og:url" content="https://imbizohub.com/">
+<meta property="og:title" content="ImbizoHub — Buy, sell and move things in Zimbabwe">
+<meta property="og:description" content="Post what you're looking for and let sellers come to you with a price. Hire a van with operators bidding for the job. Chat is always free.">
+<meta property="og:image" content="https://imbizohub.com/og-image.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:locale" content="en_ZW">
+
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="ImbizoHub — Buy, sell and move things in Zimbabwe">
+<meta name="twitter:description" content="Post what you're looking for and let sellers come to you with a price. Chat is always free.">
+<meta name="twitter:image" content="https://imbizohub.com/og-image.png">
+
+<link rel="icon" href="/favicon.png">
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "WebSite",
+  "name": "ImbizoHub",
+  "url": "https://imbizohub.com/",
+  "description": "Zimbabwean marketplace where buyers post what they want and sellers respond with a price, plus transport hire with operators bidding for the job.",
+  "inLanguage": "en-ZW"
+}
+</script>
+
+<style>
+  :root{
+    --bg:#111111;
+    --panel:#1A1A18;
+    --panel-2:#222220;
+    --line:#2E2E2A;
+    --gold:#B8860B;
+    --gold-bright:#E8B44A;
+    --text:#FFFFFF;
+    --muted:#A9A9A4;
+    --green:#4FC96E;
+    --maxw:1080px;
+  }
+
+  *{box-sizing:border-box}
+  html{-webkit-text-size-adjust:100%}
+  body{
+    margin:0;
+    background:var(--bg);
+    color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    line-height:1.6;
+    -webkit-font-smoothing:antialiased;
+  }
+  a{color:var(--gold-bright);text-decoration:none}
+  a:hover{text-decoration:underline}
+  .wrap{max-width:var(--maxw);margin:0 auto;padding:0 20px}
+
+  /* ---------- header ---------- */
+  header{
+    position:sticky;top:0;z-index:20;
+    background:rgba(17,17,17,.92);
+    backdrop-filter:saturate(140%) blur(10px);
+    border-bottom:1px solid var(--line);
+  }
+  .nav{display:flex;align-items:center;justify-content:space-between;height:64px}
+  .brand{display:flex;align-items:center;gap:10px;font-weight:800;font-size:19px;color:#fff}
+  .brand:hover{text-decoration:none}
+  .mark{
+    width:30px;height:30px;border-radius:50%;
+    background:var(--gold);color:#1A1A18;
+    display:grid;place-items:center;font-weight:900;font-size:15px;
+  }
+  .brand span{color:var(--gold)}
+  .nav-links{display:flex;align-items:center;gap:24px;font-size:14px}
+  .nav-links a{color:var(--muted)}
+  .nav-links a:hover{color:#fff;text-decoration:none}
+  .btn{
+    display:inline-block;background:var(--gold);color:#1A1A18;
+    font-weight:800;border-radius:10px;padding:11px 20px;font-size:15px;
+    border:0;cursor:pointer;
+  }
+  .btn:hover{background:#cf9a12;text-decoration:none}
+  .btn-ghost{
+    background:transparent;color:#fff;border:1px solid var(--line);
+  }
+  .btn-ghost:hover{background:var(--panel-2);border-color:#3d3d38}
+  @media(max-width:700px){ .nav-links a:not(.btn){display:none} }
+
+  /* ---------- hero ---------- */
+  .hero{padding:72px 0 56px;text-align:center}
+  .pill{
+    display:inline-block;font-size:12.5px;font-weight:700;letter-spacing:.02em;
+    color:var(--green);background:#122A17;border:1px solid #23492C;
+    padding:6px 13px;border-radius:999px;margin-bottom:22px;
+  }
+  h1{
+    font-size:clamp(32px,5.4vw,54px);line-height:1.1;margin:0 0 18px;
+    font-weight:800;letter-spacing:-.02em;
+  }
+  h1 em{font-style:normal;color:var(--gold)}
+  .sub{
+    font-size:clamp(16px,2.1vw,19px);color:var(--muted);
+    max-width:620px;margin:0 auto 30px;
+  }
+  .cta-row{display:flex;gap:12px;justify-content:center;flex-wrap:wrap}
+  .note{margin-top:16px;font-size:13.5px;color:#8A8A85}
+
+  /* ---------- sections ---------- */
+  section{padding:56px 0;border-top:1px solid var(--line)}
+  h2{font-size:clamp(23px,3.2vw,31px);margin:0 0 10px;font-weight:800;letter-spacing:-.01em}
+  .lede{color:var(--muted);margin:0 0 34px;max-width:640px;font-size:16px}
+
+  /* ---------- four cards ---------- */
+  .cards{display:grid;grid-template-columns:repeat(2,1fr);gap:16px}
+  @media(max-width:760px){ .cards{grid-template-columns:1fr} }
+  .card{
+    background:var(--panel);border:1px solid var(--line);border-radius:16px;
+    padding:24px;display:flex;gap:16px;align-items:flex-start;
+  }
+  .card .ico{font-size:26px;line-height:1;flex:0 0 auto;margin-top:2px}
+  .card h3{margin:0 0 6px;font-size:17.5px;font-weight:800}
+  .card p{margin:0;color:var(--muted);font-size:14.5px}
+  .card.a{border-color:#25452A}
+  .card.b{border-color:#4A3A12}
+  .card.c{border-color:#20304F}
+  .card.d{border-color:#1F4430}
+
+  /* ---------- steps ---------- */
+  .steps{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;counter-reset:s}
+  @media(max-width:760px){ .steps{grid-template-columns:1fr} }
+  .step{
+    background:var(--panel);border:1px solid var(--line);
+    border-radius:14px;padding:22px;
+  }
+  .step .n{
+    width:28px;height:28px;border-radius:50%;background:var(--gold);color:#1A1A18;
+    display:grid;place-items:center;font-weight:900;font-size:14px;margin-bottom:12px;
+  }
+  .step h3{margin:0 0 6px;font-size:16px;font-weight:800}
+  .step p{margin:0;color:var(--muted);font-size:14.5px}
+
+  /* ---------- pricing ---------- */
+  .promo{
+    background:#122A17;border:1px solid #23492C;border-radius:14px;
+    padding:18px 20px;margin-bottom:24px;
+  }
+  .promo strong{color:var(--green)}
+  .promo p{margin:6px 0 0;color:var(--muted);font-size:14.5px}
+  table{width:100%;border-collapse:collapse;font-size:15px}
+  th,td{text-align:left;padding:14px 12px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{color:var(--muted);font-weight:600;font-size:13px;text-transform:uppercase;letter-spacing:.04em}
+  td:last-child{text-align:right;white-space:nowrap;font-weight:700;color:var(--gold-bright)}
+  td .d{display:block;color:var(--muted);font-size:13.5px;font-weight:400;margin-top:3px}
+  @media(max-width:600px){
+    td:last-child{text-align:left;padding-top:0;border-bottom:none}
+    tr{display:block;border-bottom:1px solid var(--line);padding:6px 0}
+    td{border-bottom:none;padding:6px 12px}
+    thead{display:none}
+  }
+
+  /* ---------- trust ---------- */
+  .trust{display:grid;grid-template-columns:repeat(2,1fr);gap:16px}
+  @media(max-width:760px){ .trust{grid-template-columns:1fr} }
+  .t{display:flex;gap:14px;align-items:flex-start;
+     background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:20px}
+  .t .ico{font-size:21px;line-height:1;margin-top:2px}
+  .t h3{margin:0 0 5px;font-size:15.5px;font-weight:800}
+  .t p{margin:0;color:var(--muted);font-size:14.5px}
+
+  /* ---------- closing ---------- */
+  .close{text-align:center;background:var(--panel);border-radius:20px;padding:48px 24px;margin:56px 0}
+  .close h2{margin-bottom:12px}
+  .close p{color:var(--muted);margin:0 0 26px}
+
+  /* ---------- footer ---------- */
+  footer{border-top:1px solid var(--line);padding:34px 0;color:#8A8A85;font-size:14px}
+  .fnav{display:flex;gap:22px;flex-wrap:wrap;margin-bottom:16px}
+  .fnav a{color:var(--muted)}
+</style>
+</head>
+
+<body>
+
+<header>
+  <div class="wrap nav">
+    <a class="brand" href="/"><span class="mark">I</span>Imbizo<span>Hub</span></a>
+    <nav class="nav-links">
+      <a href="#how">How it works</a>
+      <a href="#pricing">Pricing</a>
+      <a href="#safety">Safety</a>
+      <a class="btn" href="/app">Open app</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+
+  <!-- HERO -->
+  <div class="wrap hero">
+    <span class="pill">Free to use through 31 January 2027</span>
+    <h1>Stop scrolling for it.<br><em>Let sellers come to you.</em></h1>
+    <p class="sub">
+      Post what you're looking for and sellers reply with their price. Need a van?
+      Post the trip and operators bid for the job. Chatting is always free.
+    </p>
+    <div class="cta-row">
+      <a class="btn" href="/app">Open ImbizoHub</a>
+      <a class="btn btn-ghost" href="#how">See how it works</a>
+    </div>
+    <p class="note">Built for Zimbabwe · Pay with EcoCash and more via Paynow</p>
+  </div>
+
+  <!-- FOUR THINGS -->
+  <section id="how">
+    <div class="wrap">
+      <h2>Four ways to use ImbizoHub</h2>
+      <p class="lede">
+        Most marketplaces make you hunt through listings. ImbizoHub works in both
+        directions — you can search, or you can let people come to you.
+      </p>
+
+      <div class="cards">
+        <div class="card a">
+          <div class="ico">🔍</div>
+          <div>
+            <h3>Looking for something specific?</h3>
+            <p>Post what you need and sellers respond with a price. No hunting through
+               listings that were sold last month.</p>
+          </div>
+        </div>
+
+        <div class="card b">
+          <div class="ico">🛍️</div>
+          <div>
+            <h3>See what people want</h3>
+            <p>Browse open requests from real buyers and reply with your price.
+               Responding is free — you only pay if they choose you.</p>
+          </div>
+        </div>
+
+        <div class="card c">
+          <div class="ico">🚐</div>
+          <div>
+            <h3>Hire transport</h3>
+            <p>Post your trip and registered operators bid for it. Compare prices,
+               pick one. Operators keep 100% of what they quote.</p>
+          </div>
+        </div>
+
+        <div class="card d">
+          <div class="ico">💬</div>
+          <div>
+            <h3>Already selling on WhatsApp?</h3>
+            <p>Paste your whole catalogue in one go and import it. No re-typing
+               every item you've already listed elsewhere.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- MEET & PAY -->
+  <section>
+    <div class="wrap">
+      <h2>Meet &amp; Pay — inspect it before money changes hands</h2>
+      <p class="lede">
+        You're not sending money to a stranger and hoping. You meet, you check the
+        item, and only then do you confirm.
+      </p>
+
+      <div class="steps">
+        <div class="step">
+          <div class="n">1</div>
+          <h3>Chat first, free</h3>
+          <p>Message the seller as much as you like. No message limits and nothing
+             to pay while you're still deciding.</p>
+        </div>
+        <div class="step">
+          <div class="n">2</div>
+          <h3>Agree and meet</h3>
+          <p>When you're both ready, arrange the deal in the app and meet up to
+             inspect the item in person.</p>
+        </div>
+        <div class="step">
+          <div class="n">3</div>
+          <h3>Confirm with a PIN</h3>
+          <p>Happy with it? The seller generates a handover PIN to confirm the sale.
+             Then you both rate each other.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- PRICING -->
+  <section id="pricing">
+    <div class="wrap">
+      <h2>What it costs</h2>
+      <p class="lede">
+        Browsing, posting and chatting are always free. You only pay a small fee at
+        the point you're actually ready to do a deal — and every fee is capped.
+      </p>
+
+      <div class="promo">
+        <strong>🎁 Launch promotion — all deal fees are free for everyone until 31 January 2027.</strong>
+        <p>The prices below are what applies once the promotion ends.</p>
+      </div>
+
+      <table>
+        <thead>
+          <tr><th>What</th><th>Cost</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Browsing, posting and chatting
+                <span class="d">No limits, no account needed to look around</span></td>
+            <td>Free</td>
+          </tr>
+          <tr>
+            <td>App fee, when you arrange a deal
+                <span class="d">5% of the listed price — minimum $1.50, never more than $15</span></td>
+            <td>5%</td>
+          </tr>
+          <tr>
+            <td>Transport platform fee
+                <span class="d">7% of the quote, capped at $15. The operator keeps 100% of their quoted price</span></td>
+            <td>7%</td>
+          </tr>
+          <tr>
+            <td>Transport operator registration
+                <span class="d">Register once to start bidding on trips</span></td>
+            <td>$10 / year</td>
+          </tr>
+          <tr>
+            <td>Verified Seller badge
+                <span class="d">Submit your national ID to get verified</span></td>
+            <td>$15 / year</td>
+          </tr>
+          <tr>
+            <td>Feature a listing
+                <span class="d">Push one listing to the top</span></td>
+            <td>$5 / 7 days</td>
+          </tr>
+          <tr>
+            <td>Dealer Pro
+                <span class="d">For sellers listing at volume</span></td>
+            <td>$30 / 6 months</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- SAFETY -->
+  <section id="safety">
+    <div class="wrap">
+      <h2>Staying safe</h2>
+      <p class="lede">
+        Trust is the hard part of any marketplace. Here's what's actually in place.
+      </p>
+
+      <div class="trust">
+        <div class="t">
+          <div class="ico">🪪</div>
+          <div>
+            <h3>Verified sellers</h3>
+            <p>Sellers can submit a national ID for review and carry a verified badge
+               that buyers can see before making contact.</p>
+          </div>
+        </div>
+        <div class="t">
+          <div class="ico">🔐</div>
+          <div>
+            <h3>PIN-confirmed handover</h3>
+            <p>A sale is only confirmed once you've met and inspected the item and a
+               handover PIN is generated. Nothing is confirmed remotely.</p>
+          </div>
+        </div>
+        <div class="t">
+          <div class="ico">⭐</div>
+          <div>
+            <h3>Ratings both ways</h3>
+            <p>Buyers rate sellers and sellers rate buyers, so a track record follows
+               people across deals.</p>
+          </div>
+        </div>
+        <div class="t">
+          <div class="ico">🚩</div>
+          <div>
+            <h3>Report anyone</h3>
+            <p>Every profile and conversation can be reported. Reports are reviewed and
+               accounts can be suspended.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- CLOSE -->
+  <div class="wrap">
+    <div class="close">
+      <h2>Tell us what you're looking for</h2>
+      <p>It takes a minute, and it's free.</p>
+      <a class="btn" href="/app">Open ImbizoHub</a>
+    </div>
+  </div>
+
+</main>
+
+<footer>
+  <div class="wrap">
+    <nav class="fnav">
+      <a href="#how">How it works</a>
+      <a href="#pricing">Pricing</a>
+      <a href="#safety">Safety</a>
+      <a href="/app">Open app</a>
+      <!-- TODO: point these at your real pages on imbizohub.app -->
+      <a href="https://imbizohub.app/privacy">Privacy</a>
+      <a href="https://imbizohub.app/terms">Terms</a>
+    </nav>
+    <div>© 2026 ImbizoHub · Zimbabwe</div>
+  </div>
+</footer>
+
+</body>
+</html>

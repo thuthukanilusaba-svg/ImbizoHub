@@ -48,7 +48,33 @@ const DARK = '#2a2a2a';
 const GREY = '#AAAAAA';
 const GREEN = '#4fc96e';
 
-const DEEP_LINK_SCHEME = 'imbizohub://seller';
+// FIX (real bug — the share feature did not work at all outside the app):
+// this used to share `imbizohub://seller?id=...`, a custom-scheme URL,
+// inside a plain text message. WhatsApp, Facebook Messenger and SMS do
+// not linkify custom schemes — the recipient saw an untappable grey
+// string of text, and anyone without ImbizoHub installed had nothing to
+// tap and nowhere to go. That defeated the entire purpose of this
+// screen, which exists specifically to be shareable outside the app.
+//
+// Now shares a real https link. That link is handled three ways, in
+// descending order of niceness, with no extra work from the sharer:
+//
+//   1. Recipient HAS the app -> iOS/Android intercept the URL at the OS
+//      level (see associatedDomains / intentFilters in app.json plus
+//      web/.well-known/) and open it straight to this screen.
+//   2. Recipient does NOT have the app -> Vercel proxies /seller to the
+//      seller-preview edge function, which server-renders a real page
+//      with this seller's name, rating and photo in the Open Graph tags,
+//      so the WhatsApp card shows an actual preview, and offers store
+//      links plus a "view on the web" fallback.
+//   3. Any scraper/bot -> gets the same server-rendered HTML, since it
+//      is not a client-rendered React page.
+//
+// Query-param form (?id=) deliberately matches what this screen reads
+// via useLocalSearchParams. Android's intent filter uses pathPrefix
+// "/seller", which still matches — a query string is not part of the
+// path — so no dynamic [id] route is needed.
+const SHARE_BASE_URL = 'https://imbizohub.com/seller';
 
 export default function SellerProfileScreen() {
   const router = useRouter();
@@ -111,8 +137,14 @@ export default function SellerProfileScreen() {
       : 'a new seller';
 
     try {
+      const url = `${SHARE_BASE_URL}?id=${encodeURIComponent(id)}`;
       await Share.share({
-        message: `Check out ${name} on ImbizoHub \u2014 ${ratingText}. ${DEEP_LINK_SCHEME}?id=${id}`,
+        // `url` is set separately as well as being in the message: iOS's
+        // share sheet uses it to offer richer targets (and to render a
+        // preview), while Android ignores it and only sends `message` \u2014
+        // hence the link appearing in both.
+        message: `Check out ${name} on ImbizoHub \u2014 ${ratingText}. ${url}`,
+        url,
       });
     } catch (err) {
       // Share sheet dismissed or unavailable — not worth surfacing as

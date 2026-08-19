@@ -1,0 +1,15 @@
+[
+  {
+    "relation": [
+      "delegate_permission/common.handle_all_urls"
+    ],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.imbizohub.app",
+      "sha256_cert_fingerprints": [
+        "49:42:A9:0C:18:0F:AA:9C:88:B9:E2:1B:EC:94:79:22:67:A3:93:9C:DF:7C:C7:D8:FE:8F:80:6A:C3:8F:30:AF",
+        "5A:02:3A:56:24:99:62:EA:45:98:94:04:1A:10:4A:D4:92:BE:52:32:C6:E3:65:A9:D3:35:CE:DA:F3:1F:91:FB"
+      ]
+    }
+  }
+]
