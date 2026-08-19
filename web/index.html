@@ -48,7 +48,7 @@
     --gold:#B8860B;
     --gold-bright:#E8B44A;
     --text:#FFFFFF;
-    --muted:#A9A9A4;
+    --muted:#C2C2BB;
     --green:#4FC96E;
     --maxw:1080px;
   }
@@ -60,7 +60,8 @@
     background:var(--bg);
     color:var(--text);
     font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
-    line-height:1.6;
+    font-size:17px;
+    line-height:1.65;
     -webkit-font-smoothing:antialiased;
   }
   a{color:var(--gold-bright);text-decoration:none}
@@ -74,16 +75,14 @@
     backdrop-filter:saturate(140%) blur(10px);
     border-bottom:1px solid var(--line);
   }
-  .nav{display:flex;align-items:center;justify-content:space-between;height:64px}
-  .brand{display:flex;align-items:center;gap:10px;font-weight:800;font-size:19px;color:#fff}
+  .nav{display:flex;align-items:center;justify-content:space-between;height:68px}
+  /* ImbizoHub is ONE word — deliberately a single colour so it cannot
+     read as "Imbizo Hub". The logo supplies the gold. */
+  .brand{display:flex;align-items:center;gap:11px;font-weight:800;font-size:20px;
+         color:#fff;letter-spacing:-.01em}
   .brand:hover{text-decoration:none}
-  .mark{
-    width:30px;height:30px;border-radius:50%;
-    background:var(--gold);color:#1A1A18;
-    display:grid;place-items:center;font-weight:900;font-size:15px;
-  }
-  .brand span{color:var(--gold)}
-  .nav-links{display:flex;align-items:center;gap:24px;font-size:14px}
+  .mark{width:34px;height:34px;border-radius:9px;display:block}
+  .nav-links{display:flex;align-items:center;gap:24px;font-size:15px}
   .nav-links a{color:var(--muted)}
   .nav-links a:hover{color:#fff;text-decoration:none}
   .btn{
@@ -111,16 +110,16 @@
   }
   h1 em{font-style:normal;color:var(--gold)}
   .sub{
-    font-size:clamp(16px,2.1vw,19px);color:var(--muted);
+    font-size:clamp(17px,2.2vw,20px);color:var(--muted);
     max-width:620px;margin:0 auto 30px;
   }
   .cta-row{display:flex;gap:12px;justify-content:center;flex-wrap:wrap}
-  .note{margin-top:16px;font-size:13.5px;color:#8A8A85}
+  .note{margin-top:16px;font-size:14.5px;color:#9E9E97}
 
   /* ---------- sections ---------- */
   section{padding:56px 0;border-top:1px solid var(--line)}
   h2{font-size:clamp(23px,3.2vw,31px);margin:0 0 10px;font-weight:800;letter-spacing:-.01em}
-  .lede{color:var(--muted);margin:0 0 34px;max-width:640px;font-size:16px}
+  .lede{color:var(--muted);margin:0 0 34px;max-width:660px;font-size:17.5px}
 
   /* ---------- four cards ---------- */
   .cards{display:grid;grid-template-columns:repeat(2,1fr);gap:16px}
@@ -130,8 +129,8 @@
     padding:24px;display:flex;gap:16px;align-items:flex-start;
   }
   .card .ico{font-size:26px;line-height:1;flex:0 0 auto;margin-top:2px}
-  .card h3{margin:0 0 6px;font-size:17.5px;font-weight:800}
-  .card p{margin:0;color:var(--muted);font-size:14.5px}
+  .card h3{margin:0 0 7px;font-size:18.5px;font-weight:800}
+  .card p{margin:0;color:var(--muted);font-size:15.5px;line-height:1.6}
   .card.a{border-color:#25452A}
   .card.b{border-color:#4A3A12}
   .card.c{border-color:#20304F}
@@ -148,8 +147,8 @@
     width:28px;height:28px;border-radius:50%;background:var(--gold);color:#1A1A18;
     display:grid;place-items:center;font-weight:900;font-size:14px;margin-bottom:12px;
   }
-  .step h3{margin:0 0 6px;font-size:16px;font-weight:800}
-  .step p{margin:0;color:var(--muted);font-size:14.5px}
+  .step h3{margin:0 0 7px;font-size:17px;font-weight:800}
+  .step p{margin:0;color:var(--muted);font-size:15.5px}
 
   /* ---------- pricing ---------- */
   .promo{
@@ -157,12 +156,12 @@
     padding:18px 20px;margin-bottom:24px;
   }
   .promo strong{color:var(--green)}
-  .promo p{margin:6px 0 0;color:var(--muted);font-size:14.5px}
-  table{width:100%;border-collapse:collapse;font-size:15px}
+  .promo p{margin:7px 0 0;color:var(--muted);font-size:15.5px}
+  table{width:100%;border-collapse:collapse;font-size:16px}
   th,td{text-align:left;padding:14px 12px;border-bottom:1px solid var(--line);vertical-align:top}
   th{color:var(--muted);font-weight:600;font-size:13px;text-transform:uppercase;letter-spacing:.04em}
   td:last-child{text-align:right;white-space:nowrap;font-weight:700;color:var(--gold-bright)}
-  td .d{display:block;color:var(--muted);font-size:13.5px;font-weight:400;margin-top:3px}
+  td .d{display:block;color:var(--muted);font-size:14.5px;font-weight:400;margin-top:4px;line-height:1.55}
   @media(max-width:600px){
     td:last-child{text-align:left;padding-top:0;border-bottom:none}
     tr{display:block;border-bottom:1px solid var(--line);padding:6px 0}
@@ -176,8 +175,8 @@
   .t{display:flex;gap:14px;align-items:flex-start;
      background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:20px}
   .t .ico{font-size:21px;line-height:1;margin-top:2px}
-  .t h3{margin:0 0 5px;font-size:15.5px;font-weight:800}
-  .t p{margin:0;color:var(--muted);font-size:14.5px}
+  .t h3{margin:0 0 6px;font-size:16.5px;font-weight:800}
+  .t p{margin:0;color:var(--muted);font-size:15.5px}
 
   /* ---------- closing ---------- */
   .close{text-align:center;background:var(--panel);border-radius:20px;padding:48px 24px;margin:56px 0}
@@ -185,7 +184,7 @@
   .close p{color:var(--muted);margin:0 0 26px}
 
   /* ---------- footer ---------- */
-  footer{border-top:1px solid var(--line);padding:34px 0;color:#8A8A85;font-size:14px}
+  footer{border-top:1px solid var(--line);padding:34px 0;color:#9E9E97;font-size:15px}
   .fnav{display:flex;gap:22px;flex-wrap:wrap;margin-bottom:16px}
   .fnav a{color:var(--muted)}
 </style>
@@ -195,7 +194,7 @@
 
 <header>
   <div class="wrap nav">
-    <a class="brand" href="/"><span class="mark">I</span>Imbizo<span>Hub</span></a>
+    <a class="brand" href="/"><img class="mark" src="/logo.png" alt="ImbizoHub" width="34" height="34">ImbizoHub</a>
     <nav class="nav-links">
       <a href="#how">How it works</a>
       <a href="#pricing">Pricing</a>
