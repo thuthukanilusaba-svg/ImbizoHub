@@ -87,6 +87,29 @@ function escapeHtml(s: string): string {
     .replace(/'/g, '&#39;');
 }
 
+// Initials shown in place of a photo for sellers who have not set an
+// avatar. Previously these sellers fell back to the site-wide OG banner
+// (1200x630) rendered into a 104px circle, which came out as a squashed
+// strip of the landing-page artwork.
+//
+// NOTE: the app contains two different initials implementations —
+// seller.tsx's initials() renders a one-word name as a single letter
+// ("Masha" -> "M"), while chat.tsx's getInitials() takes two ("MA").
+// This follows chat.tsx's version, which reads better in a large
+// circle. Worth unifying them in the app at some point; they should not
+// disagree.
+function initialsFor(fullName: string): string {
+  const name = (fullName || '').trim();
+  if (!name) return '?';
+  const parts = name.split(/\s+/);
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return parts
+    .map((w) => w[0])
+    .join('')
+    .slice(0, 2)
+    .toUpperCase();
+}
+
 // Only accept something that actually looks like a profile id. Without
 // this, any junk path segment became a database lookup.
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -131,6 +154,9 @@ ${headExtra}
   .card { max-width:420px; margin:0 auto; }
   img.avatar { width:104px; height:104px; border-radius:52px; object-fit:cover; margin-bottom:18px;
                background:#2a2a2a; }
+  .avatar-initials { width:104px; height:104px; border-radius:52px; background:#B8860B;
+                     color:#1A1A18; font-size:38px; font-weight:800; line-height:104px;
+                     margin:0 auto 18px; }
   h1 { font-size:22px; margin:0 0 6px; font-weight:800; }
   .rating { color:#E8B44A; font-size:15px; margin-bottom:8px; }
   .badges { color:#E8B44A; font-size:13px; margin-bottom:26px; }
@@ -190,7 +216,14 @@ Deno.serve(async (req) => {
       ? `${Number(profile.rating).toFixed(1)}★ (${profile.rating_count} review${profile.rating_count === 1 ? '' : 's'}) on ImbizoHub`
       : 'A seller on ImbizoHub';
 
+  // og:image still falls back to the site banner — that IS the right
+  // image for a WhatsApp card. Only the on-page avatar differs, because
+  // a 1200x630 banner in a 104px circle looks broken.
+  const hasAvatar = !!profile.avatar_url;
   const ogImage = escapeHtml(profile.avatar_url || DEFAULT_OG_IMAGE);
+  const avatarBlock = hasAvatar
+    ? `<img class="avatar" src="${ogImage}" alt="${name}">`
+    : `<div class="avatar-initials">${escapeHtml(initialsFor(profile.full_name))}</div>`;
   const canonical = `${SITE}/seller?id=${encodeURIComponent(id)}`;
   const deepLink = appDeepLink(id);
   const webUrl = webProfileUrl(id);
@@ -226,7 +259,7 @@ Deno.serve(async (req) => {
 <meta name="twitter:image" content="${ogImage}">`;
 
   const body = `
-  <img class="avatar" src="${ogImage}" alt="${name}">
+  ${avatarBlock}
   <h1>${name}</h1>
   <div class="rating">${escapeHtml(ratingText)}</div>
   ${badges ? `<div class="badges">${badges}</div>` : ''}
