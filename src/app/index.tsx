@@ -325,7 +325,7 @@ export default function HomeScreen() {
                 )}
               >
                 <Text style={styles.catIcon}>{cat.icon}</Text>
-                <Text style={styles.catLabel}>{cat.label}</Text>
+                <Text style={styles.catLabel} numberOfLines={1}>{cat.label}</Text>
               </TouchableOpacity>
             ))}
           </View>
@@ -518,7 +518,18 @@ const styles = StyleSheet.create({
   featuredImg: { width: 80, height: 80, backgroundColor: '#333', borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
   featuredEmoji: { fontSize: 32 },
   catGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  catItem: { backgroundColor: DARK, borderRadius: 10, padding: 10, width: '22%', alignItems: 'center', borderWidth: 0.5, borderColor: '#333' },
+  // FIX (real user report: "Appliances should fit in one line"): the
+  // tile's 10pt horizontal padding ate enough of its 22% width that
+  // "Appliances" — the longest label in the set — overflowed by about
+  // one character and wrapped to "Appliance" / "s", making that one
+  // tile taller than its row neighbours. Padding is now vertical-only
+  // (the grid's own 8pt gap already separates the tiles, so the inner
+  // horizontal padding was doing nothing but stealing text width), and
+  // catLabel gets numberOfLines={1} at the call site as a hard
+  // guarantee against wrap on narrower devices. The 22% width and the
+  // 4-across geometry are deliberately unchanged — this only reclaims
+  // space inside each tile.
+  catItem: { backgroundColor: DARK, borderRadius: 10, paddingVertical: 10, paddingHorizontal: 2, width: '22%', alignItems: 'center', borderWidth: 0.5, borderColor: '#333' },
   catItemActive: { borderColor: GOLD },
   catIcon: { fontSize: 20, marginBottom: 4 },
   catLabel: { color: '#ccc', fontSize: 10 },

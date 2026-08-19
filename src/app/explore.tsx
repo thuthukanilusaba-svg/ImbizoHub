@@ -243,7 +243,7 @@ export default function ExploreScreen() {
               onPress={() => setSelectedCategory(selectedCategory === cat.label ? '' : cat.label)}
             >
               <Text style={styles.catIcon}>{cat.icon}</Text>
-              <Text style={[styles.catLabel, selectedCategory === cat.label && styles.catLabelActive]}>{cat.label}</Text>
+              <Text style={[styles.catLabel, selectedCategory === cat.label && styles.catLabelActive]} numberOfLines={1}>{cat.label}</Text>
             </TouchableOpacity>
           ))}
         </View>
@@ -346,7 +346,11 @@ const styles = StyleSheet.create({
   searchInput: { flex: 1, color: '#fff', fontSize: 13 },
   sectionTitle: { color: '#fff', fontSize: 13, fontWeight: '700', paddingHorizontal: 16, marginBottom: 10 },
   catGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, paddingHorizontal: 16, marginBottom: 20 },
-  catItem: { backgroundColor: DARK, borderRadius: 10, padding: 10, width: '22%', alignItems: 'center', borderWidth: 0.5, borderColor: '#333' },
+  // FIX: identical "Appliances" wrap fixed in index.tsx's copy of this
+  // same grid — see the fuller comment there. Padding is vertical-only
+  // so the label gets the tile's full width; numberOfLines={1} at the
+  // call site backstops it on narrower devices.
+  catItem: { backgroundColor: DARK, borderRadius: 10, paddingVertical: 10, paddingHorizontal: 2, width: '22%', alignItems: 'center', borderWidth: 0.5, borderColor: '#333' },
   catItemActive: { borderColor: GOLD },
   catIcon: { fontSize: 20, marginBottom: 4 },
   catLabel: { color: '#ccc', fontSize: 10 },
