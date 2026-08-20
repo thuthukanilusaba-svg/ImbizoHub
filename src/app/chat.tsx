@@ -224,13 +224,30 @@ export default function ChatScreen() {
       await loadExistingMeetPaySession(uid, effectiveReceiverId);
       if (!cancelled) subscribeToNewMeetPaySession(uid, effectiveReceiverId);
 
-      if (!cancelled && (listing_id || request_id || item_request_id) && effectiveReceiverId && uid) {
+      // FIX: this used to also require `effectiveReceiverId`, which
+      // meant that whenever the other party could not be resolved — an
+      // entry point that passes no receiver_id (see _layout.tsx's
+      // notification router), a wanted post whose response isn't
+      // 'accepted' yet, a lookup that returned nothing — the chat
+      // opened with NO realtime subscription at all and silently stayed
+      // that way. The snapshot fetch still ran, so the screen looked
+      // fine on open and simply never updated again: exactly the
+      // "not two-way, not real-time" symptom.
+      //
+      // Nothing about the subscription actually needs otherId. The
+      // channel listens to every messages INSERT and filters in the
+      // handler, which already accepts a row when uid is either the
+      // sender or the receiver — so with otherId undefined it still
+      // matches this user's own conversations, just without the extra
+      // narrowing. Missing the other party's id is a reason to filter
+      // less precisely, never a reason to stop listening.
+      if (!cancelled && (listing_id || request_id || item_request_id) && uid) {
         const convoKey = isItemRequestChat
           ? `item-${item_request_id}`
           : isRequestChat
             ? `req-${request_id}`
             : `listing-${listing_id}`;
-        const channelName = `messages-${convoKey}-${effectiveReceiverId}-${uid}`;
+        const channelName = `messages-${convoKey}-${effectiveReceiverId ?? 'any'}-${uid}`;
 
         subscribeToMessages(channelName, uid, effectiveReceiverId);
       }
@@ -276,11 +293,24 @@ export default function ChatScreen() {
           event: 'INSERT', schema: 'public', table: 'messages',
         }, (payload) => {
           const msg = payload.new;
+          // FIX (separate, provable bug found in the same pass): the
+          // request_id branch compared a NUMBER to a STRING. messages
+          // .request_id is bigint, so the realtime payload carries a
+          // number, while the route param is always a string — and
+          // 123 === "123" is false. Van-hire request chats therefore
+          // rejected every single realtime message. The listing branch
+          // avoided this only because it happened to parseInt first;
+          // item_request_id is a uuid so both sides were already
+          // strings.
+          //
+          // Comparing as strings handles uuid, bigint and int
+          // identically, so this class of mismatch cannot come back the
+          // next time a chat type is added.
           const belongsToThisConvo = isItemRequestChat
-            ? item_request_id && msg.item_request_id === item_request_id
+            ? !!item_request_id && String(msg.item_request_id) === String(item_request_id)
             : isRequestChat
-              ? request_id && msg.request_id === request_id
-              : listing_id && msg.listing_id === parseInt(listing_id as string);
+              ? !!request_id && String(msg.request_id) === String(request_id)
+              : !!listing_id && String(msg.listing_id) === String(listing_id);
           if (
             belongsToThisConvo &&
             (msg.sender_id === otherId || msg.receiver_id === otherId ||
