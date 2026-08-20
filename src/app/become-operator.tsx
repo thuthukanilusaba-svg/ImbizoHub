@@ -42,12 +42,17 @@
 //     or router.push('/become-operator?type=operator')
 
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   ActivityIndicator, KeyboardAvoidingView, Platform, ScrollView,
   StyleSheet, Text, TextInput, TouchableOpacity, View,
 } from 'react-native';
 import { supabase } from '../../lib/supabase';
+import {
+  DELIVERY_BOOKING_ENABLED,
+  DELIVERY_OPERATOR_SIGNUP_PAUSED_MESSAGE,
+  DELIVERY_PAUSED_TITLE,
+} from '../../lib/featureFlags';
 
 const GOLD = '#B8860B';
 const BLACK = '#1A1A18';
@@ -67,6 +72,69 @@ export default function BecomeOperatorScreen() {
 
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
+
+  // PAUSED: new delivery-operator signups are closed — see
+  // lib/featureFlags.ts. This screen needs its own gate because it is
+  // reachable by URL: since the web app moved to /app, anyone can open
+  // https://imbizohub.com/app/become-operator?type=delivery directly,
+  // bypassing every button we hid.
+  //
+  // But this is NOT a blanket block, and the difference matters. There
+  // is already one operator who has PAID and not yet filled in their
+  // vehicle details (verified against delivery_operators, not assumed).
+  // Refusing them here would take their $10 and then lock them out of
+  // the screen that completes what they paid for. The flag's stated
+  // rule everywhere else in the app is "block new signups, leave
+  // existing registrations alone", so this checks which of the two you
+  // are: a paid, unexpired registration may finish; anyone else cannot
+  // start one.
+  //
+  // 'checking' is the initial state on purpose — rendering the form
+  // first and yanking it away after the query returns would let someone
+  // start typing into a screen they aren't allowed to use.
+  const [deliveryGate, setDeliveryGate] =
+    useState<'checking' | 'allowed' | 'blocked'>(
+      isDelivery && !DELIVERY_BOOKING_ENABLED ? 'checking' : 'allowed'
+    );
+
+  useEffect(() => {
+    if (deliveryGate !== 'checking') return;
+
+    let cancelled = false;
+
+    (async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user || user.is_anonymous) {
+        if (!cancelled) setDeliveryGate('blocked');
+        return;
+      }
+
+      const { data, error } = await supabase
+        .from('delivery_operators')
+        .select('registration_paid, registration_expires_at')
+        .eq('user_id', user.id)
+        .maybeSingle();
+
+      if (cancelled) return;
+
+      // Fail closed. If the lookup errors we cannot prove this is an
+      // existing paid registration, and wrongly allowing a new one is
+      // worse than wrongly asking a paid operator to contact support.
+      if (error || !data) {
+        setDeliveryGate('blocked');
+        return;
+      }
+
+      const stillValid =
+        !!data.registration_paid &&
+        !!data.registration_expires_at &&
+        new Date(data.registration_expires_at).getTime() > Date.now();
+
+      setDeliveryGate(stillValid ? 'allowed' : 'blocked');
+    })();
+
+    return () => { cancelled = true; };
+  }, [deliveryGate]);
 
   async function handleSubmit() {
     setErrorMsg('');
@@ -137,6 +205,26 @@ export default function BecomeOperatorScreen() {
     }
   }
 
+  if (deliveryGate === 'checking') {
+    return (
+      <View style={styles.gateCenter}>
+        <ActivityIndicator size="large" color={GOLD} />
+      </View>
+    );
+  }
+
+  if (deliveryGate === 'blocked') {
+    return (
+      <View style={styles.gateCenter}>
+        <Text style={styles.gateTitle}>{DELIVERY_PAUSED_TITLE}</Text>
+        <Text style={styles.gateBody}>{DELIVERY_OPERATOR_SIGNUP_PAUSED_MESSAGE}</Text>
+        <TouchableOpacity style={styles.gateBtn} onPress={() => router.replace('/')}>
+          <Text style={styles.gateBtnText}>Back to ImbizoHub</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
+
   return (
     <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
       <ScrollView contentContainerStyle={styles.content}>
@@ -196,6 +284,11 @@ export default function BecomeOperatorScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: BLACK },
+  gateCenter: { flex: 1, backgroundColor: BLACK, alignItems: 'center', justifyContent: 'center', padding: 24 },
+  gateTitle: { color: '#fff', fontSize: 20, fontWeight: '700', marginBottom: 12, textAlign: 'center' },
+  gateBody: { color: GREY, fontSize: 15, lineHeight: 22, textAlign: 'center' },
+  gateBtn: { backgroundColor: GOLD, borderRadius: 10, paddingHorizontal: 24, paddingVertical: 14, marginTop: 24 },
+  gateBtnText: { color: BLACK, fontSize: 15, fontWeight: '700' },
   content: { padding: 24, paddingBottom: 48 },
   backBtn: { marginBottom: 16 },
   backText: { color: GREY, fontSize: 14 },

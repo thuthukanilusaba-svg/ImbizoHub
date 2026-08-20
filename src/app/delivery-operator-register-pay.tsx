@@ -10,11 +10,16 @@ import { useRouter } from 'expo-router';
 import * as WebBrowser from 'expo-web-browser';
 import { useEffect, useState } from 'react';
 import {
-  ActivityIndicator, Linking, Platform, ScrollView, StyleSheet,
+  ActivityIndicator, Alert, Linking, Platform, ScrollView, StyleSheet,
   Text, TouchableOpacity, View,
 } from 'react-native';
 import { extractFunctionError } from '../../lib/paymentError';
 import { supabase } from '../../lib/supabase';
+import {
+  DELIVERY_BOOKING_ENABLED,
+  DELIVERY_OPERATOR_SIGNUP_PAUSED_MESSAGE,
+  DELIVERY_PAUSED_TITLE,
+} from '../../lib/featureFlags';
 
 const GOLD = '#B8860B';
 const BLACK = '#1A1A18';
@@ -68,6 +73,22 @@ export default function DeliveryOperatorRegisterPayScreen() {
 
   async function init() {
     setLoading(true);
+
+    // PAUSED: new delivery-operator signups are closed — see
+    // lib/featureFlags.ts. Checked first, before auth or any DB read,
+    // so nothing is created and no checkout can start.
+    //
+    // This screen matters more than the other entry points because it
+    // is where money changes hands: without this guard, anyone who
+    // reaches it — a stale link, a back-button return, a bookmarked
+    // web URL — could pay $10 for a registration that grants access to
+    // a product that isn't running.
+    if (!DELIVERY_BOOKING_ENABLED) {
+      Alert.alert(DELIVERY_PAUSED_TITLE, DELIVERY_OPERATOR_SIGNUP_PAUSED_MESSAGE);
+      router.replace('/');
+      return;
+    }
+
     const { data: { user } } = await supabase.auth.getUser();
     // FIX (real bug, found during a final pre-submission review): was
     // `if (!user)`, missing the same `user.is_anonymous` check found

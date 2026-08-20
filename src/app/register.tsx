@@ -3,6 +3,7 @@ import { useRef, useState } from 'react';
 import { ActivityIndicator, KeyboardAvoidingView, Linking, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { supabase } from '../../lib/supabase';
 import { OAuthProvider, signInWithProvider } from '../../lib/oauth';
+import { DELIVERY_BOOKING_ENABLED } from '../../lib/featureFlags';
 
 const GOLD = '#B8860B';
 const BLACK = '#1A1A18';
@@ -33,10 +34,25 @@ const TERMS_URL = 'https://thuthukanilusaba-svg.github.io/imbizohub-legal/terms-
 // Transport Operator — which really do gate real functionality (a paid
 // registration, specific screens). These are an optional toggle
 // section further down the form, matching their actual nature.
-const accountTypes = [
+const ALL_ACCOUNT_TYPES = [
   { type: 'delivery', icon: '📦', label: 'Delivery Operator', shortLabel: 'Delivery', desc: 'Deliver parcels locally & intercity' },
   { type: 'operator', icon: '🚐', label: 'Transport Operator', shortLabel: 'Transport Hire', desc: 'Offer van & minibus hire' },
 ];
+
+// PAUSED: new delivery-operator signups are closed — see
+// lib/featureFlags.ts for why. This screen was the last way in that was
+// still wide open: profile.tsx's "become a delivery operator" row was
+// already gated, but this picker was not, so anyone creating an account
+// could still tick Delivery, get a delivery_operators row written, and
+// be sent straight to the $10 payment screen for a product that isn't
+// running.
+//
+// Filtering the list rather than deleting the entry means turning
+// delivery back on is the same single flag flip as everywhere else, and
+// the tile, its copy and its styling all come back exactly as they were.
+const accountTypes = ALL_ACCOUNT_TYPES.filter(
+  (a) => a.type !== 'delivery' || DELIVERY_BOOKING_ENABLED
+);
 
 // FIX: profiles.account_type must store 'transport_operator' — that's
 // the exact string operator-requests.tsx's checkStatus() checks for.
@@ -120,6 +136,15 @@ export default function RegisterScreen() {
     setLoading(true);
     setErrorMsg('');
 
+    // Defence in depth. The Delivery tile is filtered out of the picker
+    // above, so this should be unreachable — but `accountType` is plain
+    // component state, and the cost of being wrong here is asymmetric:
+    // a stale 'delivery' value writes a real delivery_operators row and
+    // routes someone to a $10 payment screen for a paused product.
+    // Falling back to a plain account is the safe direction.
+    const effectiveAccountType =
+      accountType === 'delivery' && !DELIVERY_BOOKING_ENABLED ? 'buyer' : accountType;
+
     const { data: { session: currentSession } } = await supabase.auth.getSession();
     const isConvertingAnonymous = !!currentSession?.user?.is_anonymous;
 
@@ -148,7 +173,7 @@ export default function RegisterScreen() {
         .update({
           full_name: name,
           phone,
-          account_type: toStoredAccountType(accountType),
+          account_type: toStoredAccountType(effectiveAccountType),
           // FIX: was accountType === 'operator' ? vehicleType : ...,
           // referencing input fields that no longer exist on this
           // screen — see top-of-file comment. become-operator.tsx is
@@ -169,7 +194,7 @@ export default function RegisterScreen() {
         return;
       }
 
-      if (accountType === 'delivery') {
+      if (effectiveAccountType === 'delivery') {
         const { error: deliveryError } = await supabase.from('delivery_operators').upsert({
           user_id: data.user.id,
           full_name: name,
@@ -192,9 +217,9 @@ export default function RegisterScreen() {
     setLoading(false);
     isSubmittingRef.current = false;
 
-    if (accountType === 'delivery') {
+    if (effectiveAccountType === 'delivery') {
       router.replace('/delivery-operator-register-pay');
-    } else if (accountType === 'operator') {
+    } else if (effectiveAccountType === 'operator') {
       router.replace('/operator-register-pay');
     } else {
       router.replace('/');

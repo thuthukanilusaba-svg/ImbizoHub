@@ -80,6 +80,11 @@ import { ActivityIndicator, KeyboardAvoidingView, Platform, ScrollView, StyleShe
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import BottomNav from '../../components/BottomNav';
 import { supabase } from '../../lib/supabase';
+import {
+  DELIVERY_BOOKING_ENABLED,
+  DELIVERY_OPERATOR_SIGNUP_PAUSED_MESSAGE,
+  DELIVERY_PAUSED_TITLE,
+} from '../../lib/featureFlags';
 
 const GOLD = '#B8860B';
 const BLACK = '#1A1A18';
@@ -494,20 +499,35 @@ export default function DealerScreen() {
             </View>
           )}
 
+          {/* PAUSED: while delivery is off, this card must not ask for
+              $10 — the payment screen it links to now refuses anyone
+              without an already-paid registration, so the button would
+              take a tap and dead-end. Worse, asking someone to pay to
+              "unlock delivery jobs" that aren't running reads as taking
+              money for nothing. Same card, honest copy, no CTA. */}
           {registrationRequired && (
             <View style={styles.section}>
               <View style={styles.regRequiredCard}>
                 <Text style={styles.regRequiredEmoji}>📦</Text>
-                <Text style={styles.regRequiredTitle}>Complete your registration</Text>
-                <Text style={styles.regRequiredBody}>
-                  Pay the one-time $10 registration fee to unlock delivery jobs and appear in the driver list. Valid for 12 months.
-                </Text>
-                <TouchableOpacity
-                  style={styles.regRequiredBtn}
-                  onPress={() => router.push('/delivery-operator-register-pay')}
-                >
-                  <Text style={styles.regRequiredBtnText}>Pay $10 to activate →</Text>
-                </TouchableOpacity>
+                {DELIVERY_BOOKING_ENABLED ? (
+                  <>
+                    <Text style={styles.regRequiredTitle}>Complete your registration</Text>
+                    <Text style={styles.regRequiredBody}>
+                      Pay the one-time $10 registration fee to unlock delivery jobs and appear in the driver list. Valid for 12 months.
+                    </Text>
+                    <TouchableOpacity
+                      style={styles.regRequiredBtn}
+                      onPress={() => router.push('/delivery-operator-register-pay')}
+                    >
+                      <Text style={styles.regRequiredBtnText}>Pay $10 to activate →</Text>
+                    </TouchableOpacity>
+                  </>
+                ) : (
+                  <>
+                    <Text style={styles.regRequiredTitle}>{DELIVERY_PAUSED_TITLE}</Text>
+                    <Text style={styles.regRequiredBody}>{DELIVERY_OPERATOR_SIGNUP_PAUSED_MESSAGE}</Text>
+                  </>
+                )}
               </View>
             </View>
           )}
