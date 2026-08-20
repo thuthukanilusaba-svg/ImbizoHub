@@ -3,6 +3,18 @@
   "outputDirectory": "dist",
   "cleanUrls": true,
   "trailingSlash": false,
+  "redirects": [
+    {
+      "source": "/auth-callback",
+      "destination": "/app/auth-callback",
+      "permanent": false
+    },
+    {
+      "source": "/reset-password",
+      "destination": "/app/reset-password",
+      "permanent": false
+    }
+  ],
   "rewrites": [
     {
       "source": "/seller",

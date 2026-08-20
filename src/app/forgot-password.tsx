@@ -5,10 +5,12 @@
 // regain access. This is step 1 of 2: collect the email, ask Supabase
 // to send a reset link.
 //
-// Uses Linking.createURL('reset-password') rather than a hardcoded
-// scheme string — this resolves correctly regardless of whether it's
-// running in a dev build, Expo Go, or a standalone production build,
-// which matters since the exact deep-link format differs between them.
+// Uses createAppURL('reset-password') (lib/appUrl.ts) rather than a
+// hardcoded scheme string — this resolves correctly regardless of
+// whether it's running in a dev build, Expo Go, a standalone production
+// build, or on the web, which matters since the exact deep-link format
+// differs between them. It deliberately does NOT use expo-linking's
+// createURL(), which on web drops the /app base path — see appUrl.ts.
 //
 // IMPORTANT — Supabase dashboard configuration required, can't be done
 // from this file: the exact redirect URL this generates must be added
@@ -48,7 +50,6 @@
 //
 // Usage: router.push('/forgot-password')
 
-import * as Linking from 'expo-linking';
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
 import {
@@ -56,6 +57,7 @@ import {
   Text, TextInput, TouchableOpacity, View,
 } from 'react-native';
 import { supabase } from '../../lib/supabase';
+import { createAppURL } from '../../lib/appUrl';
 
 const GOLD = '#B8860B';
 const BLACK = '#1A1A18';
@@ -89,7 +91,10 @@ export default function ForgotPasswordScreen() {
     setError('');
     setLoading(true);
 
-    const redirectTo = Linking.createURL('reset-password');
+    // NOT Linking.createURL() — on web that ignores experiments.baseUrl
+    // and returns https://imbizohub.com/reset-password, which 404s now
+    // that the app is served from /app. See lib/appUrl.ts.
+    const redirectTo = createAppURL('reset-password');
     console.log('Password reset redirectTo:', redirectTo);
 
     const { error: resetError } = await supabase.auth.resetPasswordForEmail(

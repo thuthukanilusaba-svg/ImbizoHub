@@ -40,6 +40,7 @@ import * as Linking from 'expo-linking';
 import { Platform } from 'react-native';
 import * as WebBrowser from 'expo-web-browser';
 import { supabase } from './supabase';
+import { createAppURL } from './appUrl';
 
 export type OAuthProvider = 'google';
 
@@ -76,7 +77,10 @@ export async function mergeAnonymousSession(previousAnonymousId: string | null) 
 }
 
 export async function signInWithProvider(provider: OAuthProvider): Promise<OAuthResult> {
-  const redirectTo = Linking.createURL('auth-callback');
+  // NOT Linking.createURL() — on web that ignores experiments.baseUrl and
+  // returns a root-path URL, which is what broke Google sign-in. See
+  // lib/appUrl.ts for the full explanation.
+  const redirectTo = createAppURL('auth-callback');
   const previousAnonymousId = await captureAnonymousId();
 
   if (Platform.OS === 'web') {
