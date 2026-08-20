@@ -24,6 +24,15 @@
 // required, and buyer_id must match the authenticated caller — never a
 // server-to-server shared-secret header, which a client screen calling
 // supabase.functions.invoke() can't set anyway.
+//
+// NEW (lightweight payment-visibility step, built with a future real
+// escrow flow in mind — see delivery_item_price_and_payment_status
+// migration): now also stores item_price so it's actually visible to
+// both parties on delivery-track.tsx/seller-deliveries.tsx, instead of
+// being silently dropped the way delivery-booking.tsx used to. This is
+// NOT escrow — no money for the item moves through the app here, it's
+// purely a visibility/paper-trail improvement. optional: item_request
+// wants have no fixed listing price, so this is null for that origin.
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
@@ -34,7 +43,37 @@ const PROMO_END = new Date('2027-01-31T23:59:59Z');
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
-Deno.serve(async (req) => {
+// CORS. Without this the browser's preflight OPTIONS request is
+// answered 405 and the real POST is never sent — surfacing in the app
+// as "Failed to send a request to the Edge Function", which reads like
+// a network fault rather than a permissions handshake. Native apps do
+// not preflight, so this only ever broke the web build.
+//
+// Wrapping the handler rather than editing each new Response(...) call:
+// missing one would fail identically and be just as hard to find.
+// '*' is safe here — authorisation is on the caller's JWT, never on the
+// requesting origin, so allowing any origin to ASK grants nothing.
+const CORS_HEADERS: Record<string, string> = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+};
+
+function withCors(handler: (req: Request) => Promise<Response>) {
+  return async (req: Request): Promise<Response> => {
+    if (req.method === 'OPTIONS') {
+      return new Response('ok', { headers: CORS_HEADERS });
+    }
+    const res = await handler(req);
+    // Re-wrap rather than mutate: a Response's headers are immutable
+    // once constructed, and this preserves status, statusText and body.
+    const out = new Response(res.body, res);
+    for (const [key, value] of Object.entries(CORS_HEADERS)) out.headers.set(key, value);
+    return out;
+  };
+}
+
+Deno.serve(withCors(async (req) => {
   if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
 
   const authHeader = req.headers.get('Authorization') ?? '';
@@ -55,6 +94,7 @@ Deno.serve(async (req) => {
       listing_id, item_request_id, buyer_id, seller_id,
       operator_user_id, pickup_city, dropoff_city, delivery_type,
       delivery_fee, parcel_size, parcel_description, scheduled_date,
+      item_price,
     } = await req.json();
 
     // Same "exactly one of listing_id / item_request_id" shape
@@ -90,6 +130,10 @@ Deno.serve(async (req) => {
         parcel_size: parcel_size ?? null,
         scheduled_date: scheduled_date ?? null,
         status: 'requested',
+        // NEW: see top-of-file comment — lightweight visibility only,
+        // not escrow. typeof-checked rather than a plain ?? null so a
+        // caller-supplied 0 (theoretically a free item) isn't dropped.
+        item_price: typeof item_price === 'number' ? item_price : null,
       });
 
     if (bookingError) {
@@ -111,4 +155,4 @@ Deno.serve(async (req) => {
     console.error('book-delivery-free-promo error:', err);
     return new Response(JSON.stringify({ error: 'Server error' }), { status: 500 });
   }
-});
+}));

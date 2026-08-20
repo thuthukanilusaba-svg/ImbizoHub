@@ -35,7 +35,37 @@ const PROMO_END = new Date('2027-01-31T23:59:59Z');
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
-Deno.serve(async (req) => {
+// CORS. Without this the browser's preflight OPTIONS request is
+// answered 405 and the real POST is never sent — surfacing in the app
+// as "Failed to send a request to the Edge Function", which reads like
+// a network fault rather than a permissions handshake. Native apps do
+// not preflight, so this only ever broke the web build.
+//
+// Wrapping the handler rather than editing each new Response(...) call:
+// missing one would fail identically and be just as hard to find.
+// '*' is safe here — authorisation is on the caller's JWT, never on the
+// requesting origin, so allowing any origin to ASK grants nothing.
+const CORS_HEADERS: Record<string, string> = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+};
+
+function withCors(handler: (req: Request) => Promise<Response>) {
+  return async (req: Request): Promise<Response> => {
+    if (req.method === 'OPTIONS') {
+      return new Response('ok', { headers: CORS_HEADERS });
+    }
+    const res = await handler(req);
+    // Re-wrap rather than mutate: a Response's headers are immutable
+    // once constructed, and this preserves status, statusText and body.
+    const out = new Response(res.body, res);
+    for (const [key, value] of Object.entries(CORS_HEADERS)) out.headers.set(key, value);
+    return out;
+  };
+}
+
+Deno.serve(withCors(async (req) => {
   if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
 
   // FIX: real caller identity check — see top-of-file comment.
@@ -109,4 +139,4 @@ Deno.serve(async (req) => {
     console.error('feature-listing-free-promo error:', err);
     return new Response(JSON.stringify({ error: 'Server error' }), { status: 500 });
   }
-});
+}));

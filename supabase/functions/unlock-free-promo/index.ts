@@ -34,6 +34,24 @@
 // who got past the (broken) secret check could have unlocked ANY
 // listing for free under ANY buyer_id. Now verifies a real JWT and
 // requires buyer_id to match the authenticated caller.
+//
+// ⚠️ FIX (CORS — real bug, reproduced from the edge logs):
+//   OPTIONS | 405 | .../functions/v1/unlock-free-promo
+// A browser will not send a cross-origin POST carrying an
+// Authorization header until a preflight OPTIONS request succeeds.
+// This function answered that preflight with 405, so the browser never
+// sent the POST at all and supabase-js reported "Failed to send a
+// request to the Edge Function" — an error that sounds like a network
+// outage but is actually the browser refusing to proceed.
+//
+// This was invisible on Android because native apps do not perform
+// CORS preflights; it only ever affected the web build.
+//
+// Fixed with withCors() below rather than by editing each of the ten
+// `new Response(...)` calls: a missed one would fail exactly the same
+// way and be just as hard to spot. create-payment already carried the
+// equivalent header block, which is why payments worked on web while
+// every free-promo path did not.
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
@@ -44,6 +62,32 @@ const EXPO_PUSH_URL = 'https://exp.host/--/api/v2/push/send';
 const PROMO_END = new Date('2027-01-31T23:59:59Z');
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+
+// Matches create-payment's existing header block exactly, so every
+// client-callable function in this project answers preflights the same
+// way. '*' is safe here: the function authorises on the caller's JWT,
+// never on the requesting origin, so allowing any origin to ASK grants
+// nothing — an unauthenticated caller still gets 401.
+const CORS_HEADERS: Record<string, string> = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+};
+
+function withCors(handler: (req: Request) => Promise<Response>) {
+  return async (req: Request): Promise<Response> => {
+    if (req.method === 'OPTIONS') {
+      return new Response('ok', { headers: CORS_HEADERS });
+    }
+    const res = await handler(req);
+    // Re-wrap rather than mutate: a Response's headers are immutable
+    // once constructed, and this preserves status, statusText and body
+    // exactly as the handler produced them.
+    const out = new Response(res.body, res);
+    for (const [key, value] of Object.entries(CORS_HEADERS)) out.headers.set(key, value);
+    return out;
+  };
+}
 
 async function sendExpoPushNotification(
   pushToken: string | null | undefined,
@@ -92,7 +136,7 @@ async function notifyUnlockFeeReceived(sellerId: string, listingId: number) {
   }
 }
 
-Deno.serve(async (req) => {
+Deno.serve(withCors(async (req) => {
   if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
 
   // FIX: real caller identity check — see top-of-file comment.
@@ -158,4 +202,4 @@ Deno.serve(async (req) => {
     console.error('unlock-free-promo error:', err);
     return new Response(JSON.stringify({ error: 'Server error' }), { status: 500 });
   }
-});
+}));
