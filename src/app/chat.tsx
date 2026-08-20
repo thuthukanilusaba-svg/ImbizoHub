@@ -139,6 +139,22 @@ export default function ChatScreen() {
   // AppState foreground refetch — has a real id to use.
   const [resolvedReceiverId, setResolvedReceiverId] = useState<string | undefined>(receiver_id as string | undefined);
   const [dealModal, setDealModal] = useState(false);
+  // Re-entry guard for sendMessage. Confirmed against real data rather
+  // than theorised: messages 54 and 55 were an identical "hello" from
+  // the same sender 292 MICROSECONDS apart. A human double-tap is
+  // 100ms+, so that was one user action invoking the handler twice.
+  //
+  // sendMessage is wired to two things — onSubmitEditing on the
+  // TextInput and onPress on the send button — with nothing stopping
+  // both from running. It clears the input via setText('') only AFTER
+  // its awaits resolve, so a second invocation in the same tick still
+  // sees the old `text` in its closure, passes the !text.trim() check,
+  // and inserts a second identical row.
+  //
+  // A ref, not state: state updates are async and batched, so a state
+  // flag would not be visible to a second call in the same tick, which
+  // is precisely the window being closed here.
+  const isSendingRef = useRef(false);
   const openDealHandled = useRef(false);
   const isBuyerRoleRef = useRef(false);
   const sessionChannelRef = useRef<any>(null);
@@ -730,6 +746,9 @@ export default function ChatScreen() {
   }
 
   const sendMessage = async () => {
+    // See isSendingRef's declaration for the evidence behind this.
+    if (isSendingRef.current) return;
+
     if (!text.trim()) return;
 
     if (!chatUnlocked && containsContactInfo(text)) {
@@ -762,62 +781,72 @@ export default function ChatScreen() {
     // init() above) — rather than re-querying getSession() on every
     // single send and risking this exact race repeatedly. Only falls
     // back to a fresh check/sign-in if myId is genuinely still empty.
-    let currentUid = myId;
 
-    if (!currentUid) {
-      const { data: { session: existingSession } } = await supabase.auth.getSession();
-      if (existingSession) {
-        currentUid = existingSession.user.id;
-        setMyId(currentUid);
-      } else {
-        const { data, error } = await supabase.auth.signInAnonymously();
-        if (error) {
-          console.log('Anonymous sign-in failed:', error.message);
-          setSendError('Couldn\'t send — please check your connection and try again.');
-          return;
+    // Held for the whole round trip, not just the insert: the awaits
+    // below (getSession / signInAnonymously) are part of the same
+    // window, and finally{} guarantees the flag clears on every exit
+    // path — including the four early returns inside.
+    isSendingRef.current = true;
+    try {
+      let currentUid = myId;
+
+      if (!currentUid) {
+        const { data: { session: existingSession } } = await supabase.auth.getSession();
+        if (existingSession) {
+          currentUid = existingSession.user.id;
+          setMyId(currentUid);
+        } else {
+          const { data, error } = await supabase.auth.signInAnonymously();
+          if (error) {
+            console.log('Anonymous sign-in failed:', error.message);
+            setSendError('Couldn\'t send — please check your connection and try again.');
+            return;
+          }
+          currentUid = data.session?.user?.id ?? '';
+          setMyId(currentUid);
         }
-        currentUid = data.session?.user?.id ?? '';
-        setMyId(currentUid);
       }
+
+      if (!currentUid) return;
+
+      setSendError('');
+      const { data: sentMessage, error: insertError } = await supabase
+        .from('messages')
+        .insert({
+          text: text.trim(),
+          sender_id: currentUid,
+          // FIX: was `receiver_id || null` — the raw route param. For an
+          // operator arriving via the "quote accepted" push notification
+          // (no receiver_id in that deep link), this silently inserted
+          // receiver_id: null on every message they sent, which the
+          // customer's own fetchMessages() then filtered out entirely —
+          // see the resolvedReceiverId state declaration up top for the
+          // full trace. resolvedReceiverId covers that case; falls back
+          // to the raw param first since it's already correct whenever
+          // present (the customer's own entry point always sets it).
+          receiver_id: (receiver_id as string | undefined) || resolvedReceiverId || null,
+          listing_id: !isRequestChat && !isItemRequestChat && listing_id ? parseInt(listing_id as string) : null,
+          request_id: isRequestChat ? request_id : null,
+          item_request_id: isItemRequestChat ? item_request_id : null,
+        })
+        .select()
+        .single();
+
+      if (insertError) {
+        console.log('sendMessage insert failed:', insertError.message);
+        setSendError('Couldn\'t send: ' + insertError.message);
+        return;
+      }
+
+      if (sentMessage) {
+        setMessages((prev) => (prev.some((m) => m.id === sentMessage.id) ? prev : [...prev, sentMessage]));
+      }
+
+      setText('');
+      setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 100);
+    } finally {
+      isSendingRef.current = false;
     }
-
-    if (!currentUid) return;
-
-    setSendError('');
-    const { data: sentMessage, error: insertError } = await supabase
-      .from('messages')
-      .insert({
-        text: text.trim(),
-        sender_id: currentUid,
-        // FIX: was `receiver_id || null` — the raw route param. For an
-        // operator arriving via the "quote accepted" push notification
-        // (no receiver_id in that deep link), this silently inserted
-        // receiver_id: null on every message they sent, which the
-        // customer's own fetchMessages() then filtered out entirely —
-        // see the resolvedReceiverId state declaration up top for the
-        // full trace. resolvedReceiverId covers that case; falls back
-        // to the raw param first since it's already correct whenever
-        // present (the customer's own entry point always sets it).
-        receiver_id: (receiver_id as string | undefined) || resolvedReceiverId || null,
-        listing_id: !isRequestChat && !isItemRequestChat && listing_id ? parseInt(listing_id as string) : null,
-        request_id: isRequestChat ? request_id : null,
-        item_request_id: isItemRequestChat ? item_request_id : null,
-      })
-      .select()
-      .single();
-
-    if (insertError) {
-      console.log('sendMessage insert failed:', insertError.message);
-      setSendError('Couldn\'t send: ' + insertError.message);
-      return;
-    }
-
-    if (sentMessage) {
-      setMessages((prev) => (prev.some((m) => m.id === sentMessage.id) ? prev : [...prev, sentMessage]));
-    }
-
-    setText('');
-    setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 100);
   };
 
   async function goToUnlock() {
