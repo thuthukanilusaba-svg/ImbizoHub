@@ -3,7 +3,7 @@
 // Receives submissions from https://imbizohub.com/contact
 //
 // Order of operations is deliberate: SAVE FIRST, THEN EMAIL.
-// If Resend is down, out of quota, or the API key has expired, the
+// If the mail server is unreachable or the password has changed, the
 // message is already safely in Supabase and can be recovered. An
 // email-only form drops it silently and the sender assumes they were
 // ignored — the worst possible failure for a contact form on a
@@ -24,15 +24,25 @@
 // in the shipped app, and with only these two grants the worst case if it
 // leaked is junk submissions, not a data breach.
 //
+// Email goes out over SMTP through Namecheap Private Email — the same
+// mailbox that receives it. Chosen over a service like Resend because
+// the mailbox already exists with working credentials: no second signup,
+// no DKIM records to add at Namecheap, and no risk of ending up with two
+// SPF records on imbizohub.com, which is invalid and would break the
+// existing mail.
+//
 // REQUIRED environment variables in Vercel (Settings -> Environment
-// Variables). The form still works without the email ones — messages
-// are stored and can be read in Supabase — but nothing will be sent:
-//   RESEND_API_KEY    from resend.com
-//   CONTACT_TO_EMAIL  where queries should land
-//   CONTACT_FROM_EMAIL  e.g. "ImbizoHub <hello@imbizohub.com>"
-//                       must be on a domain verified in Resend
+// Variables). The form still works without them — messages are stored
+// and readable in Supabase — but nothing will be sent:
+//   SMTP_USER          support@imbizohub.com
+//   SMTP_PASS          that mailbox's password
+//   CONTACT_TO_EMAIL   where queries should land
+// Optional, only if Namecheap ever changes their servers:
+//   SMTP_HOST          defaults to mail.privateemail.com
+//   SMTP_PORT          defaults to 465 (implicit TLS)
 
 const crypto = require('crypto');
+const nodemailer = require('nodemailer');
 
 const SUPABASE_URL = 'https://goughfxpcwxwsfthlmii.supabase.co';
 const SUPABASE_ANON_KEY =
@@ -57,7 +67,7 @@ function hashIp(ip) {
   // Salted so the stored value cannot be reversed to an IP by rainbow
   // table. Rotates if the key changes, which is acceptable — it only
   // exists for short-window rate limiting.
-  const salt = process.env.RESEND_API_KEY || 'imbizohub-contact';
+  const salt = process.env.SMTP_PASS || 'imbizohub-contact';
   return crypto.createHash('sha256').update(String(ip) + salt).digest('hex').slice(0, 32);
 }
 
@@ -134,13 +144,15 @@ module.exports = async (req, res) => {
     const messageId = await insert.json();
 
     // ── 2. Email. Best effort — a failure here must not lose the message. ──
-    const TO = process.env.CONTACT_TO_EMAIL;
-    const FROM = process.env.CONTACT_FROM_EMAIL;
-    const KEY = process.env.RESEND_API_KEY;
+    const SMTP_USER = process.env.SMTP_USER;
+    const SMTP_PASS = process.env.SMTP_PASS;
+    const TO = process.env.CONTACT_TO_EMAIL || SMTP_USER;
+    const HOST = process.env.SMTP_HOST || 'mail.privateemail.com';
+    const PORT = Number(process.env.SMTP_PORT || 465);
 
-    if (!KEY || !TO || !FROM) {
-      console.warn('contact: email not configured — message saved only', {
-        hasKey: !!KEY, hasTo: !!TO, hasFrom: !!FROM,
+    if (!SMTP_USER || !SMTP_PASS || !TO) {
+      console.warn('contact: SMTP not configured — message saved only', {
+        hasUser: !!SMTP_USER, hasPass: !!SMTP_PASS, hasTo: !!TO,
       });
       return res.status(200).json({ ok: true });
     }
@@ -159,25 +171,49 @@ module.exports = async (req, res) => {
           <p style="color:#999;font-size:12px">Saved as ${esc(messageId)}</p>
         </div>`;
 
-      const sent = await fetch('https://api.resend.com/emails', {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${KEY}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          from: FROM,
-          to: [TO],
-          // So you can hit Reply and answer the person directly, rather
-          // than replying to your own sending address.
-          reply_to: clean.email,
+      const transport = nodemailer.createTransport({
+        host: HOST,
+        port: PORT,
+        // 465 is implicit TLS; 587 upgrades via STARTTLS.
+        secure: PORT === 465,
+        auth: { user: SMTP_USER, pass: SMTP_PASS },
+        // Serverless functions are short-lived, so fail fast rather than
+        // holding the request open while someone waits on a spinner.
+        connectionTimeout: 10000,
+        greetingTimeout: 10000,
+        socketTimeout: 15000,
+      });
+
+      let smtpError = null;
+      try {
+        await transport.sendMail({
+          // MUST be the authenticated mailbox — Private Email rejects a
+          // From address it does not own. The enquirer's address goes in
+          // replyTo, so hitting Reply answers them rather than yourself.
+          from: `"ImbizoHub" <${SMTP_USER}>`,
+          to: TO,
+          replyTo: `"${clean.name}" <${clean.email}>`,
           subject: `[ImbizoHub] ${clean.topic} — ${clean.name}`,
           html,
-        }),
-      });
+          // Plain-text alternative: some clients prefer it, and it keeps
+          // the message readable if HTML is stripped.
+          text:
+            'New enquiry from imbizohub.com\n\n' +
+            `Topic: ${clean.topic}\n` +
+            `Name:  ${clean.name}\n` +
+            `Email: ${clean.email}\n` +
+            (clean.phone ? `Phone: ${clean.phone}\n` : '') +
+            `\n${clean.message}\n`,
+        });
+      } catch (e) {
+        smtpError = `smtp: ${(e && e.message ? e.message : String(e)).slice(0, 300)}`;
+      }
 
       // Record the delivery outcome so that after an outage you can find
       // exactly which messages never reached you:
       //   select * from contact_messages where email_sent = false;
-      const errText = sent.ok ? null : `resend ${sent.status}: ${(await sent.text()).slice(0, 300)}`;
-      if (errText) console.error('contact: resend failed', errText);
+      const errText = smtpError;
+      if (errText) console.error('contact: smtp send failed', errText);
 
       await fetch(`${SUPABASE_URL}/rest/v1/rpc/mark_contact_email`, {
         method: 'POST',
@@ -186,7 +222,7 @@ module.exports = async (req, res) => {
           Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ p_id: messageId, p_sent: sent.ok, p_error: errText }),
+        body: JSON.stringify({ p_id: messageId, p_sent: errText === null, p_error: errText }),
       }).catch(() => {});
     } catch (mailErr) {
       // Swallowed on purpose. The message is saved; the sender should
