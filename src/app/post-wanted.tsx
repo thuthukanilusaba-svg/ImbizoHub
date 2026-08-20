@@ -219,7 +219,13 @@ export default function PostWantedScreen() {
           />
 
           <Text style={styles.label}>Category *</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 4 }}>
+          {/* Wraps rather than scrolls horizontally — see post.tsx's
+              matching comment. This one mattered most: the category is
+              REQUIRED here ("Tap a category above — required before
+              posting"), and on web the chips past the visible edge
+              could not be reached at all, so anyone whose want belonged
+              in Building, Baby or Other was blocked from posting. */}
+          <View style={styles.categoryWrap}>
             {categories.map((cat) => (
               <TouchableOpacity
                 key={cat}
@@ -231,7 +237,7 @@ export default function PostWantedScreen() {
                 </Text>
               </TouchableOpacity>
             ))}
-          </ScrollView>
+          </View>
           {!category ? (
             <Text style={styles.categoryHint}>Tap a category above — required before posting.</Text>
           ) : null}
@@ -330,7 +336,8 @@ const styles = StyleSheet.create({
   },
   textArea: { height: 90, textAlignVertical: 'top', paddingTop: 10 },
 
-  categoryChip: { backgroundColor: DARK, borderRadius: 20, paddingHorizontal: 14, paddingVertical: 8, marginRight: 8, borderWidth: 0.5, borderColor: '#333' },
+  categoryWrap: { flexDirection: 'row', flexWrap: 'wrap', marginBottom: 4 },
+  categoryChip: { backgroundColor: DARK, borderRadius: 20, paddingHorizontal: 14, paddingVertical: 8, marginRight: 8, marginBottom: 8, borderWidth: 0.5, borderColor: '#333' },
   categoryChipActive: { backgroundColor: GOLD, borderColor: GOLD },
   categoryChipText: { color: GREY, fontSize: 12 },
   categoryChipTextActive: { color: BLACK, fontWeight: '700' },

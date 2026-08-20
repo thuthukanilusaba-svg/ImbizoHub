@@ -44,7 +44,6 @@ import {
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
-  ScrollView as RNScrollView,
   ScrollView,
   StyleSheet,
   Text,
@@ -450,7 +449,9 @@ export default function WhatsAppImportScreen() {
             )}
 
             <Text style={styles.label}>Category</Text>
-            <RNScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 4 }}>
+            {/* Wraps rather than scrolls horizontally — see post.tsx's
+                matching comment. */}
+            <View style={styles.categoryWrap}>
               {categories.map((cat) => (
                 <TouchableOpacity
                   key={cat}
@@ -462,7 +463,7 @@ export default function WhatsAppImportScreen() {
                   </Text>
                 </TouchableOpacity>
               ))}
-            </RNScrollView>
+            </View>
 
             <Text style={styles.label}>Description</Text>
             <TextInput
@@ -540,7 +541,8 @@ const styles = StyleSheet.create({
   itemHeaderText: { color: '#fff', fontSize: 13, fontWeight: '700' },
   removeText: { color: RED, fontSize: 12, fontWeight: '600' },
 
-  categoryChip: { backgroundColor: DARK, borderRadius: 20, paddingHorizontal: 14, paddingVertical: 8, marginRight: 8, borderWidth: 0.5, borderColor: '#333' },
+  categoryWrap: { flexDirection: 'row', flexWrap: 'wrap', marginBottom: 4 },
+  categoryChip: { backgroundColor: DARK, borderRadius: 20, paddingHorizontal: 14, paddingVertical: 8, marginRight: 8, marginBottom: 8, borderWidth: 0.5, borderColor: '#333' },
   categoryChipActive: { backgroundColor: GOLD, borderColor: GOLD },
   categoryChipText: { color: GREY, fontSize: 12 },
   categoryChipTextActive: { color: BLACK, fontWeight: '700' },

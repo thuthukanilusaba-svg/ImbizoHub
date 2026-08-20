@@ -407,7 +407,20 @@ export default function PostScreen() {
           />
 
           <Text style={styles.label}>Category</Text>
-          <RNScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 4 }}>
+          {/* FIX (reported on web): this was a horizontal RNScrollView
+              with showsHorizontalScrollIndicator={false}. On a phone
+              that's fine — you swipe. On desktop web there is no swipe,
+              the scrollbar is explicitly hidden, and a mouse wheel
+              scrolls vertically, so there was NO WAY to reach the chips
+              past the visible edge. Of the eight categories only about
+              four and a half fitted, which left Building, Baby and
+              Other permanently unreachable — including the catch-all
+              people need when nothing else fits.
+              Wrapping rather than making the scroll usable: all eight
+              fit in two rows with no interaction required, which is
+              also better on mobile since nothing is hidden there
+              either. */}
+          <View style={styles.categoryWrap}>
             {categories.map((cat) => (
               <TouchableOpacity
                 key={cat}
@@ -419,7 +432,7 @@ export default function PostScreen() {
                 </Text>
               </TouchableOpacity>
             ))}
-          </RNScrollView>
+          </View>
 
           <Text style={styles.label}>Description</Text>
           <TextInput
@@ -499,7 +512,10 @@ const styles = StyleSheet.create({
   },
   textArea: { height: 90, textAlignVertical: 'top', paddingTop: 10 },
 
-  categoryChip: { backgroundColor: DARK, borderRadius: 20, paddingHorizontal: 14, paddingVertical: 8, marginRight: 8, borderWidth: 0.5, borderColor: '#333' },
+  categoryWrap: { flexDirection: 'row', flexWrap: 'wrap', marginBottom: 4 },
+  // marginBottom matches marginRight so the two rows sit as evenly as
+  // the chips do side by side.
+  categoryChip: { backgroundColor: DARK, borderRadius: 20, paddingHorizontal: 14, paddingVertical: 8, marginRight: 8, marginBottom: 8, borderWidth: 0.5, borderColor: '#333' },
   categoryChipActive: { backgroundColor: GOLD, borderColor: GOLD },
   categoryChipText: { color: GREY, fontSize: 12 },
   categoryChipTextActive: { color: BLACK, fontWeight: '700' },
