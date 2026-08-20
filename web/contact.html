@@ -1,0 +1,374 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+
+<title>Contact ImbizoHub</title>
+<meta name="description" content="Questions about buying, selling, transport or payments on ImbizoHub? Send us a message and we'll get back to you.">
+<link rel="canonical" href="https://imbizohub.com/contact">
+<meta name="theme-color" content="#111111">
+
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="ImbizoHub">
+<meta property="og:url" content="https://imbizohub.com/contact">
+<meta property="og:title" content="Contact ImbizoHub">
+<meta property="og:description" content="Questions about buying, selling, transport or payments? Send us a message.">
+<meta property="og:image" content="https://imbizohub.com/og-image.png">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;800&display=swap" rel="stylesheet">
+<link rel="icon" href="/favicon.png">
+
+<style>
+  :root{
+    --bg:#111111;
+    --panel:#1A1A18;
+    --panel-2:#222220;
+    --line:#2E2E2A;
+    --gold:#B8860B;
+    --gold-bright:#E8B44A;
+    --text:#FFFFFF;
+    --muted:#D6D6CF;
+    --green:#4FC96E;
+    --maxw:1080px;
+  }
+
+  *{box-sizing:border-box}
+  html{-webkit-text-size-adjust:100%}
+  body{
+    margin:0;
+    background:var(--bg);
+    color:var(--text);
+    font-family:"Inter",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    font-size:18px;
+    line-height:1.7;
+    letter-spacing:.005em;
+    -webkit-font-smoothing:antialiased;
+  }
+  a{color:var(--gold-bright);text-decoration:none}
+  a:hover{text-decoration:underline}
+  .wrap{max-width:var(--maxw);margin:0 auto;padding:0 20px}
+
+  /* ---------- header ---------- */
+  header{
+    position:sticky;top:0;z-index:20;
+    background:rgba(17,17,17,.92);
+    backdrop-filter:saturate(140%) blur(10px);
+    border-bottom:1px solid var(--line);
+  }
+  .nav{display:flex;align-items:center;justify-content:space-between;height:68px}
+  /* ImbizoHub is ONE word — deliberately a single colour so it cannot
+     read as "Imbizo Hub". The logo supplies the gold. */
+  .brand{display:flex;align-items:center;gap:11px;font-weight:800;font-size:20px;
+         color:#fff;letter-spacing:-.01em}
+  .brand:hover{text-decoration:none}
+  .mark{width:34px;height:34px;border-radius:9px;display:block}
+  .nav-links{display:flex;align-items:center;gap:24px;font-size:15px}
+  .nav-links a{color:var(--muted)}
+  .nav-links a:hover{color:#fff;text-decoration:none}
+  .btn{
+    display:inline-block;background:var(--gold);color:#1A1A18;
+    font-weight:800;border-radius:10px;padding:11px 20px;font-size:15px;
+    border:0;cursor:pointer;
+  }
+  .btn:hover{background:#cf9a12;text-decoration:none}
+  .btn-ghost{
+    background:transparent;color:#fff;border:1px solid var(--line);
+  }
+  .btn-ghost:hover{background:var(--panel-2);border-color:#3d3d38}
+  @media(max-width:700px){ .nav-links a:not(.btn){display:none} }
+
+  /* ---------- hero ---------- */
+  .hero{padding:72px 0 56px;text-align:center}
+  .pill{
+    display:inline-block;font-size:12.5px;font-weight:700;letter-spacing:.02em;
+    color:var(--green);background:#122A17;border:1px solid #23492C;
+    padding:6px 13px;border-radius:999px;margin-bottom:22px;
+  }
+  h1{
+    font-size:clamp(34px,5.6vw,56px);line-height:1.12;margin:0 0 20px;
+    font-weight:800;letter-spacing:-.025em;
+  }
+  h1 em{font-style:normal;color:var(--gold)}
+  .sub{
+    font-size:clamp(17px,2.2vw,20px);color:var(--muted);
+    max-width:620px;margin:0 auto 30px;
+  }
+  .cta-row{display:flex;gap:12px;justify-content:center;flex-wrap:wrap}
+  .note{margin-top:16px;font-size:14.5px;color:#9E9E97}
+
+  /* ---------- sections ---------- */
+  section{padding:56px 0;border-top:1px solid var(--line)}
+  h2{font-size:clamp(23px,3.2vw,31px);margin:0 0 10px;font-weight:800;letter-spacing:-.01em}
+  .lede{color:var(--muted);margin:0 0 34px;max-width:660px;font-size:18px;line-height:1.7}
+
+  /* ---------- four cards ---------- */
+  .cards{display:grid;grid-template-columns:repeat(2,1fr);gap:16px}
+  @media(max-width:760px){ .cards{grid-template-columns:1fr} }
+  .card{
+    background:var(--panel);border:1px solid var(--line);border-radius:16px;
+    padding:24px;display:flex;gap:16px;align-items:flex-start;
+  }
+  .card .ico{font-size:26px;line-height:1;flex:0 0 auto;margin-top:2px}
+  .card h3{margin:0 0 7px;font-size:18.5px;font-weight:800}
+  .card p{margin:0;color:var(--muted);font-size:16px;line-height:1.65;font-weight:400}
+  .card.a{border-color:#25452A}
+  .card.b{border-color:#4A3A12}
+  .card.c{border-color:#20304F}
+  .card.d{border-color:#1F4430}
+
+  /* ---------- steps ---------- */
+  .steps{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;counter-reset:s}
+  @media(max-width:760px){ .steps{grid-template-columns:1fr} }
+  .step{
+    background:var(--panel);border:1px solid var(--line);
+    border-radius:14px;padding:22px;
+  }
+  .step .n{
+    width:28px;height:28px;border-radius:50%;background:var(--gold);color:#1A1A18;
+    display:grid;place-items:center;font-weight:900;font-size:14px;margin-bottom:12px;
+  }
+  .step h3{margin:0 0 7px;font-size:17px;font-weight:800}
+  .step p{margin:0;color:var(--muted);font-size:16px;line-height:1.65}
+
+  /* ---------- pricing ---------- */
+  .promo{
+    background:#122A17;border:1px solid #23492C;border-radius:14px;
+    padding:18px 20px;margin-bottom:24px;
+  }
+  .promo strong{color:var(--green)}
+  .promo p{margin:7px 0 0;color:var(--muted);font-size:15.5px}
+  /* Pricing table.
+     FIX: the COST header was text-align:left while its values were
+     text-align:right, so the column header never sat above its own
+     numbers. Both are now right-aligned and the column has a fixed
+     width, so the prices form a clean edge. */
+  table{width:100%;border-collapse:collapse;font-size:16px;table-layout:fixed}
+  th,td{text-align:left;padding:16px 0;border-bottom:1px solid var(--line);vertical-align:top}
+  th{color:var(--muted);font-weight:600;font-size:13px;text-transform:uppercase;
+     letter-spacing:.04em;padding-bottom:10px}
+  th:last-child,td:last-child{text-align:right;width:30%}
+  td:last-child{white-space:nowrap;font-weight:700;color:var(--gold-bright)}
+  td .d{display:block;color:var(--muted);font-size:15px;font-weight:400;margin-top:5px;line-height:1.6}
+
+  /* FIX: on narrow screens the price used to drop BELOW the description,
+     which separated each item from its own cost. Now the row becomes a
+     flex pair — label left, price right, on the same line — so the two
+     stay visually joined however narrow the screen gets. */
+  @media(max-width:620px){
+    thead{display:none}
+    table,tbody{display:block;width:100%}
+    tr{display:flex;justify-content:space-between;align-items:flex-start;gap:18px;
+       border-bottom:1px solid var(--line);padding:14px 0}
+    td{border-bottom:none;padding:0}
+    td:first-child{flex:1 1 auto;min-width:0}
+    td:last-child{flex:0 0 auto;width:auto;text-align:right}
+  }
+
+  /* ---------- trust ---------- */
+  .trust{display:grid;grid-template-columns:repeat(2,1fr);gap:16px}
+  @media(max-width:760px){ .trust{grid-template-columns:1fr} }
+  .t{display:flex;gap:14px;align-items:flex-start;
+     background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:20px}
+  .t .ico{font-size:21px;line-height:1;margin-top:2px}
+  .t h3{margin:0 0 6px;font-size:16.5px;font-weight:800}
+  .t p{margin:0;color:var(--muted);font-size:16px;line-height:1.65}
+
+  /* ---------- closing ---------- */
+  .close{text-align:center;background:var(--panel);border-radius:20px;padding:48px 24px;margin:56px 0}
+  .close h2{margin-bottom:12px}
+  .close p{color:var(--muted);margin:0 0 26px}
+
+  /* ---------- footer ---------- */
+  footer{border-top:1px solid var(--line);padding:34px 0;color:#9E9E97;font-size:15px}
+  .fnav{display:flex;gap:22px;flex-wrap:wrap;margin-bottom:16px}
+  .fnav a{color:var(--muted)}
+
+  /* ---------- theme ---------- */
+  body{
+    background-image:url('/theme-hub.png');
+    background-size:cover;
+    background-position:top center;
+    background-attachment:fixed;
+    background-repeat:no-repeat;
+  }
+  /* Panels get a near-opaque backing so copy never sits directly on the
+     pattern. The texture stays visible in the gutters, which is where it
+     belongs. */
+  .card,.step,.t,.close{background:rgba(22,22,20,.93)}
+  header{background:rgba(15,15,15,.94)}
+  .promo{background:rgba(18,42,23,.94)}
+  /* Hero text gets a soft shadow purely for separation from the glow. */
+  .hero h1,.hero .sub{text-shadow:0 2px 18px rgba(0,0,0,.65)}
+  /* Reading measure — long lines are tiring regardless of contrast. */
+  .lede,.card p,.step p,.t p{max-width:62ch}
+</style>
+<style>
+  .form-wrap{max-width:620px;margin:0 auto}
+  label{display:block;font-weight:600;font-size:15px;margin:20px 0 7px}
+  label .opt{color:var(--muted);font-weight:400}
+  input,select,textarea{
+    width:100%;background:var(--panel);color:#fff;border:1px solid var(--line);
+    border-radius:10px;padding:13px 14px;font-size:16px;font-family:inherit;
+  }
+  input:focus,select:focus,textarea:focus{
+    outline:none;border-color:var(--gold);box-shadow:0 0 0 3px rgba(184,134,11,.18);
+  }
+  textarea{min-height:150px;resize:vertical;line-height:1.6}
+  /* Honeypot: hidden from people, irresistible to bots. Not display:none,
+     which some bots detect and skip. */
+  .hp{position:absolute;left:-9999px;width:1px;height:1px;overflow:hidden}
+  .submit{margin-top:26px;width:100%;font-size:16px;padding:15px 20px}
+  .submit[disabled]{opacity:.6;cursor:not-allowed}
+  .msg{margin-top:18px;padding:14px 16px;border-radius:10px;font-size:15.5px;display:none}
+  .msg.ok{display:block;background:#122A17;border:1px solid #23492C;color:var(--green)}
+  .msg.err{display:block;background:#3a1a1a;border:1px solid #5a2a2a;color:#ff9a9a}
+  .side{color:var(--muted);font-size:15.5px;margin-top:34px;padding-top:22px;border-top:1px solid var(--line)}
+</style>
+</head>
+
+<body>
+
+<header>
+  <div class="wrap nav">
+    <a class="brand" href="/"><img class="mark" src="/logo.png" alt="ImbizoHub" width="34" height="34">ImbizoHub</a>
+    <nav class="nav-links">
+      <a href="/#how">How it works</a>
+      <a href="/#pricing">Pricing</a>
+      <a href="/#safety">Safety</a>
+      <a class="btn" href="/app">Open app</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <section style="border-top:none">
+    <div class="wrap form-wrap">
+      <h2>Get in touch</h2>
+      <p class="lede">
+        Question about buying, selling, transport or payments? Send it here and
+        we'll come back to you by email. If it's about a specific deal, mention
+        the item or trip so we can find it quickly.
+      </p>
+
+      <form id="contactForm" novalidate>
+        <label for="name">Your name</label>
+        <input id="name" name="name" type="text" autocomplete="name" maxlength="120" required>
+
+        <label for="email">Email address</label>
+        <input id="email" name="email" type="email" autocomplete="email" maxlength="200" required>
+
+        <label for="phone">Phone number <span class="opt">(optional)</span></label>
+        <input id="phone" name="phone" type="tel" autocomplete="tel" maxlength="40" placeholder="+263 …">
+
+        <label for="topic">What is it about?</label>
+        <select id="topic" name="topic">
+          <option>General question</option>
+          <option>Problem with the app</option>
+          <option>Seller / operator help</option>
+          <option>Payments</option>
+          <option>Report abuse</option>
+          <option>Business enquiry</option>
+        </select>
+
+        <label for="message">Your message</label>
+        <textarea id="message" name="message" maxlength="5000" required
+                  placeholder="Tell us what you need help with…"></textarea>
+
+        <div class="hp" aria-hidden="true">
+          <label for="website">Leave this empty</label>
+          <input id="website" name="website" type="text" tabindex="-1" autocomplete="off">
+        </div>
+
+        <button class="btn submit" type="submit" id="submitBtn">Send message</button>
+        <div class="msg" id="formMsg" role="status" aria-live="polite"></div>
+      </form>
+
+      <div class="side">
+        We read everything and reply as quickly as we can. For anything urgent
+        involving money or safety, please also report it inside the app so it
+        reaches the right place immediately.
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <nav class="fnav">
+      <a href="/#how">How it works</a>
+      <a href="/#pricing">Pricing</a>
+      <a href="/#safety">Safety</a>
+      <a href="/contact">Contact</a>
+      <a href="/app">Open app</a>
+      <a href="https://imbizohub.app/privacy-policy.html">Privacy</a>
+      <a href="https://imbizohub.app/terms-of-service.html">Terms</a>
+    </nav>
+    <div>&copy; 2026 ImbizoHub &middot; Zimbabwe</div>
+  </div>
+</footer>
+
+<script>
+(function () {
+  var form = document.getElementById('contactForm');
+  var btn  = document.getElementById('submitBtn');
+  var out  = document.getElementById('formMsg');
+  // Used server-side to reject submissions completed impossibly fast.
+  var started = Date.now();
+
+  function show(kind, text) {
+    out.className = 'msg ' + kind;
+    out.textContent = text;
+  }
+
+  form.addEventListener('submit', async function (e) {
+    e.preventDefault();
+    out.className = 'msg';
+
+    var data = {
+      name: form.name.value,
+      email: form.email.value,
+      phone: form.phone.value,
+      topic: form.topic.value,
+      message: form.message.value,
+      website: form.website.value,
+      started: started
+    };
+
+    if (!data.name.trim())  return show('err', 'Please enter your name.');
+    if (!data.email.trim()) return show('err', 'Please enter your email address.');
+    if (data.message.trim().length < 10) return show('err', 'Please write a little more so we can help properly.');
+
+    btn.disabled = true;
+    btn.textContent = 'Sending…';
+
+    try {
+      var r = await fetch('/api/contact', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data)
+      });
+      var j = await r.json().catch(function () { return {}; });
+
+      if (r.ok && j.ok) {
+        form.reset();
+        started = Date.now();
+        show('ok', 'Thank you — your message has reached us. We will reply to the email address you gave.');
+        btn.textContent = 'Sent';
+        return;
+      }
+      show('err', j.error || 'Something went wrong. Please try again.');
+    } catch (err) {
+      show('err', 'Could not send just now — please check your connection and try again.');
+    }
+
+    btn.disabled = false;
+    btn.textContent = 'Send message';
+  });
+})();
+</script>
+
+</body>
+</html>
