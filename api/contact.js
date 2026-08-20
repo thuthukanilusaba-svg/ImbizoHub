@@ -9,12 +9,20 @@
 // ignored — the worst possible failure for a contact form on a
 // marketplace that is asking strangers to trust it.
 //
-// The Supabase ANON key is used, not the service role. The
-// contact_messages table has RLS with an INSERT-only policy and
-// deliberately no SELECT policy, so this endpoint can add messages but
-// cannot read anyone else's back. Even if this key leaked it is already
-// public in the shipped app, and the worst case here is spam rather
-// than a data breach.
+// Writes go through two SECURITY DEFINER functions, not the table:
+//   submit_contact_message(...) -> uuid
+//   mark_contact_email(id, sent, error)
+//
+// The anon role has NO direct privilege on contact_messages at all. That
+// is deliberate and was forced by a real constraint: INSERT ... RETURNING
+// and UPDATE ... WHERE both require SELECT privilege, and granting anon
+// SELECT would expose every submitter's name, email, phone and message to
+// anyone holding the public anon key. The functions run as the owner, so
+// they can return the new id without any of that being readable.
+//
+// The anon key is used rather than the service role. It is already public
+// in the shipped app, and with only these two grants the worst case if it
+// leaked is junk submissions, not a data breach.
 //
 // REQUIRED environment variables in Vercel (Settings -> Environment
 // Variables). The form still works without the email ones — messages
@@ -95,31 +103,35 @@ module.exports = async (req, res) => {
       req.headers['x-real-ip'] || null;
 
     // ── 1. Save. This must succeed. ──
-    const insert = await fetch(`${SUPABASE_URL}/rest/v1/contact_messages`, {
+    const insert = await fetch(`${SUPABASE_URL}/rest/v1/rpc/submit_contact_message`, {
       method: 'POST',
       headers: {
         apikey: SUPABASE_ANON_KEY,
         Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
         'Content-Type': 'application/json',
-        Prefer: 'return=representation',
       },
       body: JSON.stringify({
-        ...clean,
-        ip_hash: hashIp(ip),
-        user_agent: String(req.headers['user-agent'] || '').slice(0, 400),
+        p_name: clean.name,
+        p_email: clean.email,
+        p_phone: clean.phone,
+        p_topic: clean.topic,
+        p_message: clean.message,
+        p_ip_hash: hashIp(ip),
+        p_user_agent: String(req.headers['user-agent'] || '').slice(0, 400),
       }),
     });
 
     if (!insert.ok) {
       const detail = await insert.text();
-      console.error('contact: supabase insert failed', insert.status, detail);
+      console.error('contact: submit_contact_message failed', insert.status, detail);
       return res.status(500).json({
         ok: false,
         error: 'We could not save your message. Please try again, or email us directly.',
       });
     }
 
-    const [row] = await insert.json();
+    // The RPC returns the new row's uuid as a bare JSON string.
+    const messageId = await insert.json();
 
     // ── 2. Email. Best effort — a failure here must not lose the message. ──
     const TO = process.env.CONTACT_TO_EMAIL;
@@ -144,7 +156,7 @@ module.exports = async (req, res) => {
             ${clean.phone ? `<tr><td style="padding:4px 16px 4px 0;color:#666">Phone</td><td>${esc(clean.phone)}</td></tr>` : ''}
           </table>
           <div style="margin:20px 0;padding:16px;background:#f6f6f4;border-radius:8px;white-space:pre-wrap">${esc(clean.message)}</div>
-          <p style="color:#999;font-size:12px">Saved as ${esc(row && row.id)}</p>
+          <p style="color:#999;font-size:12px">Saved as ${esc(messageId)}</p>
         </div>`;
 
       const sent = await fetch('https://api.resend.com/emails', {
@@ -164,20 +176,17 @@ module.exports = async (req, res) => {
       // Record the delivery outcome so that after an outage you can find
       // exactly which messages never reached you:
       //   select * from contact_messages where email_sent = false;
-      const flags = sent.ok
-        ? { email_sent: true }
-        : { email_sent: false, email_error: `resend ${sent.status}: ${(await sent.text()).slice(0, 300)}` };
+      const errText = sent.ok ? null : `resend ${sent.status}: ${(await sent.text()).slice(0, 300)}`;
+      if (errText) console.error('contact: resend failed', errText);
 
-      if (!sent.ok) console.error('contact: resend failed', flags.email_error);
-
-      await fetch(`${SUPABASE_URL}/rest/v1/contact_messages?id=eq.${row.id}`, {
-        method: 'PATCH',
+      await fetch(`${SUPABASE_URL}/rest/v1/rpc/mark_contact_email`, {
+        method: 'POST',
         headers: {
           apikey: SUPABASE_ANON_KEY,
           Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(flags),
+        body: JSON.stringify({ p_id: messageId, p_sent: sent.ok, p_error: errText }),
       }).catch(() => {});
     } catch (mailErr) {
       // Swallowed on purpose. The message is saved; the sender should
