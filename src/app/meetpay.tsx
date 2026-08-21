@@ -81,8 +81,16 @@ const GREEN = '#4CAF50';
 
 export default function MeetPayScreen() {
   const router = useRouter();
-  const { type, reference_id, seller_id, amount } = useLocalSearchParams<{
-    type: string; reference_id: string; seller_id: string; amount?: string;
+  // session_id is an ALTERNATIVE way in, added for push notifications.
+  // When notify-meetpay-event fires 'trip_half_confirmed' it knows only
+  // the session's own id — it has no reference_id to hand — so without
+  // this the notification telling a driver "your customer confirmed"
+  // had nowhere to send them. It is resolved to a reference_id below;
+  // every participant check downstream is unchanged and still runs
+  // against the quote, so this adds a route in, not a way around the
+  // security checks.
+  const { type, reference_id, session_id, seller_id, amount } = useLocalSearchParams<{
+    type: string; reference_id?: string; session_id?: string; seller_id: string; amount?: string;
   }>();
 
   const [myId, setMyId] = useState('');
@@ -114,10 +122,34 @@ export default function MeetPayScreen() {
     // van_hire is ever routed here (from quotes.tsx), so reference_id is
     // always a quotes.id; cross-check it against quotes.operator_id and,
     // via quotes.request_id, requests.user_id (the real buyer).
+    // Resolve session_id → reference_id when that is how we arrived.
+    // Deliberately reads ONLY the reference_id off the session and then
+    // falls into the exact same quote-based verification below — the
+    // session row is used as a pointer, never as proof that this user
+    // belongs here.
+    let effectiveReferenceId = reference_id as string | undefined;
+    if (!effectiveReferenceId && session_id) {
+      const { data: sess } = await supabase
+        .from('meetpay_sessions')
+        .select('reference_id')
+        .eq('id', session_id)
+        .maybeSingle();
+      effectiveReferenceId = sess?.reference_id ?? undefined;
+    }
+
+    if (!effectiveReferenceId) {
+      setLoading(false);
+      setError('This trip could not be found.');
+      return;
+    }
+
     const { data: quote } = await supabase
       .from('quotes')
-      .select('operator_id, request_id')
-      .eq('id', reference_id)
+      // price is read so that an operator who opens this screen BEFORE
+      // the customer still creates a session with a real amount on it,
+      // rather than a null that renders as a missing trip total.
+      .select('operator_id, request_id, price')
+      .eq('id', effectiveReferenceId)
       .maybeSingle();
 
     if (!quote) {
@@ -149,7 +181,7 @@ export default function MeetPayScreen() {
     const { data: existing } = await supabase
       .from('meetpay_sessions')
       .select('*')
-      .eq('reference_id', reference_id)
+      .eq('reference_id', effectiveReferenceId)
       .order('created_at', { ascending: false })
       .limit(1)
       .maybeSingle();
@@ -163,7 +195,7 @@ export default function MeetPayScreen() {
       // real buyer with a tampered seller_id in the URL could create a
       // session pointing at an unrelated operator instead of the actual
       // one from the quote.
-      await createSession(user.id, isSeller, quote.operator_id);
+      await createSession(user.id, isSeller, quote.operator_id, effectiveReferenceId, quote.price);
     }
 
     setLoading(false);
@@ -192,7 +224,7 @@ export default function MeetPayScreen() {
     channelRef.current = channel;
   }
 
-  async function createSession(userId: string, isSeller: boolean, verifiedOperatorId: string) {
+  async function createSession(userId: string, isSeller: boolean, verifiedOperatorId: string, refId: string, quotePrice?: number | null) {
     // FIX (part of the delivery_bookings/meetpay_sessions RPC redesign):
     // this used to insert directly, and had the buyer_id:null gap
     // documented at the top of this file when the operator reached the
@@ -205,8 +237,10 @@ export default function MeetPayScreen() {
     // participant check up front for the friendly error screen.
     const { data, error: createError } = await supabase.rpc('create_meetpay_session', {
       p_type: type || 'van_hire',
-      p_reference_id: reference_id,
-      p_amount: amount ? parseFloat(amount) : null,
+      p_reference_id: refId,
+      // Falls back to the quote's own price so an operator arriving
+      // first still gets a session with a real trip amount on it.
+      p_amount: amount ? parseFloat(amount) : (quotePrice ?? null),
     });
 
     if (createError) {

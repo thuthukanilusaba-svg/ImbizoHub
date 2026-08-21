@@ -41,6 +41,17 @@ type Request = {
   created_at: string;
 };
 
+// A trip this operator has WON — their quote was accepted.
+type AcceptedTrip = {
+  quote_id: string;
+  price: number;
+  pickup: string;
+  destination: string;
+  date: string;
+  iConfirmed: boolean;
+  fullyConfirmed: boolean;
+};
+
 export default function OperatorRequestsScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -57,6 +68,23 @@ export default function OperatorRequestsScreen() {
   // (quotes_request_operator_unique) now also backstops this, so even
   // a stale list can no longer produce a duplicate quote row.
   const [myQuoteRequestIds, setMyQuoteRequestIds] = useState<Set<string>>(new Set());
+
+  // NEW — closes a dead end in the van-hire flow.
+  //
+  // This screen only ever listed requests with status='open', so the
+  // moment a customer accepted an operator's quote the trip disappeared
+  // from that operator's view entirely. Nothing anywhere showed an
+  // operator the work they had actually won.
+  //
+  // That matters because van-hire completion is MUTUAL: meetpay.tsx
+  // flips a session to 'confirmed' only once BOTH the customer and the
+  // driver have tapped "Confirm Trip Complete", and that confirmation is
+  // what unlocks ratings for both sides. The customer had a route to
+  // that screen (quotes.tsx). The driver had none — no button, no deep
+  // link, nothing. So a customer who confirmed sat on "Waiting for your
+  // driver to confirm too..." forever, because the driver had no way to
+  // do it. Reported exactly that way.
+  const [acceptedTrips, setAcceptedTrips] = useState<AcceptedTrip[]>([]);
 
   const [modalVisible, setModalVisible] = useState(false);
   const [selected, setSelected] = useState<Request | null>(null);
@@ -143,7 +171,66 @@ export default function OperatorRequestsScreen() {
       setMyQuoteRequestIds(new Set());
     }
 
+    await fetchAcceptedTrips();
+
     setLoading(false);
+  }
+
+  // Trips this operator has won. Queried separately from the open-request
+  // list above on purpose: that one is filtered to status='open', which
+  // is exactly what hid accepted trips from the operator in the first
+  // place.
+  async function fetchAcceptedTrips() {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user || user.is_anonymous) { setAcceptedTrips([]); return; }
+
+    const { data: won } = await supabase
+      .from('quotes')
+      .select('id, price, request_id')
+      .eq('operator_id', user.id)
+      .eq('status', 'accepted');
+
+    if (!won || won.length === 0) { setAcceptedTrips([]); return; }
+
+    const requestIds = [...new Set(won.map((q) => q.request_id))];
+    const { data: reqRows } = await supabase
+      .from('requests')
+      .select('id, pickup, destination, date')
+      .in('id', requestIds);
+    const reqMap: Record<string, any> = {};
+    (reqRows ?? []).forEach((r: any) => { reqMap[r.id] = r; });
+
+    // Read the confirmation state so the card can say what is actually
+    // outstanding, rather than offering "Confirm" on a trip already
+    // done. reference_id on a van_hire session is the quote's id.
+    const quoteIds = won.map((q) => q.id);
+    const { data: sessions } = await supabase
+      .from('meetpay_sessions')
+      // operator_confirmed_at, NOT seller_confirmed_at — verified
+      // against the live meetpay_sessions schema; the buyer-side column
+      // is buyer_confirmed_at and the operator-side one is named for the
+      // role, not the seller/buyer pairing used elsewhere.
+      .select('reference_id, operator_confirmed_at, status')
+      .in('reference_id', quoteIds);
+    const sessionMap: Record<string, any> = {};
+    (sessions ?? []).forEach((s: any) => { sessionMap[s.reference_id] = s; });
+
+    setAcceptedTrips(
+      won
+        .filter((q) => reqMap[q.request_id])
+        .map((q) => {
+          const s = sessionMap[q.id];
+          return {
+            quote_id: q.id,
+            price: q.price,
+            pickup: reqMap[q.request_id].pickup,
+            destination: reqMap[q.request_id].destination,
+            date: reqMap[q.request_id].date,
+            iConfirmed: !!s?.operator_confirmed_at,
+            fullyConfirmed: s?.status === 'confirmed',
+          };
+        })
+    );
   }
 
   async function handleRefresh() {
@@ -279,6 +366,44 @@ export default function OperatorRequestsScreen() {
         style={styles.listContainer}
         contentContainerStyle={[styles.list, { paddingBottom: 16 + insets.bottom }]}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={GOLD} />}
+        // Won trips sit ABOVE the open-request list deliberately: a trip
+        // you have already been paid to run matters more than one you
+        // might bid on, and this is the only place in the app an operator
+        // can complete their half of the confirmation.
+        ListHeaderComponent={
+          acceptedTrips.length > 0 ? (
+            <View style={styles.wonSection}>
+              <Text style={styles.wonHeading}>Your trips</Text>
+              {acceptedTrips.map((t) => (
+                <View key={t.quote_id} style={styles.wonCard}>
+                  <Text style={styles.wonRoute} numberOfLines={1}>
+                    {t.pickup} → {t.destination}
+                  </Text>
+                  <Text style={styles.wonMeta}>
+                    {t.date} · ${t.price}
+                  </Text>
+
+                  {t.fullyConfirmed ? (
+                    <Text style={styles.wonDone}>✓ Trip confirmed by both of you</Text>
+                  ) : t.iConfirmed ? (
+                    <Text style={styles.wonWaiting}>You confirmed — waiting for your customer</Text>
+                  ) : (
+                    <TouchableOpacity
+                      style={styles.wonBtn}
+                      onPress={() =>
+                        router.push(
+                          `/meetpay?type=van_hire&reference_id=${t.quote_id}`
+                        )
+                      }
+                    >
+                      <Text style={styles.wonBtnText}>Confirm trip complete</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+              ))}
+            </View>
+          ) : null
+        }
         ListEmptyComponent={
           <View style={styles.empty}>
             <Text style={styles.emptyEmoji}>🛣️</Text>
@@ -458,6 +583,15 @@ const styles = StyleSheet.create({
   backArrow: { fontSize: 20 },
   heading: { color: '#fff', fontSize: 22, fontWeight: '800' },
   subheading: { color: GREY, fontSize: 13, marginTop: 4 },
+  wonSection: { marginBottom: 20 },
+  wonHeading: { color: '#fff', fontSize: 16, fontWeight: '700', marginBottom: 10 },
+  wonCard: { backgroundColor: DARK, borderRadius: 12, padding: 14, marginBottom: 10, borderWidth: 1, borderColor: GOLD },
+  wonRoute: { color: '#fff', fontSize: 15, fontWeight: '600' },
+  wonMeta: { color: GREY, fontSize: 13, marginTop: 4 },
+  wonBtn: { backgroundColor: GOLD, borderRadius: 8, paddingVertical: 11, alignItems: 'center', marginTop: 12 },
+  wonBtnText: { color: BLACK, fontSize: 14, fontWeight: '700' },
+  wonWaiting: { color: GREY, fontSize: 13, marginTop: 12, fontStyle: 'italic' },
+  wonDone: { color: GREEN, fontSize: 13, fontWeight: '600', marginTop: 12 },
 
   // FIX (same bug class already caught in my-wanted-posts.tsx /
   // browse-wanted.tsx): a FlatList's contentContainerStyle used

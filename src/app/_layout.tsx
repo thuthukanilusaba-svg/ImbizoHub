@@ -190,6 +190,16 @@ export default function RootLayout() {
 
         if (data?.type === 'message' && data?.listing_id) {
           router.push(`/chat?listing_id=${data.listing_id}`);
+        } else if (data?.type === 'trip_half_confirmed' && data?.session_id) {
+          // Van-hire mutual confirmation. notify-meetpay-event fires this
+          // at the OTHER party the moment one side confirms, but there was
+          // no case for it here — so the notification telling a driver
+          // 'your customer confirmed' went nowhere when tapped, and the
+          // customer sat on 'Waiting for your driver to confirm too...'
+          // indefinitely. The payload carries only the session id, which
+          // is why meetpay.tsx now accepts session_id and resolves it to a
+          // reference_id itself.
+          router.push(`/meetpay?session_id=${data.session_id}`);
         } else if (data?.type === 'meetpay') {
           router.push('/chat');
         } else if (data?.type === 'unlock' && data?.listing_id) {
