@@ -192,7 +192,7 @@ export default function OperatorRequestsScreen() {
 
     if (!won || won.length === 0) { setAcceptedTrips([]); return; }
 
-    const requestIds = [...new Set(won.map((q) => q.request_id))];
+    const requestIds = [...new Set(won.map((q: any) => q.request_id))];
     const { data: reqRows } = await supabase
       .from('requests')
       .select('id, pickup, destination, date')
@@ -203,7 +203,7 @@ export default function OperatorRequestsScreen() {
     // Read the confirmation state so the card can say what is actually
     // outstanding, rather than offering "Confirm" on a trip already
     // done. reference_id on a van_hire session is the quote's id.
-    const quoteIds = won.map((q) => q.id);
+    const quoteIds = won.map((q: any) => q.id);
     const { data: sessions } = await supabase
       .from('meetpay_sessions')
       // operator_confirmed_at, NOT seller_confirmed_at — verified
@@ -217,8 +217,8 @@ export default function OperatorRequestsScreen() {
 
     setAcceptedTrips(
       won
-        .filter((q) => reqMap[q.request_id])
-        .map((q) => {
+        .filter((q: any) => reqMap[q.request_id])
+        .map((q: any) => {
           const s = sessionMap[q.id];
           return {
             quote_id: q.id,
