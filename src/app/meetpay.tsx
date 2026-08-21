@@ -251,7 +251,11 @@ export default function MeetPayScreen() {
     subscribeToSession(data.id);
   }
 
-  async function handleConfirmMyself() {
+  // thenRate: the passenger flow. Their confirmation and their rating
+  // are one action, so this finishes the confirmation and goes straight
+  // to the rating screen rather than parking them on a success page
+  // they would have to tap through.
+  async function handleConfirmMyself(thenRate = false) {
     if (!session) return;
     setError('');
     setConfirming(true);
@@ -281,6 +285,15 @@ export default function MeetPayScreen() {
 
     setSession(data);
     setConfirming(false);
+
+    if (thenRate && data) {
+      const revieweeId = role === 'buyer' ? data.seller_id : data.buyer_id;
+      if (revieweeId) {
+        router.replace(
+          `/rating?session_id=${data.id}&reviewee_id=${revieweeId}&role=${role}`
+        );
+      }
+    }
   }
 
   // FIX: previously any early setError() (e.g. "not your trip") left
@@ -378,6 +391,22 @@ export default function MeetPayScreen() {
         <View style={styles.errorBox}><Text style={styles.errorText}>⚠️ {error}</Text></View>
       ) : null}
 
+      {/* PASSENGER-SIDE FLOW (product decision): the driver confirms
+          first, then the passenger rates instead of confirming.
+
+          The driver is the one who knows when the trip actually ended,
+          and they have a reason to come back — the rating is their work
+          record. The passenger has no reason to reopen the app to press
+          a button that does nothing for them, so asking them to
+          "confirm" was asking for a step most people would skip, which
+          in turn blocked BOTH sides from rating. Their rating now IS
+          their confirmation: one action, and it is the one we actually
+          want.
+
+          The passenger is NOT locked out when the driver has not
+          confirmed — see the fallback below. A driver expecting a poor
+          review must never be able to withhold confirmation to suppress
+          it. */}
       {otherConfirmedAt && (
         <View style={styles.otherConfirmedBox}>
           <Text style={styles.otherConfirmedText}>
@@ -386,17 +415,49 @@ export default function MeetPayScreen() {
         </View>
       )}
 
+      {role === 'buyer' && !otherConfirmedAt && (
+        <View style={styles.otherConfirmedBox}>
+          <Text style={styles.otherConfirmedText}>
+            Your driver hasn't confirmed this trip yet. They usually do this once you've
+            arrived — you'll be able to rate them straight after.
+          </Text>
+        </View>
+      )}
+
       {session?.amount ? (
         <Text style={styles.amountHint}>Trip amount: ${session.amount}</Text>
       ) : null}
 
-      <TouchableOpacity
-        style={[styles.confirmBtn, confirming && { opacity: 0.6 }]}
-        onPress={handleConfirmMyself}
-        disabled={confirming}
-      >
-        {confirming ? <ActivityIndicator color={BLACK} /> : <Text style={styles.confirmBtnText}>Confirm Trip Complete</Text>}
-      </TouchableOpacity>
+      {/* Three cases, deliberately distinct:
+          - driver: confirms the trip, as before
+          - passenger, driver already confirmed: rates (which confirms)
+          - passenger, driver has not: a quieter fallback so they are
+            never blocked from rating by a driver who never confirms */}
+      {role === 'buyer' && otherConfirmedAt ? (
+        <TouchableOpacity
+          style={[styles.confirmBtn, confirming && { opacity: 0.6 }]}
+          onPress={() => handleConfirmMyself(true)}
+          disabled={confirming}
+        >
+          {confirming ? <ActivityIndicator color={BLACK} /> : <Text style={styles.confirmBtnText}>⭐ Rate your driver</Text>}
+        </TouchableOpacity>
+      ) : role === 'buyer' ? (
+        <TouchableOpacity
+          style={[styles.confirmBtn, confirming && { opacity: 0.6 }]}
+          onPress={() => handleConfirmMyself(true)}
+          disabled={confirming}
+        >
+          {confirming ? <ActivityIndicator color={BLACK} /> : <Text style={styles.confirmBtnText}>Trip is done — rate anyway</Text>}
+        </TouchableOpacity>
+      ) : (
+        <TouchableOpacity
+          style={[styles.confirmBtn, confirming && { opacity: 0.6 }]}
+          onPress={() => handleConfirmMyself()}
+          disabled={confirming}
+        >
+          {confirming ? <ActivityIndicator color={BLACK} /> : <Text style={styles.confirmBtnText}>Confirm Trip Complete</Text>}
+        </TouchableOpacity>
+      )}
 
       <View style={styles.instructionsBox}>
         <Text style={styles.instructionsTitle}>Important</Text>

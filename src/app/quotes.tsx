@@ -131,14 +131,32 @@ export default function QuotesScreen() {
     setMyId(user.id);
     setMyEmail(user.email ?? '');
 
+    // FIX (real bug, directly reported: "you will need to go back and
+    // re-do the process"). This filtered on status='open' — but
+    // accepting a quote is exactly what flips a request to 'filled'.
+    // So the instant a customer accepted, this query stopped finding
+    // their trip and the whole screen went blank. The operator's phone
+    // number, the outstanding balance and the confirm-trip button were
+    // all reachable exactly ONCE, in a modal, and unreachable forever
+    // after they closed it or tapped "Chat with operator". They had
+    // paid a fee specifically to see those contact details.
+    //
+    // 'filled' is included rather than every status on purpose:
+    // cancelled or expired requests are genuinely finished and should
+    // not resurface. Ordering by created_at still puts a newer open
+    // request ahead of an older filled one.
+    //
+    // maybeSingle(), not single(): single() treats zero rows as an
+    // error, which is a normal state here for someone who has never
+    // posted a trip.
     const { data: req } = await supabase
       .from('requests')
       .select('*')
       .eq('user_id', user.id)
-      .eq('status', 'open')
+      .in('status', ['open', 'filled'])
       .order('created_at', { ascending: false })
       .limit(1)
-      .single();
+      .maybeSingle();
 
     if (!req) { setLoading(false); return; }
     setRequest(req);
