@@ -174,6 +174,7 @@ export default function ChatScreen() {
   // it is the one screen both of them can always reach, so the button
   // belongs here. meetpay.tsx works out on its own which side you are,
   // so the same pill serves both without branching.
+  const [listingSold, setListingSold] = useState(false);
   const [acceptedQuoteId, setAcceptedQuoteId] = useState<string | null>(null);
 
   const [itemIsPhysical, setItemIsPhysical] = useState(true);
@@ -556,7 +557,11 @@ export default function ChatScreen() {
     const parsedId = parseInt(listing_id as string);
     const { data: listing, error } = await supabase
       .from('listings')
-      .select('user_id, price')
+      // status is read so this screen knows when the item has been
+      // sold. Without it, a buyer already in a chat kept being offered
+      // the paid unlock after the seller marked the item sold — the
+      // listing page hides that button, but this screen never knew.
+      .select('user_id, price, status')
       .eq('id', parsedId)
       .maybeSingle();
     if (listing) {
@@ -564,6 +569,7 @@ export default function ChatScreen() {
       setIsOwnerOfListing(owner);
       isBuyerRoleRef.current = !owner;
       setListingPrice(listing.price);
+      setListingSold(listing.status === 'sold');
 
       const { data: sellerProfile } = await supabase
         .from('profiles')
@@ -1193,7 +1199,22 @@ export default function ChatScreen() {
         </View>
       </View>
 
-      {isBuyerRole && !depositPaid && !isRequestChat && (
+      {/* A sold item must not keep advertising a paid unlock. The
+          listing page already refuses (it shows "This item has been
+          sold" instead of an action), but a buyer already sitting in
+          the chat never saw that page again — so this was the one
+          surface still inviting someone to pay for something gone. */}
+      {listingSold && !isRequestChat && (
+        <View style={styles.warningBar}>
+          <Text style={styles.warningIcon}>🔒</Text>
+          <Text style={styles.warningText}>
+            This item has been marked as sold. You can still message each other,
+            but there is nothing left to unlock.
+          </Text>
+        </View>
+      )}
+
+      {isBuyerRole && !depositPaid && !isRequestChat && !listingSold && (
         <View style={styles.warningBar}>
           <Text style={styles.warningIcon}>💬</Text>
           <Text style={styles.warningText}>

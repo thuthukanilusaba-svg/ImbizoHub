@@ -106,6 +106,7 @@ export default function DepositScreen() {
   const [claimingFree, setClaimingFree] = useState(false);
   const [error, setError] = useState('');
   const [alreadyPaid, setAlreadyPaid] = useState(false);
+  const [soldOut, setSoldOut] = useState(false);
   const [myId, setMyId] = useState('');
   const [myEmail, setMyEmail] = useState('');
   const [freeUnlocksRemaining, setFreeUnlocksRemaining] = useState(0);
@@ -142,6 +143,34 @@ export default function DepositScreen() {
     if (!user || user.is_anonymous) { router.replace('/register'); return; }
     setMyId(user.id);
     setMyEmail(user.email ?? '');
+
+    // GUARD: never take money to unlock a listing that is already sold.
+    //
+    // Every button that leads here is hidden once an item sells —
+    // listing.tsx shows "This item has been sold" instead of an action,
+    // and chat.tsx now suppresses its unlock prompt too. But this screen
+    // is reachable by URL: since the web app moved to /app, anyone with
+    // a shared link, a bookmarked tab, or a notification from before the
+    // sale can open /app/unlock?listing_id=... directly. Hiding the
+    // buttons is not the same as refusing the transaction.
+    //
+    // Harmless during the launch promo, when unlocking is free. Not
+    // harmless afterwards, when it is a real charge for a real item
+    // that no longer exists.
+    const { data: listingRow } = await supabase
+      .from('listings')
+      .select('status')
+      .eq('id', listing_id)
+      .maybeSingle();
+
+    // Fails OPEN on a failed lookup, matching browse-wanted: a network
+    // hiccup must not block someone unlocking a live listing. Only a
+    // confirmed 'sold' stops them.
+    if (listingRow && listingRow.status === 'sold') {
+      setSoldOut(true);
+      setLoading(false);
+      return;
+    }
 
     // If this is the seller's own listing, skip the fee entirely
     if (user.id === seller_id) {
@@ -321,6 +350,30 @@ export default function DepositScreen() {
     );
   }
 
+  // Not an error screen: nothing went wrong, the item simply sold. It
+  // still offers the chat, because a buyer may well want to ask whether
+  // the seller has another one.
+  if (soldOut) {
+    return (
+      <View style={styles.center}>
+        <Text style={styles.soldEmoji}>🔒</Text>
+        <Text style={styles.soldTitle}>This item has been sold</Text>
+        <Text style={styles.soldBody}>
+          The seller marked it as sold, so there is nothing to unlock. You have not been charged.
+        </Text>
+        <TouchableOpacity
+          style={styles.soldBtn}
+          onPress={() => router.replace(`/chat?listing_id=${listing_id}&receiver_id=${seller_id}`)}
+        >
+          <Text style={styles.soldBtnText}>Message the seller anyway</Text>
+        </TouchableOpacity>
+        <TouchableOpacity onPress={() => router.replace('/explore')}>
+          <Text style={styles.soldLink}>Browse other listings</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
+
   return (
     // FIX (clean-sweep bug): this screen's content — summary card, info
     // box, and pay button — could overflow a shorter viewport with no
@@ -386,9 +439,11 @@ export default function DepositScreen() {
             ? `Minimum fee of $${UNLOCK_FEE_MIN.toFixed(2)} applies regardless of listed price. Non-refundable and not credited toward the final price.`
             : 'Non-refundable. This is not credited toward the final price.'}
         </Text>
-        {!isPromoActive() && !hasFreeUnlock && freeUnlocksRemaining === 0 && (
-          <Text style={styles.usedUpNote}>You've used your 5 free unlocks — this one's paid.</Text>
-        )}
+        {/* REMOVED (same reasoning as the free-unlock banner above):
+            this referenced a "5 free unlocks" count the buyer is never
+            shown any more, so post-promo it would surface a limit out
+            of nowhere to explain a charge. The fee line and its own
+            note already say what's owed and why. */}
       </View>
 
       <View style={styles.infoBox}>
@@ -452,6 +507,12 @@ function InfoStep({ icon, text }: { icon: string; text: string }) {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#111111', padding: 20, paddingTop: Platform.OS === 'ios' ? 56 : 40 },
+  soldEmoji: { fontSize: 44, marginBottom: 12 },
+  soldTitle: { color: '#fff', fontSize: 20, fontWeight: '800', marginBottom: 10, textAlign: 'center' },
+  soldBody: { color: GREY, fontSize: 15, lineHeight: 22, textAlign: 'center', marginBottom: 24 },
+  soldBtn: { backgroundColor: GOLD, borderRadius: 10, paddingHorizontal: 24, paddingVertical: 14 },
+  soldBtnText: { color: BLACK, fontSize: 15, fontWeight: '700' },
+  soldLink: { color: GREY, fontSize: 14, marginTop: 18 },
   center: { flex: 1, backgroundColor: '#111', alignItems: 'center', justifyContent: 'center' },
 
   backBtn: { marginBottom: 16 },

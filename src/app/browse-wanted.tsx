@@ -108,6 +108,13 @@ export default function BrowseWantedScreen() {
   const [myId, setMyId] = useState('');
 
   const [myResponseIds, setMyResponseIds] = useState<Set<string>>(new Set());
+  // Which card is mid-check, so its button can show a spinner instead
+  // of appearing dead for the moment the lookup takes.
+  const [checkingId, setCheckingId] = useState<string | null>(null);
+  // Shown when a want turned out to be gone. Sits above the list
+  // rather than in an alert, so it survives the refresh that follows
+  // and reads as an explanation for the card vanishing.
+  const [goneNotice, setGoneNotice] = useState('');
 
   const [modalVisible, setModalVisible] = useState(false);
   const [selected, setSelected] = useState<ItemRequest | null>(null);
@@ -159,7 +166,39 @@ export default function BrowseWantedScreen() {
     setRefreshing(false);
   }
 
-  function openModal(req: ItemRequest) {
+  // Checked HERE, not only on submit.
+  //
+  // Matched wants are already excluded from the list by the
+  // status='open' filter in fetchRequests, and handleSubmit re-checks
+  // before writing — so a response could never actually land on a
+  // closed want. But the list is fetched once and does not update by
+  // itself, so anyone who left this screen open was still shown a card
+  // for something already gone, and the only thing that stopped them
+  // was an error AFTER they had written their message, set a price and
+  // possibly uploaded a photo.
+  //
+  // The protection was in the right place; the disappointment was in
+  // the wrong one. Failing before they start typing costs them a tap.
+  // Failing after costs them the whole response.
+  async function openModal(req: ItemRequest) {
+    setCheckingId(req.id);
+    const { data: current } = await supabase
+      .from('item_requests')
+      .select('status')
+      .eq('id', req.id)
+      .maybeSingle();
+    setCheckingId(null);
+
+    // Fails OPEN on a failed lookup: if the network hiccups we cannot
+    // prove the want is closed, and handleSubmit will catch it anyway.
+    // Blocking someone from responding to a live want because a check
+    // failed is the worse error.
+    if (current && current.status !== 'open') {
+      setGoneNotice('That want has just been matched with someone else.');
+      fetchRequests();
+      return;
+    }
+
     setSelected(req);
     setPrice('');
     setMessage('');
@@ -336,6 +375,16 @@ export default function BrowseWantedScreen() {
         style={styles.listContainer}
         contentContainerStyle={[styles.list, { paddingBottom: 16 + insets.bottom }]}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={GOLD} />}
+        ListHeaderComponent={
+          goneNotice ? (
+            <View style={styles.goneNotice}>
+              <Text style={styles.goneNoticeText}>{goneNotice}</Text>
+              <TouchableOpacity onPress={() => setGoneNotice('')}>
+                <Text style={styles.goneNoticeDismiss}>Dismiss</Text>
+              </TouchableOpacity>
+            </View>
+          ) : null
+        }
         ListEmptyComponent={
           <View style={styles.empty}>
             <Text style={styles.emptyEmoji}>🔍</Text>
@@ -369,8 +418,15 @@ export default function BrowseWantedScreen() {
                   <Text style={styles.respondedBadgeText}>✓ You've responded</Text>
                 </View>
               ) : (
-                <TouchableOpacity style={styles.respondBtn} onPress={() => openModal(item)} activeOpacity={0.85}>
-                  <Text style={styles.respondBtnText}>I have this — respond</Text>
+                <TouchableOpacity
+                  style={[styles.respondBtn, checkingId === item.id && { opacity: 0.6 }]}
+                  onPress={() => openModal(item)}
+                  disabled={checkingId === item.id}
+                  activeOpacity={0.85}
+                >
+                  <Text style={styles.respondBtnText}>
+                    {checkingId === item.id ? 'Checking…' : 'I have this — respond'}
+                  </Text>
                 </TouchableOpacity>
               )}
             </View>
@@ -564,6 +620,9 @@ const styles = StyleSheet.create({
   // were enough requests to overflow one screen.
   listContainer: { flex: 1 },
   list: { padding: 16 },
+  goneNotice: { backgroundColor: '#2a2418', borderRadius: 10, padding: 14, marginBottom: 14, borderWidth: 1, borderColor: GOLD },
+  goneNoticeText: { color: '#e8d9a8', fontSize: 14, lineHeight: 20 },
+  goneNoticeDismiss: { color: GOLD, fontSize: 13, fontWeight: '700', marginTop: 8 },
   card: {
     backgroundColor: BLACK, borderRadius: 14, padding: 16,
     borderWidth: 0.5, borderColor: '#333',
