@@ -18,6 +18,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { supabase } from '../../lib/supabase';
+import { operatorCanSeeTrip } from '../../lib/cities';
 
 const GOLD = '#B8860B';
 const BLACK = '#1A1A18';
@@ -39,6 +40,8 @@ type Request = {
   description: string;
   status: string;
   created_at: string;
+  pickup_city?: string | null;
+  destination_city?: string | null;
 };
 
 // A trip this operator has WON — their quote was accepted.
@@ -86,6 +89,12 @@ export default function OperatorRequestsScreen() {
   // do it. Reported exactly that way.
   const [acceptedTrips, setAcceptedTrips] = useState<AcceptedTrip[]>([]);
 
+  // This operator's base city, used to filter the open-trip list.
+  // null means 'not set' and deliberately shows everything — see
+  // operatorCanSeeTrip() in lib/cities.ts for why every unknown fails
+  // open rather than closed.
+  const [baseCity, setBaseCity] = useState<string | null>(null);
+
   const [modalVisible, setModalVisible] = useState(false);
   const [selected, setSelected] = useState<Request | null>(null);
   const [price, setPrice] = useState('');
@@ -111,9 +120,11 @@ export default function OperatorRequestsScreen() {
 
     const { data: profile } = await supabase
       .from('profiles')
-      .select('operator_status, account_type, registration_expires_at, vehicle_type')
+      .select('operator_status, account_type, registration_expires_at, vehicle_type, base_city')
       .eq('id', user.id)
       .single();
+
+    setBaseCity(profile?.base_city ?? null);
 
     if (profile?.account_type !== 'transport_operator') {
       setOperatorActive(false);
@@ -341,6 +352,15 @@ export default function OperatorRequestsScreen() {
     );
   }
 
+  // Filtered client-side rather than in the query: the rule has three
+  // fail-open cases (operator with no base city, trip with no city,
+  // either side marked Other) and expressing that as a PostgREST filter
+  // would be both unreadable and easy to get subtly wrong. Trip volume
+  // here is small — these are open requests, not history — so filtering
+  // in JS costs nothing and keeps the rule in one testable function.
+  const visibleRequests = requests.filter((r) =>
+    operatorCanSeeTrip(baseCity, r.pickup_city, r.destination_city)
+  );
   return (
     <View style={styles.container}>
       <View style={styles.header}>
@@ -356,12 +376,12 @@ export default function OperatorRequestsScreen() {
             see every time they open this screen to browse trips, so
             it's arguably the more visible instance of the two. */}
         <Text style={styles.subheading}>
-          {requests.length} trip{requests.length !== 1 ? 's' : ''} · you keep 100% of your quoted price
+          {visibleRequests.length} trip{visibleRequests.length !== 1 ? 's' : ''} · you keep 100% of your quoted price
         </Text>
       </View>
 
       <FlatList
-        data={requests}
+        data={visibleRequests}
         keyExtractor={(item) => item.id}
         style={styles.listContainer}
         contentContainerStyle={[styles.list, { paddingBottom: 16 + insets.bottom }]}
@@ -407,8 +427,17 @@ export default function OperatorRequestsScreen() {
         ListEmptyComponent={
           <View style={styles.empty}>
             <Text style={styles.emptyEmoji}>🛣️</Text>
-            <Text style={styles.emptyText}>No open requests right now.</Text>
-            <Text style={styles.emptySubtext}>Pull down to refresh.</Text>
+            <Text style={styles.emptyText}>
+              {baseCity ? `No open trips in ${baseCity} right now.` : 'No open requests right now.'}
+            </Text>
+            {/* Naming the city matters: without it an operator seeing an
+                empty list cannot tell whether there is genuinely no work
+                or whether a filter they forgot about is hiding it. */}
+            <Text style={styles.emptySubtext}>
+              {baseCity
+                ? 'Pull down to refresh. You can change your city in your operator profile.'
+                : 'Pull down to refresh.'}
+            </Text>
           </View>
         }
         renderItem={({ item }) => {

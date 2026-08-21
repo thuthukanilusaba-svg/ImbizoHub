@@ -38,6 +38,7 @@ import {
   View,
 } from 'react-native';
 import { supabase } from '../../lib/supabase';
+import CityPicker from '../../components/CityPicker';
 
 const GOLD = '#B8860B';
 const BLACK = '#1A1A18';
@@ -82,6 +83,11 @@ export default function HireVanScreen() {
   const router = useRouter();
 
   const [pickup, setPickup] = useState('');
+  // Picked from a fixed list, unlike pickup/destination above which
+  // stay free text. These are what operator-requests.tsx matches on —
+  // see lib/cities.ts for why the free-text fields cannot be.
+  const [pickupCity, setPickupCity] = useState('');
+  const [destinationCity, setDestinationCity] = useState('');
   const [destination, setDestination] = useState('');
   const [date, setDate] = useState('');
   const [showDatePicker, setShowDatePicker] = useState(false);
@@ -127,6 +133,14 @@ export default function HireVanScreen() {
       return;
     }
 
+    // Required: without a city the trip cannot be matched to any
+    // operator, and would fall back to being shown to everyone —
+    // which is the noise this feature exists to remove.
+    if (!pickupCity || !destinationCity) {
+      setError('Please select both a pickup city and a destination city.');
+      return;
+    }
+
     const passengerCount = parseInt(passengers, 10);
     if (isNaN(passengerCount) || passengerCount < 1) {
       setError('Enter a valid number of passengers.');
@@ -164,6 +178,8 @@ export default function HireVanScreen() {
       user_id: user.id,
       pickup: pickup.trim(),
       destination: destination.trim(),
+      pickup_city: pickupCity || null,
+      destination_city: destinationCity || null,
       date: date.trim(),
       passengers: passengerCount,
       description: description.trim(),
@@ -266,6 +282,12 @@ export default function HireVanScreen() {
           onChangeText={setPickup}
         />
 
+        <Text style={styles.label}>Pickup city *</Text>
+        <CityPicker value={pickupCity} onChange={setPickupCity} placeholder="Select pickup city" />
+        <Text style={styles.cityHint}>
+          Operators based in this city will see your trip.
+        </Text>
+
         <Text style={styles.label}>Destination *</Text>
         <TextInput
           style={styles.input}
@@ -274,6 +296,9 @@ export default function HireVanScreen() {
           value={destination}
           onChangeText={setDestination}
         />
+
+        <Text style={styles.label}>Destination city *</Text>
+        <CityPicker value={destinationCity} onChange={setDestinationCity} placeholder="Select destination city" />
 
         <Text style={styles.label}>Travel date *</Text>
         {Platform.OS === 'web' ? (
@@ -427,6 +452,7 @@ const styles = StyleSheet.create({
     borderColor: '#333',
   },
   label: { fontSize: 13, fontWeight: '700', color: '#fff', marginBottom: 8, marginTop: 14 },
+  cityHint: { color: '#888', fontSize: 12, marginTop: 6 },
   input: {
     backgroundColor: DARK,
     borderRadius: 10,

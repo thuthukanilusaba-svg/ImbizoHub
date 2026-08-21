@@ -48,6 +48,7 @@ import {
   StyleSheet, Text, TextInput, TouchableOpacity, View,
 } from 'react-native';
 import { supabase } from '../../lib/supabase';
+import CityPicker from '../../components/CityPicker';
 import {
   DELIVERY_BOOKING_ENABLED,
   DELIVERY_OPERATOR_SIGNUP_PAUSED_MESSAGE,
@@ -87,6 +88,11 @@ export default function BecomeOperatorScreen() {
   const [vehicleType, setVehicleType] = useState('');
   const [vehicleCapacity, setVehicleCapacity] = useState('');
   const [operatingArea, setOperatingArea] = useState('');
+  // The matched value. operating_area above stays free text and stays
+  // purely descriptive on the quote card ('Harare, Bulawayo, or both');
+  // base_city is the one operator-requests.tsx filters on, which is why
+  // it has to come from a fixed list. See lib/cities.ts.
+  const [baseCity, setBaseCity] = useState('');
   const [deliveryVehicleType, setDeliveryVehicleType] = useState('');
   const [deliveryArea, setDeliveryArea] = useState('');
 
@@ -166,10 +172,12 @@ export default function BecomeOperatorScreen() {
       if (!user || cancelled) return;
       const { data } = await supabase
         .from('profiles')
-        .select('phone')
+        .select('phone, base_city')
         .eq('id', user.id)
         .maybeSingle();
-      if (!cancelled && data?.phone) setPhone(data.phone);
+      if (cancelled) return;
+      if (data?.phone) setPhone(data.phone);
+      if (data?.base_city) setBaseCity(data.base_city);
     })();
     return () => { cancelled = true; };
   }, []);
@@ -183,6 +191,14 @@ export default function BecomeOperatorScreen() {
     // get written +263…, 07…, with spaces, dashes or brackets, and
     // rejecting a real number is worse than accepting an odd-looking
     // one. This only catches "clearly not a phone number".
+    // Required for transport operators — it is what decides which
+    // trips they are shown. Delivery has its own area field and is
+    // paused anyway, so it is not asked there.
+    if (!isDelivery && !baseCity) {
+      setErrorMsg('Please select the city you are based in.');
+      return;
+    }
+
     const digits = phone.replace(/[^0-9]/g, '');
     if (digits.length < 9) {
       setErrorMsg('Please enter a phone number customers can reach you on.');
@@ -223,6 +239,7 @@ export default function BecomeOperatorScreen() {
         // roughly where an operator is based before accepting. Not used
         // as a filter anywhere; trip requests stay nationwide by design.
         operating_area: isDelivery ? null : (operatingArea.trim() || null),
+        base_city: isDelivery ? null : (baseCity || null),
       })
       .eq('id', user.id);
 
@@ -342,7 +359,14 @@ export default function BecomeOperatorScreen() {
             <Text style={styles.label}>Passenger Capacity</Text>
             <TextInput style={styles.input} placeholder="e.g. 8" placeholderTextColor="#888"
               value={vehicleCapacity} onChangeText={setVehicleCapacity} keyboardType="numeric" />
-            <Text style={styles.label}>Where are you based? (optional)</Text>
+            <Text style={styles.label}>Your base city *</Text>
+        <CityPicker value={baseCity} onChange={setBaseCity} placeholder="Select your city" />
+        <Text style={styles.hint}>
+          You&apos;ll see trips starting or ending in this city. Customers still see
+          the wider area you describe below.
+        </Text>
+
+        <Text style={styles.label}>Where are you based? (optional)</Text>
             <TextInput style={styles.input} placeholder="e.g. Harare, Bulawayo, or both" placeholderTextColor="#888"
               value={operatingArea} onChangeText={setOperatingArea} />
             <Text style={styles.hint}>
