@@ -427,7 +427,23 @@ export default function DealerScreen() {
         style={{ flex: 1 }}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       >
-        <ScrollView>
+        {/* style={{flex:1}} is load-bearing on web, not decoration.
+            react-native-web renders ScrollView as a div with
+            overflow:auto — and a div with no bounded height simply
+            grows to fit its content, so there is never any overflow to
+            scroll. The page then just gets clipped by the fixed-height
+            container above it and nothing moves. Native gets away
+            without it because the parent hands the ScrollView its
+            height directly.
+
+            This is the same bug that was fixed on the quotes, open
+            trip requests and two other list screens; those were
+            FlatLists given only contentContainerStyle, which fails for
+            exactly this reason. Reported here as "page not scrolling
+            after registration" — transport-operator signup finishes by
+            replacing the route with /dealer, so this is the first
+            screen a new operator lands on. */}
+        <ScrollView style={{ flex: 1 }}>
 
           {/* Header */}
           <View style={styles.header}>

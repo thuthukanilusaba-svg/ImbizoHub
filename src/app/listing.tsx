@@ -387,7 +387,11 @@ export default function ListingScreen() {
         <Text style={styles.backFloatText}>‹</Text>
       </TouchableOpacity>
 
-      <ScrollView>
+      {/* style={{flex:1}} is required for this to scroll on web — see
+          dealer.tsx's comment on the same line for the full reason.
+          Same latent bug, same fix; found by sweeping the codebase for
+          ScrollViews rendered with no style prop. */}
+      <ScrollView style={{ flex: 1 }}>
 
         {/* Photo carousel — width comes from flex/stretch (no fixed
             SCREEN_WIDTH here), and onLayout measures whatever that
