@@ -522,8 +522,8 @@ const styles = StyleSheet.create({
   blockedLink: { color: GREY, fontSize: 14, textAlign: 'center' },
 
   // Modal
-  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },
-  modalSheet: {
+  modalOverlay: { flex: 1, width: '100%', backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end', alignItems: 'center' },
+  modalSheet: { width: '100%', maxWidth: 640, alignSelf: 'center',
     backgroundColor: BLACK, borderTopLeftRadius: 20, borderTopRightRadius: 20,
     padding: 24, paddingBottom: Platform.OS === 'ios' ? 40 : 24,
   },

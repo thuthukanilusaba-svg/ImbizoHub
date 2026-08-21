@@ -448,8 +448,8 @@ const styles = StyleSheet.create({
   dateFieldText: { fontSize: 14, color: '#fff' },
   dateFieldPlaceholder: { fontSize: 14, color: '#666' },
   dateFieldIcon: { fontSize: 16 },
-  pickerModalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },
-  pickerModalSheet: { backgroundColor: DARK, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 16, paddingBottom: 32 },
+  pickerModalOverlay: { flex: 1, width: '100%', backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end', alignItems: 'center' },
+  pickerModalSheet: { width: '100%', maxWidth: 640, alignSelf: 'center', backgroundColor: DARK, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 16, paddingBottom: 32 },
   pickerDoneBtn: { backgroundColor: GOLD, borderRadius: 12, paddingVertical: 14, alignItems: 'center', marginTop: 12 },
   pickerDoneBtnText: { color: BLACK, fontSize: 14, fontWeight: '700' },
 

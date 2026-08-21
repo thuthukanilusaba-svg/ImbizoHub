@@ -699,8 +699,8 @@ const styles = StyleSheet.create({
   actionBtnText: { color: BLACK, fontWeight: '700' },
 
   // Modal
-  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },
-  modalSheet: {
+  modalOverlay: { flex: 1, width: '100%', backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end', alignItems: 'center' },
+  modalSheet: { width: '100%', maxWidth: 640, alignSelf: 'center',
     backgroundColor: BLACK, borderTopLeftRadius: 22, borderTopRightRadius: 22,
     padding: 24, paddingBottom: Platform.OS === 'ios' ? 44 : 24,
     maxHeight: '90%',
@@ -709,9 +709,11 @@ const styles = StyleSheet.create({
   modalSub: { fontSize: 13, color: GREY, lineHeight: 19, marginBottom: 18 },
 
   summaryBox: { backgroundColor: DARK, borderRadius: 12, padding: 14, marginBottom: 14, borderWidth: 0.5, borderColor: '#333' },
-  summaryRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 },
-  summaryLabel: { fontSize: 13, color: GREY },
-  summaryValue: { fontSize: 13, color: '#fff' },
+  // alignItems + flexShrink so a long operator name or vehicle wraps
+  // inside the sheet instead of pushing the value off the right edge.
+  summaryRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, marginBottom: 8 },
+  summaryLabel: { fontSize: 13, color: GREY, flexShrink: 1 },
+  summaryValue: { fontSize: 13, color: '#fff', flexShrink: 1, textAlign: 'right' },
   divider: { height: 1, backgroundColor: '#333', marginVertical: 8 },
 
   paymentOptionsBox: { backgroundColor: '#1a1a2e', borderRadius: 12, padding: 14, marginBottom: 16, borderWidth: 0.5, borderColor: '#3a3a5e' },

@@ -574,14 +574,14 @@ const styles = StyleSheet.create({
   emptyText: { fontSize: 16, color: '#fff', fontWeight: '600' },
   emptySubtext: { fontSize: 13, color: GREY, marginTop: 6 },
 
-  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },
+  modalOverlay: { flex: 1, width: '100%', backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end', alignItems: 'center' },
   // FIX: added maxHeight so the ScrollView wrapping this sheet's
   // content (see the modal's render) actually has a bounded box to
   // scroll within — without a bounded parent height, a ScrollView just
   // grows unbounded alongside its content like the plain View it
   // replaced, and still doesn't scroll. See the comment at the modal's
   // render for the reported bug this fixes.
-  modalSheet: {
+  modalSheet: { width: '100%', maxWidth: 640, alignSelf: 'center',
     backgroundColor: BLACK, borderTopLeftRadius: 20, borderTopRightRadius: 20,
     padding: 24, paddingBottom: Platform.OS === 'ios' ? 40 : 24,
     maxHeight: '85%',
