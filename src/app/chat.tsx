@@ -160,6 +160,22 @@ export default function ChatScreen() {
   const sessionChannelRef = useRef<any>(null);
   const newSessionChannelRef = useRef<any>(null);
 
+  // Van-hire only. The accepted quote's id, which is what meetpay.tsx
+  // keys a van_hire session on (reference_id).
+  //
+  // Why this lives in the chat: trip completion is mutual — both the
+  // customer and the driver have to confirm — but the customer's only
+  // route to that screen was a modal inside quotes.tsx, and tapping
+  // 'Chat with operator' navigated away from it. Getting back meant
+  // returning to the quote card and reopening it, which reads as
+  // 'redo the whole thing'. Meanwhile the driver had no route at all.
+  //
+  // The chat is where both people already are when a trip wraps up, and
+  // it is the one screen both of them can always reach, so the button
+  // belongs here. meetpay.tsx works out on its own which side you are,
+  // so the same pill serves both without branching.
+  const [acceptedQuoteId, setAcceptedQuoteId] = useState<string | null>(null);
+
   const [itemIsPhysical, setItemIsPhysical] = useState(true);
 
   useEffect(() => {
@@ -409,6 +425,21 @@ export default function ChatScreen() {
     });
     return () => subscription.remove();
   }, [myId]);
+
+  useEffect(() => {
+    if (!isRequestChat || !request_id) { setAcceptedQuoteId(null); return; }
+    let cancelled = false;
+    (async () => {
+      const { data } = await supabase
+        .from('quotes')
+        .select('id')
+        .eq('request_id', request_id as string)
+        .eq('status', 'accepted')
+        .maybeSingle();
+      if (!cancelled) setAcceptedQuoteId(data?.id ?? null);
+    })();
+    return () => { cancelled = true; };
+  }, [isRequestChat, request_id]);
 
   async function fetchOtherPersonName(idOverride?: string) {
     const id = idOverride || (receiver_id as string | undefined) || resolvedReceiverId;
@@ -1103,6 +1134,20 @@ export default function ChatScreen() {
           </View>
         </View>
         <View style={styles.headerRight}>
+          {/* Van-hire: the same pill, routed to the dedicated mutual-
+              confirmation screen instead of the in-chat PIN modal.
+              Only appears once a quote has actually been accepted —
+              before that there is no trip to confirm. Shown to BOTH
+              sides; meetpay.tsx decides which half you are confirming. */}
+          {isRequestChat && acceptedQuoteId && (
+            <TouchableOpacity
+              style={styles.meetPayHeaderBtn}
+              onPress={() => router.push(`/meetpay?type=van_hire&reference_id=${acceptedQuoteId}`)}
+            >
+              <Text style={styles.meetPayHeaderIcon}>🔒</Text>
+              <Text style={styles.meetPayHeaderText}>Confirm trip</Text>
+            </TouchableOpacity>
+          )}
           {!isRequestChat && (listing_id || isItemRequestChat) && (
             <TouchableOpacity
               style={styles.meetPayHeaderBtn}
