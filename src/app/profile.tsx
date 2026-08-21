@@ -85,6 +85,7 @@ import BottomNav from '../../components/BottomNav';
 import { DELIVERY_BOOKING_ENABLED, DELIVERY_OPERATOR_SIGNUP_PAUSED_MESSAGE, DELIVERY_PAUSED_TITLE } from '../../lib/featureFlags';
 import { normalizeImageOrientation } from '../../lib/imageOrientation';
 import { supabase } from '../../lib/supabase';
+import CityPicker from '../../components/CityPicker';
 import { prepareUpload } from '../../lib/uploadHelpers';
 
 const GOLD = '#B8860B';
@@ -132,6 +133,13 @@ export default function ProfileScreen() {
   const [draftName, setDraftName] = useState('');
   const [draftPhone, setDraftPhone] = useState('');
   const [draftLocation, setDraftLocation] = useState('');
+  // Transport operators only. base_city decides which trips they are
+  // shown (see lib/cities.ts), and until now it could only be set once,
+  // during registration — an operator who moved city, or simply tapped
+  // the wrong one, had no route back to that form and was stuck seeing
+  // the wrong city's work permanently.
+  const [baseCity, setBaseCity] = useState('');
+  const [draftBaseCity, setDraftBaseCity] = useState('');
 
   useEffect(() => { loadProfile(); }, []);
 
@@ -156,6 +164,7 @@ export default function ProfileScreen() {
       setFullName(profile.full_name ?? '');
       setPhone(profile.phone ?? '');
       setLocation(profile.location ?? '');
+      setBaseCity(profile.base_city ?? '');
       setAccountType(profile.account_type ?? 'buyer');
       setAvatarUrl(profile.avatar_url ?? null);
       setCreatedAt(profile.created_at ?? '');
@@ -300,6 +309,7 @@ export default function ProfileScreen() {
 
   function startEditing() {
     setDraftName(fullName); setDraftPhone(phone); setDraftLocation(location);
+    setDraftBaseCity(baseCity);
     setEditing(true); setError('');
   }
 
@@ -307,11 +317,21 @@ export default function ProfileScreen() {
     setError(''); setSaving(true);
     const { error: updateError } = await supabase
       .from('profiles')
-      .update({ full_name: draftName.trim(), phone: draftPhone.trim(), location: draftLocation.trim() })
+      .update({
+        full_name: draftName.trim(),
+        phone: draftPhone.trim(),
+        location: draftLocation.trim(),
+        // Only written for transport operators. Sending base_city for
+        // everyone else would put a value on accounts the filter never
+        // consults, which is harmless today but misleading to anyone
+        // reading the table later.
+        ...(accountType === 'transport_operator' ? { base_city: draftBaseCity || null } : {}),
+      })
       .eq('id', userId);
     setSaving(false);
     if (updateError) { setError(updateError.message); return; }
     setFullName(draftName.trim()); setPhone(draftPhone.trim()); setLocation(draftLocation.trim());
+    if (accountType === 'transport_operator') setBaseCity(draftBaseCity);
     setEditing(false);
   }
 
@@ -579,6 +599,24 @@ export default function ProfileScreen() {
                 <Text style={styles.label}>Location</Text>
                 <TextInput style={styles.input} value={draftLocation} onChangeText={setDraftLocation}
                   placeholder="e.g. Harare" placeholderTextColor="#666" />
+
+                {/* Operators only. This is the field that decides which
+                    trips they are shown, so it is worth naming that
+                    consequence here rather than leaving them to work out
+                    why their list changed. */}
+                {accountType === 'transport_operator' && (
+                  <>
+                    <Text style={styles.label}>Base city</Text>
+                    <CityPicker
+                      value={draftBaseCity}
+                      onChange={setDraftBaseCity}
+                      placeholder="Select your city"
+                    />
+                    <Text style={styles.baseCityHint}>
+                      You&apos;ll see trips starting in this city. Change it if you move.
+                    </Text>
+                  </>
+                )}
                 <View style={styles.editActions}>
                   <TouchableOpacity style={styles.cancelBtn} onPress={() => setEditing(false)}>
                     <Text style={styles.cancelBtnText}>Cancel</Text>
@@ -738,6 +776,7 @@ const styles = StyleSheet.create({
   earnHeaderBadgeText: { color: GOLD, fontSize: 10, fontWeight: '700' },
 
   label: { fontSize: 12, fontWeight: '600', color: GREY, marginBottom: 6, marginTop: 12 },
+  baseCityHint: { color: '#888', fontSize: 12, marginTop: 6, marginBottom: 4 },
   input: {
     backgroundColor: DARK, borderRadius: 10, paddingHorizontal: 14,
     paddingVertical: Platform.OS === 'ios' ? 13 : 10, fontSize: 14, color: '#fff',
