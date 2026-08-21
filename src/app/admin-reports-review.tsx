@@ -179,7 +179,11 @@ export default function AdminReportsReviewScreen() {
 
   return (
     <View style={styles.container}>
+      {/* style={{flex:1}} required for web scrolling — contentContainerStyle
+          alone leaves the ScrollView itself unbounded, so it grows to fit
+          its content and never overflows. Same fix as dealer.tsx. */}
       <ScrollView
+        style={{ flex: 1 }}
         contentContainerStyle={styles.content}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={GOLD} />}
       >

@@ -402,7 +402,22 @@ export default function BrowseWantedScreen() {
               it, a ScrollView here would still just grow unbounded
               alongside its content instead of actually scrolling. */}
           <View style={[styles.modalSheet, { paddingBottom: (Platform.OS === 'ios' ? 40 : 24) + insets.bottom }]}>
-            <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+            {/* flexShrink:1 is what actually makes this scroll on web.
+                The sheet above caps its own height at 85%, but a
+                react-native-web ScrollView with no height constraint of
+                its own still grows to fit its content and spills past
+                that cap instead of scrolling inside it. Allowing it to
+                shrink below its content is what creates the overflow
+                that overflow:auto then scrolls.
+
+                flexShrink rather than flex:1 on purpose: a short form
+                should still hug its content rather than stretch to fill
+                85% of the screen. */}
+            <ScrollView
+              style={{ flexShrink: 1 }}
+              showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+            >
             {!submitted ? (
               <>
                 <Text style={styles.modalTitle}>Your response</Text>
