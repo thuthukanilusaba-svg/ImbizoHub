@@ -64,6 +64,26 @@ export default function BecomeOperatorScreen() {
   const { type } = useLocalSearchParams<{ type: 'delivery' | 'operator' }>();
   const isDelivery = type === 'delivery';
 
+  // REQUIRED, and the most consequential field on this screen.
+  //
+  // Why it was added: quotes.tsx's confirmation screen tells the
+  // customer "Platform fee paid. Here are your operator's contact
+  // details." and then renders `operator_phone || 'Not provided'`.
+  // Three of the four registered transport operators had no phone at
+  // all, so that screen was showing "Not provided" — the customer
+  // completed the transaction and received nothing for it. That is the
+  // single point where this product asks someone to act on trust, so it
+  // is the last place it can afford to come up empty.
+  //
+  // How the gap happened: register.tsx collects a phone, but anyone who
+  // signed up with Google never sees that form, and this screen — the
+  // one that actually turns a user into an operator — never asked. So
+  // an operator could register, pay, win a quote and still be
+  // uncontactable.
+  //
+  // Pre-filled from the existing profile when there is one, so the
+  // common case is a glance and a tap, not retyping.
+  const [phone, setPhone] = useState('');
   const [vehicleType, setVehicleType] = useState('');
   const [vehicleCapacity, setVehicleCapacity] = useState('');
   const [operatingArea, setOperatingArea] = useState('');
@@ -136,8 +156,38 @@ export default function BecomeOperatorScreen() {
     return () => { cancelled = true; };
   }, [deliveryGate]);
 
+  // Pre-fill the phone from the existing profile. Runs once; if the
+  // profile has none (the Google-signup case this field exists for)
+  // the input simply stays empty and the operator types one.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user || cancelled) return;
+      const { data } = await supabase
+        .from('profiles')
+        .select('phone')
+        .eq('id', user.id)
+        .maybeSingle();
+      if (!cancelled && data?.phone) setPhone(data.phone);
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
   async function handleSubmit() {
     setErrorMsg('');
+
+    // Checked before vehicle type: without a number the operator cannot
+    // be reached at all, which makes everything else on this form
+    // pointless. Deliberately permissive on format — Zimbabwean numbers
+    // get written +263…, 07…, with spaces, dashes or brackets, and
+    // rejecting a real number is worse than accepting an odd-looking
+    // one. This only catches "clearly not a phone number".
+    const digits = phone.replace(/[^0-9]/g, '');
+    if (digits.length < 9) {
+      setErrorMsg('Please enter a phone number customers can reach you on.');
+      return;
+    }
 
     if (isDelivery && !deliveryVehicleType.trim()) {
       setErrorMsg('Please enter your vehicle type.');
@@ -163,6 +213,10 @@ export default function BecomeOperatorScreen() {
       .from('profiles')
       .update({
         account_type: storedType,
+        // The reason this screen now asks for a phone — see the state
+        // declaration. quotes.tsx reads profiles.phone to reveal the
+        // operator's contact details after the fee is paid.
+        phone: phone.trim(),
         vehicle_type: isDelivery ? deliveryVehicleType : vehicleType,
         vehicle_capacity: isDelivery ? null : (parseInt(vehicleCapacity) || null),
         // Informational only — shown on the quote card so buyers can see
@@ -182,6 +236,11 @@ export default function BecomeOperatorScreen() {
       const { error: deliveryError } = await supabase
         .from('delivery_operators')
         .update({
+          // Kept in step with profiles.phone above — delivery_operators
+          // carries its own phone column and the delivery screens read
+          // that one, so writing only the profile would leave this row
+          // with the same empty-contact problem.
+          phone: phone.trim(),
           vehicle_type: deliveryVehicleType,
           // FIX: was missing entirely — see top-of-file comment. This
           // is the only line needed once the column actually exists.
@@ -239,6 +298,26 @@ export default function BecomeOperatorScreen() {
           {isDelivery
             ? 'Payment received — just add your vehicle details and you\'re ready to start accepting deliveries.'
             : 'Payment received — just add your vehicle details and you\'re ready to start bidding on trips.'}
+        </Text>
+
+        {/* Outside the isDelivery branch on purpose: both kinds of
+            operator are contacted by phone, and this is the field the
+            whole paid contact-reveal depends on. Placed first because
+            it is the only required one here. */}
+        <Text style={styles.label}>Phone number</Text>
+        <TextInput
+          style={styles.input}
+          placeholder="e.g. 0771 234 567"
+          placeholderTextColor="#888"
+          value={phone}
+          onChangeText={setPhone}
+          keyboardType="phone-pad"
+          autoComplete="tel"
+        />
+        <Text style={styles.hint}>
+          {isDelivery
+            ? 'Shown to sellers once they book you for a delivery.'
+            : 'Shown to the customer once they accept your quote — this is how they reach you.'}
         </Text>
 
         {isDelivery ? (

@@ -557,7 +557,24 @@ export default function QuotesScreen() {
                   <Text style={styles.contactName}>{chosenQuote.operator_name}</Text>
                   <View style={styles.contactDivider} />
                   <Text style={styles.contactLabel}>Phone number</Text>
-                  <Text style={styles.contactPhone}>{chosenQuote.operator_phone || 'Not provided'}</Text>
+                  {/* become-operator.tsx now requires a phone, so this
+                      fallback should become rare — but it must never be
+                      a dead end. A bare "Not provided" on the screen
+                      that has just told someone their fee was paid
+                      reads as "you got nothing for that", when they can
+                      in fact still reach the operator through the
+                      Message button below. Operators who registered
+                      before the field existed are the remaining case. */}
+                  {chosenQuote.operator_phone ? (
+                    <Text style={styles.contactPhone}>{chosenQuote.operator_phone}</Text>
+                  ) : (
+                    <>
+                      <Text style={styles.contactPhone}>Not provided</Text>
+                      <Text style={styles.contactFallbackHint}>
+                        This operator hasn&apos;t added a number yet — use Message below to reach them in the app.
+                      </Text>
+                    </>
+                  )}
                 </View>
 
                 <View style={styles.balanceReminder}>
@@ -742,6 +759,7 @@ const styles = StyleSheet.create({
   contactName: { fontSize: 18, fontWeight: '700', color: GREEN },
   contactDivider: { height: 1, backgroundColor: '#2a4a2a', width: '100%', marginVertical: 12 },
   contactPhone: { fontSize: 28, fontWeight: '800', color: GREEN },
+  contactFallbackHint: { fontSize: 12, color: GREY, textAlign: 'center', marginTop: 8, lineHeight: 17 },
 
   balanceReminder: { backgroundColor: '#3a2800', borderRadius: 10, padding: 12, marginBottom: 16, borderWidth: 0.5, borderColor: '#5a4400' },
   balanceReminderText: { fontSize: 13, color: GOLD, lineHeight: 20 },
