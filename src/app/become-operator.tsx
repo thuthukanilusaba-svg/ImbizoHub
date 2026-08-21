@@ -87,11 +87,14 @@ export default function BecomeOperatorScreen() {
   const [phone, setPhone] = useState('');
   const [vehicleType, setVehicleType] = useState('');
   const [vehicleCapacity, setVehicleCapacity] = useState('');
-  const [operatingArea, setOperatingArea] = useState('');
-  // The matched value. operating_area above stays free text and stays
-  // purely descriptive on the quote card ('Harare, Bulawayo, or both');
-  // base_city is the one operator-requests.tsx filters on, which is why
-  // it has to come from a fixed list. See lib/cities.ts.
+  // Picked from a fixed list, not typed. It does two jobs: it decides
+  // which trips this operator is shown (see lib/cities.ts) and it is
+  // what customers see on the quote card.
+  //
+  // It REPLACED a free-text 'Where are you based?' field that let an
+  // operator write 'Harare, Bulawayo, or both'. That was worse than
+  // redundant: matching is on pickup city alone, so an operator could
+  // advertise coverage the app would never actually give them.
   const [baseCity, setBaseCity] = useState('');
   const [deliveryVehicleType, setDeliveryVehicleType] = useState('');
   const [deliveryArea, setDeliveryArea] = useState('');
@@ -238,7 +241,6 @@ export default function BecomeOperatorScreen() {
         // Informational only — shown on the quote card so buyers can see
         // roughly where an operator is based before accepting. Not used
         // as a filter anywhere; trip requests stay nationwide by design.
-        operating_area: isDelivery ? null : (operatingArea.trim() || null),
         base_city: isDelivery ? null : (baseCity || null),
       })
       .eq('id', user.id);
@@ -360,18 +362,11 @@ export default function BecomeOperatorScreen() {
             <TextInput style={styles.input} placeholder="e.g. 8" placeholderTextColor="#888"
               value={vehicleCapacity} onChangeText={setVehicleCapacity} keyboardType="numeric" />
             <Text style={styles.label}>Your base city *</Text>
-        <CityPicker value={baseCity} onChange={setBaseCity} placeholder="Select your city" />
-        <Text style={styles.hint}>
-          You&apos;ll see trips starting or ending in this city. Customers still see
-          the wider area you describe below.
-        </Text>
-
-        <Text style={styles.label}>Where are you based? (optional)</Text>
-            <TextInput style={styles.input} placeholder="e.g. Harare, Bulawayo, or both" placeholderTextColor="#888"
-              value={operatingArea} onChangeText={setOperatingArea} />
+            <CityPicker value={baseCity} onChange={setBaseCity} placeholder="Select your city" />
             <Text style={styles.hint}>
-              Shown to buyers on your quotes — trip requests are still visible nationwide.
+              You&apos;ll see trips starting in this city, and customers see it on your quote.
             </Text>
+
           </>
         )}
 

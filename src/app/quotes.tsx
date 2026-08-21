@@ -189,20 +189,25 @@ export default function QuotesScreen() {
     }
 
     const operatorIds = [...new Set((quotesData ?? []).map((q: any) => q.operator_id))];
-    const profileMap: Record<string, { full_name: string; phone: string; operating_area: string }> = {};
+    const profileMap: Record<string, { full_name: string; phone: string; base_city: string }> = {};
     if (operatorIds.length > 0) {
       const { data: profiles } = await supabase
         .from('profiles')
-        .select('id, full_name, phone, operating_area')
+        .select('id, full_name, phone, base_city')
         .in('id', operatorIds);
-      (profiles ?? []).forEach((p: any) => { profileMap[p.id] = { full_name: p.full_name, phone: p.phone, operating_area: p.operating_area }; });
+      (profiles ?? []).forEach((p: any) => { profileMap[p.id] = { full_name: p.full_name, phone: p.phone, base_city: p.base_city }; });
     }
 
     setQuotes((quotesData ?? []).map((q: any) => ({
       ...q,
       operator_name: profileMap[q.operator_id]?.full_name ?? 'Operator',
       operator_phone: profileMap[q.operator_id]?.phone ?? '',
-      operator_area: profileMap[q.operator_id]?.operating_area ?? '',
+      // Was operating_area, a free-text field an operator could fill
+      // with 'Harare, Bulawayo, or both'. Matching is on pickup city
+      // alone, so that let an operator advertise coverage the app would
+      // never give them. base_city is the city they actually get work
+      // in, so it is the honest thing to show a customer.
+      operator_area: profileMap[q.operator_id]?.base_city ?? '',
     })));
     setLoading(false);
   }
