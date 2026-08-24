@@ -229,6 +229,12 @@ export default function SellerDeliveriesScreen() {
   }
 
   function chooseDispatchPhotoSource(bookingId: string) {
+    // The same dead three-button alert as profile.tsx's avatar picker
+    // — see that comment for why it does nothing on web. Found by
+    // sweeping every Alert.alert call for three or more buttons, not
+    // by waiting for it to be reported separately.
+    if (Platform.OS === 'web') { uploadDispatchPhoto(bookingId); return; }
+
     Alert.alert(
       'Add dispatch photo',
       undefined,

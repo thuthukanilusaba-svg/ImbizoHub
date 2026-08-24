@@ -264,6 +264,22 @@ export default function ProfileScreen() {
   }
 
   function chooseAvatarSource() {
+    // WEB FIX (reported: the camera icon does nothing on the website).
+    //
+    // react-native-web maps Alert.alert onto the browser's own
+    // window.alert / window.confirm, which shows at most TWO buttons
+    // and has nowhere to put an onPress callback. A three-button
+    // action sheet therefore does not degrade gracefully — it does
+    // nothing at all, which is exactly how it looked: a button that
+    // swallows every tap.
+    //
+    // Straight to the gallery on web rather than rebuilding the sheet.
+    // launchImageLibraryAsync renders the browser file picker, and on
+    // a laptop that dialog already reaches whatever camera the OS
+    // exposes. launchCameraAsync has no dependable web implementation,
+    // so offering "Take Photo" there would only move the dead button.
+    if (Platform.OS === 'web') { pickAvatar(); return; }
+
     Alert.alert(
       'Update profile photo',
       undefined,
