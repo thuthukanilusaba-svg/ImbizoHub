@@ -199,13 +199,13 @@ export default function OperatorRequestsScreen() {
     // operator had already quoted.
     const { data: { user } } = await supabase.auth.getUser();
     if (user && !user.is_anonymous && data && data.length > 0) {
-      const ids = data.map((r) => r.id);
+      const ids = data.map((r: any) => r.id);
       const { data: myQuotes } = await supabase
         .from('quotes')
         .select('request_id')
         .eq('operator_id', user.id)
         .in('request_id', ids);
-      setMyQuoteRequestIds(new Set((myQuotes ?? []).map((q) => q.request_id)));
+      setMyQuoteRequestIds(new Set((myQuotes ?? []).map((q: any) => q.request_id)));
     } else {
       setMyQuoteRequestIds(new Set());
     }

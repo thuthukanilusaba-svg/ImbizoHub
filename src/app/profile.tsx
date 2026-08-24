@@ -213,7 +213,7 @@ export default function ProfileScreen() {
       const { count } = await supabase
         .from('item_responses')
         .select('*', { count: 'exact', head: true })
-        .in('item_request_id', myOpenRequests.map((r) => r.id));
+        .in('item_request_id', myOpenRequests.map((r: any) => r.id));
       setWantedResponseCount(count ?? 0);
     } else {
       setWantedResponseCount(0);
@@ -789,7 +789,7 @@ const styles = StyleSheet.create({
   avatarImage: { width: 96, height: 96, borderRadius: 48 },
   avatarPlaceholder: { width: 96, height: 96, borderRadius: 48, backgroundColor: GOLD, alignItems: 'center', justifyContent: 'center' },
   avatarInitials: { color: BLACK, fontSize: 32, fontWeight: '800' },
-  avatarOverlay: { ...StyleSheet.absoluteFillObject, borderRadius: 48, backgroundColor: 'rgba(0,0,0,0.5)', alignItems: 'center', justifyContent: 'center' },
+  avatarOverlay: { position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, borderRadius: 48, backgroundColor: 'rgba(0,0,0,0.5)', alignItems: 'center', justifyContent: 'center' },
   avatarEditBadge: { position: 'absolute', bottom: 0, right: 0, width: 30, height: 30, borderRadius: 15, backgroundColor: DARK, borderWidth: 2, borderColor: '#111', alignItems: 'center', justifyContent: 'center' },
   avatarEditIcon: { fontSize: 14 },
 
