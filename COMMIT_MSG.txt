@@ -1,0 +1,53 @@
+Add city matching, close van-hire gaps, fix web-only bugs
+
+Van hire
+- Match trips to operators by pickup city. Operators choose a base city at
+  registration and can change it from their profile when they move.
+- Drivers can now confirm trip completion. Previously only the customer had
+  a route to that screen, so the confirmation could never complete and
+  ratings stayed locked for both sides. Added a "Your trips" section, a
+  Confirm trip pill in the chat, and routing for the trip_half_confirmed
+  notification, which had no handler.
+- The passenger now rates instead of confirming once the driver has, with a
+  fallback so a driver expecting a poor review cannot withhold confirmation
+  to suppress it.
+- Quotes screen no longer goes blank after accepting a quote. It filtered on
+  status='open', but accepting is what flips a request to 'filled', so the
+  operator's phone number was reachable exactly once.
+- Merged operating_area into base_city. The free-text field let an operator
+  advertise coverage the pickup-city filter would never give them.
+- Operator registration now requires a phone number. Three of four operators
+  had none, so the paid contact reveal showed "Not provided".
+
+Web-only fixes
+- Photo pickers did nothing on the website. Alert.alert with three buttons is
+  inert in react-native-web, which maps it to window.confirm. Affected the
+  profile avatar and the delivery dispatch photo; post.tsx was unaffected as
+  it uses separate buttons.
+- Scrolling on dealer, listing, the browse-wanted response modal and both
+  admin review screens. A ScrollView needs its own height constraint in the
+  browser; contentContainerStyle alone leaves it unbounded.
+- Bottom-sheet modals across six screens no longer overflow a wide window.
+- Category chips wrap instead of being clipped.
+
+Marketplace
+- Refuse to unlock a sold listing, including by direct URL. Hiding the button
+  is not the same as refusing the transaction, and that screen is reachable
+  by link.
+- Chat suppresses the unlock prompt once an item is marked sold.
+- Check a wanted post is still open before opening the response form, rather
+  than failing after the message and photo are already written.
+- Replaced repeating review rows with a ratings distribution that stays the
+  same height at five ratings or five thousand.
+- Guard against the same chat message being sent twice.
+
+Branding
+- Real logo in the app header, replacing the placeholder letter.
+- Avatar shows the uploaded photo and links to the profile. The upload flow
+  already existed; nothing pointed at it.
+
+Site and documentation
+- Published the data retention policy at /data-retention.
+- Hourly health check with email alerting, covering stuck payments, overdue
+  deletions, undelivered contact messages and scheduled jobs that stop.
+- Technical overview, revised privacy policy draft, monitoring plan.
