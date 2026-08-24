@@ -58,9 +58,9 @@
 // point ImbizoHub has already been paid for this deal and there's no
 // remaining incentive gap to protect.
 
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, AppState, KeyboardAvoidingView, Modal, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { DELIVERY_BOOKING_ENABLED, DELIVERY_PAUSED_MESSAGE, DELIVERY_PAUSED_TITLE } from '../../lib/featureFlags';
@@ -427,20 +427,26 @@ export default function ChatScreen() {
     return () => subscription.remove();
   }, [myId]);
 
-  useEffect(() => {
-    if (!isRequestChat || !request_id) { setAcceptedQuoteId(null); return; }
-    let cancelled = false;
-    (async () => {
-      const { data } = await supabase
-        .from('quotes')
-        .select('id')
-        .eq('request_id', request_id as string)
-        .eq('status', 'accepted')
-        .maybeSingle();
-      if (!cancelled) setAcceptedQuoteId(data?.id ?? null);
-    })();
-    return () => { cancelled = true; };
-  }, [isRequestChat, request_id]);
+  // Re-checked on every focus, not only when the screen mounts. A quote
+  // is normally accepted while this chat is already open on the other
+  // party's device, so a lookup that ran once left the operator with no
+  // "Confirm trip" pill and no indication that anything had changed.
+  useFocusEffect(
+    useCallback(() => {
+      if (!isRequestChat || !request_id) { setAcceptedQuoteId(null); return; }
+      let cancelled = false;
+      (async () => {
+        const { data } = await supabase
+          .from('quotes')
+          .select('id')
+          .eq('request_id', request_id as string)
+          .eq('status', 'accepted')
+          .maybeSingle();
+        if (!cancelled) setAcceptedQuoteId(data?.id ?? null);
+      })();
+      return () => { cancelled = true; };
+    }, [isRequestChat, request_id])
+  );
 
   async function fetchOtherPersonName(idOverride?: string) {
     const id = idOverride || (receiver_id as string | undefined) || resolvedReceiverId;

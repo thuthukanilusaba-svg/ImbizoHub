@@ -70,7 +70,9 @@
 // these two rows opt into the treatment — every other MenuRow usage on
 // this screen (My activity, etc.) is completely unaffected.
 
+import Constants from 'expo-constants';
 import * as ImagePicker from 'expo-image-picker';
+import * as Updates from 'expo-updates';
 import { useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import {
@@ -670,6 +672,37 @@ export default function ProfileScreen() {
             </View>
           )}
 
+          {/* WHICH BUNDLE AM I RUNNING?
+              Added after an evening lost to the opposite: a phone was
+              running JavaScript several days old, so features that had
+              shipped appeared to be broken and were investigated as
+              bugs. Nothing in the app could answer the question.
+
+              Four values, because between them they explain every way an
+              update fails to arrive:
+                channel          — which channel this build listens on.
+                                   A preview build will never see a
+                                   production update, silently, for ever.
+                isEmbeddedLaunch — still on the bundle baked into the
+                                   build, i.e. no update has ever applied.
+                createdAt        — how old the running bundle is.
+                runtimeVersion   — updates published at a different
+                                   runtime version can never reach it.
+
+              Selectable rather than tappable so it can be copied into a
+              support message on both web and native without pulling in
+              a clipboard dependency. */}
+          <Text style={styles.buildInfo} selectable>
+            {`Version ${Constants.expoConfig?.version ?? '—'} · ${Updates.channel || 'no channel'}`}
+          </Text>
+          <Text style={styles.buildInfo} selectable>
+            {Updates.isEmbeddedLaunch
+              ? 'Built-in bundle — no update applied'
+              : `Update ${Updates.createdAt
+                  ? Updates.createdAt.toLocaleString()
+                  : 'unknown date'} · runtime ${Updates.runtimeVersion ?? '—'}`}
+          </Text>
+
           {/* NEW: account deletion entry point — the real foundation
               the data retention policy depends on. Deliberately placed
               here, low-key, at the very bottom of the screen, rather
@@ -748,6 +781,7 @@ const styles = StyleSheet.create({
   // icon, no color beyond muted grey — this shouldn't visually compete
   // for attention the way every other action on this screen does.
   deleteAccountLink: { alignItems: 'center', paddingVertical: 16, marginTop: 8 },
+  buildInfo: { color: '#555', fontSize: 11, textAlign: 'center', marginTop: 2 },
   deleteAccountLinkText: { color: '#555', fontSize: 12 },
 
   avatarSection: { alignItems: 'center', marginBottom: 24 },

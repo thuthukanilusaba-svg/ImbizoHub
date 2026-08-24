@@ -273,6 +273,17 @@ export default function HireVanScreen() {
       ) : null}
 
       <View style={styles.card}>
+        {/* Order matters here. The two city pickers sit together, and the
+            two free-text addresses sit together above them, rather than
+            interleaving address/city/address/city.
+
+            The earlier order put the destination address between the two
+            city pickers, which meant the person posting could not see
+            both cities at once — and those two answers are the ones that
+            decide who is shown the trip, so they are the pair worth
+            comparing side by side. The addresses are detail for the
+            driver; the cities are the routing. Grouping them by what they
+            are for reads better than grouping them by leg of the journey. */}
         <Text style={styles.label}>Pickup location *</Text>
         <TextInput
           style={styles.input}
@@ -281,12 +292,6 @@ export default function HireVanScreen() {
           value={pickup}
           onChangeText={setPickup}
         />
-
-        <Text style={styles.label}>Pickup city *</Text>
-        <CityPicker value={pickupCity} onChange={setPickupCity} placeholder="Select pickup city" />
-        <Text style={styles.cityHint}>
-          Operators based in this city will see your trip.
-        </Text>
 
         <Text style={styles.label}>Destination *</Text>
         <TextInput
@@ -297,8 +302,14 @@ export default function HireVanScreen() {
           onChangeText={setDestination}
         />
 
+        <Text style={styles.label}>Pickup city *</Text>
+        <CityPicker value={pickupCity} onChange={setPickupCity} placeholder="Select pickup city" />
+
         <Text style={styles.label}>Destination city *</Text>
         <CityPicker value={destinationCity} onChange={setDestinationCity} placeholder="Select destination city" />
+        <Text style={styles.cityHint}>
+          Operators based in the pickup city will see your trip.
+        </Text>
 
         <Text style={styles.label}>Travel date *</Text>
         {Platform.OS === 'web' ? (

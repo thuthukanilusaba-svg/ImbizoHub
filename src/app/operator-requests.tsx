@@ -1,8 +1,8 @@
 // app/operator-requests.tsx
 // Operators browse open trips — blocked until $10 registration paid
 
-import { useRouter } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { useFocusEffect, useRouter } from 'expo-router';
+import { useCallback, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -45,11 +45,31 @@ type Request = {
 };
 
 // A trip this operator has WON — their quote was accepted.
+// The city pair, as one short line. Cities are what decide which
+// operator sees a trip, so they belong at the top of the card rather
+// than being inferred from a street name — 'Town → Lobengula west'
+// means nothing to anyone who does not already know the city.
+//
+// Same city is written 'Within Bulawayo' rather than 'Bulawayo →
+// Bulawayo', which reads as a mistake. Missing cities are older trips
+// posted before the picker existed; they show what is known rather
+// than an arrow with a blank on one side.
+function cityRouteLabel(
+  from?: string | null,
+  to?: string | null
+): string | null {
+  if (!from && !to) return null;
+  if (from && to) return from === to ? `Within ${from}` : `${from} → ${to}`;
+  return from ? `From ${from}` : `To ${to}`;
+}
+
 type AcceptedTrip = {
   quote_id: string;
   price: number;
   pickup: string;
   destination: string;
+  pickup_city: string | null;
+  destination_city: string | null;
   date: string;
   iConfirmed: boolean;
   fullyConfirmed: boolean;
@@ -104,10 +124,18 @@ export default function OperatorRequestsScreen() {
   const [submitted, setSubmitted] = useState(false);
   const [submitError, setSubmitError] = useState('');
 
-  useEffect(() => {
-    checkStatus();
-    fetchRequests();
-  }, []);
+  // Reloads on every focus, not just on mount. The moment a quote is
+  // accepted is exactly when both people are moving between screens, so
+  // a screen that only loaded once showed the operator a stale list with
+  // no won trip on it — and no reason to suspect anything was missing.
+  // Pull-to-refresh worked, but nobody pulls a list they believe is
+  // already current.
+  useFocusEffect(
+    useCallback(() => {
+      checkStatus();
+      fetchRequests();
+    }, [])
+  );
 
   async function checkStatus() {
     const { data: { user } } = await supabase.auth.getUser();
@@ -206,7 +234,7 @@ export default function OperatorRequestsScreen() {
     const requestIds = [...new Set(won.map((q: any) => q.request_id))];
     const { data: reqRows } = await supabase
       .from('requests')
-      .select('id, pickup, destination, date')
+      .select('id, pickup, destination, pickup_city, destination_city, date')
       .in('id', requestIds);
     const reqMap: Record<string, any> = {};
     (reqRows ?? []).forEach((r: any) => { reqMap[r.id] = r; });
@@ -236,6 +264,8 @@ export default function OperatorRequestsScreen() {
             price: q.price,
             pickup: reqMap[q.request_id].pickup,
             destination: reqMap[q.request_id].destination,
+            pickup_city: reqMap[q.request_id].pickup_city ?? null,
+            destination_city: reqMap[q.request_id].destination_city ?? null,
             date: reqMap[q.request_id].date,
             iConfirmed: !!s?.operator_confirmed_at,
             fullyConfirmed: s?.status === 'confirmed',
@@ -396,6 +426,11 @@ export default function OperatorRequestsScreen() {
               <Text style={styles.wonHeading}>Your trips</Text>
               {acceptedTrips.map((t) => (
                 <View key={t.quote_id} style={styles.wonCard}>
+                  {cityRouteLabel(t.pickup_city, t.destination_city) ? (
+                    <Text style={styles.cityRoute} numberOfLines={1}>
+                      {cityRouteLabel(t.pickup_city, t.destination_city)}
+                    </Text>
+                  ) : null}
                   <Text style={styles.wonRoute} numberOfLines={1}>
                     {t.pickup} → {t.destination}
                   </Text>
@@ -447,6 +482,11 @@ export default function OperatorRequestsScreen() {
           const alreadyQuoted = myQuoteRequestIds.has(item.id);
           return (
           <View style={styles.card}>
+            {cityRouteLabel(item.pickup_city, item.destination_city) ? (
+              <Text style={styles.cityRoute} numberOfLines={1}>
+                {cityRouteLabel(item.pickup_city, item.destination_city)}
+              </Text>
+            ) : null}
             <View style={styles.routeRow}>
               <View style={styles.dotGreen} />
               <Text style={styles.routeText} numberOfLines={1}>{item.pickup}</Text>
@@ -640,6 +680,7 @@ const styles = StyleSheet.create({
   // home-indicator/gesture bar.
   listContainer: { flex: 1 },
   list: { padding: 16 },
+  cityRoute: { color: GOLD, fontSize: 12, fontWeight: '800', letterSpacing: 0.4, textTransform: 'uppercase', marginBottom: 8 },
   card: {
     backgroundColor: BLACK, borderRadius: 14, padding: 16,
     borderWidth: 0.5, borderColor: '#333', marginBottom: 14,
