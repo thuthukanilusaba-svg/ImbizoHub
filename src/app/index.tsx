@@ -61,6 +61,7 @@ export default function HomeScreen() {
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(true);
   const [userName, setUserName] = useState('');
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const [showDashboardTab, setShowDashboardTab] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
   const [featuredListing, setFeaturedListing] = useState<any>(null);
@@ -76,7 +77,7 @@ export default function HomeScreen() {
     if (!user) return;
     const { data: profile } = await supabase
       .from('profiles')
-      .select('full_name, is_admin')
+      .select('full_name, is_admin, avatar_url')
       .eq('id', user.id)
       .maybeSingle();
 
@@ -84,6 +85,7 @@ export default function HomeScreen() {
       setUserName(profile.full_name.split(' ')[0]);
     }
 
+    setAvatarUrl(profile?.avatar_url ?? null);
     setIsAdmin(!!profile?.is_admin);
 
     const { count: listingCount } = await supabase
@@ -197,9 +199,14 @@ export default function HomeScreen() {
         <View style={styles.header}>
           <View>
             <View style={styles.logoRow}>
-              <View style={styles.logoIcon}>
-                <Text style={styles.logoLetter}>I</Text>
-              </View>
+              {/* The real mark, not a letter in a circle. Same artwork
+                  as the app icon and the website, so the three places
+                  someone meets this brand now agree. */}
+              <Image
+                source={require('../../assets/images/logo-mark.png')}
+                style={styles.logoIcon}
+                contentFit="contain"
+              />
               <Text style={styles.logoText}>
                 Imbizo<Text style={styles.logoGold}>Hub</Text>
               </Text>
@@ -208,9 +215,25 @@ export default function HomeScreen() {
               {userName ? `${getGreeting()}, ${userName}` : getGreeting()}
             </Text>
           </View>
-          <View style={styles.avatar}>
-            <Text style={styles.avatarText}>{getInitials(userName)}</Text>
-          </View>
+          {/* Tappable, and shows the real photo once one is uploaded.
+              profile.tsx already had the whole upload flow (camera and
+              gallery, with orientation correction) — nothing here ever
+              linked to it, and this header never read avatar_url at
+              all, so a user who had set a photo still saw initials on
+              the screen they look at most. */}
+          <TouchableOpacity
+            onPress={() => router.push('/profile')}
+            activeOpacity={0.8}
+            accessibilityLabel="Your profile"
+          >
+            {avatarUrl ? (
+              <Image source={{ uri: avatarUrl }} style={styles.avatar} />
+            ) : (
+              <View style={styles.avatar}>
+                <Text style={styles.avatarText}>{getInitials(userName)}</Text>
+              </View>
+            )}
+          </TouchableOpacity>
         </View>
 
         {/* REMOVED (product decision): this search bar was purely a
@@ -478,8 +501,9 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#111111' },
   header: { backgroundColor: BLACK, padding: 16, paddingTop: 50, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   logoRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  logoIcon: { width: 24, height: 24, backgroundColor: GOLD, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
-  logoLetter: { color: BLACK, fontSize: 11, fontWeight: '900' },
+  // No backgroundColor: the mark carries its own cream ground, so a
+  // gold circle behind it only shows as fringing at the corners.
+  logoIcon: { width: 26, height: 26, borderRadius: 6 },
   logoText: { fontSize: 18, fontWeight: '800', color: '#fff' },
   logoGold: { color: GOLD },
   greeting: { color: GREY, fontSize: 12, marginTop: 2 },

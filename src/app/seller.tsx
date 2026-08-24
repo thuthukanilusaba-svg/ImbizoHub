@@ -84,7 +84,10 @@ export default function SellerProfileScreen() {
   const [notFound, setNotFound] = useState(false);
   const [profile, setProfile] = useState<any>(null);
   const [listings, setListings] = useState<any[]>([]);
+  // Only ratings that carry written text — see load().
   const [reviews, setReviews] = useState<any[]>([]);
+  // Counts per star level, index 0 = 1★ … index 4 = 5★.
+  const [starCounts, setStarCounts] = useState<number[]>([0, 0, 0, 0, 0]);
   const [listingCount, setListingCount] = useState(0);
 
   useEffect(() => { load(); }, [id]);
@@ -118,14 +121,49 @@ export default function SellerProfileScreen() {
     setListings(activeListings ?? []);
     setListingCount(count ?? 0);
 
-    const { data: recentReviews } = await supabase
+    // TWO queries now, because the old single one conflated two jobs
+    // and did neither well.
+    //
+    // It fetched the 5 most recent ratings and listed them all. Most
+    // ratings carry no written text, so a row read only "★★★★★ Buyer ·
+    // 20 Aug" — five near-identical lines saying nothing a buyer can't
+    // already read off the average at the top of the screen. At a
+    // hundred ratings that becomes a hundred lines of the same
+    // non-information, and the one thing a buyer actually wants to spot
+    // — three 1-stars among ninety-seven 5-stars — is buried or pushed
+    // off the bottom entirely.
+    //
+    // 1. Every rating's star value, for the distribution. One small
+    //    integer column and no limit: the shape of someone's record is
+    //    not something to sample. Worth moving to a server-side
+    //    aggregate if a single seller ever passes a few thousand
+    //    ratings; well below that the payload is trivial and this keeps
+    //    the logic in one readable place.
+    const { data: allStars } = await supabase
+      .from('ratings')
+      .select('stars')
+      .eq('reviewee_id', id);
+
+    const counts = [0, 0, 0, 0, 0];
+    (allStars ?? []).forEach((r: any) => {
+      const n = Math.round(r.stars);
+      if (n >= 1 && n <= 5) counts[n - 1] += 1;
+    });
+    setStarCounts(counts);
+
+    // 2. Only ratings that actually SAY something. A bare star is
+    //    already fully represented in the distribution above, so
+    //    repeating it as a row adds length without adding information.
+    const { data: writtenReviews } = await supabase
       .from('ratings')
       .select('stars, review, role, created_at')
       .eq('reviewee_id', id)
+      .not('review', 'is', null)
+      .neq('review', '')
       .order('created_at', { ascending: false })
       .limit(5);
 
-    setReviews(recentReviews ?? []);
+    setReviews(writtenReviews ?? []);
     setLoading(false);
   }
 
@@ -179,7 +217,8 @@ export default function SellerProfileScreen() {
   }
 
   function renderStars(count: number, size = 16) {
-    return (
+
+  return (
       <View style={{ flexDirection: 'row', gap: 2 }}>
         {[1, 2, 3, 4, 5].map((s) => (
           <Text key={s} style={{ fontSize: size, color: s <= Math.round(count) ? GOLD : '#333' }}>★</Text>
@@ -207,6 +246,8 @@ export default function SellerProfileScreen() {
       </View>
     );
   }
+
+  const totalRatings = starCounts.reduce((a, b) => a + b, 0);
 
   return (
     <View style={styles.container}>
@@ -293,9 +334,51 @@ export default function SellerProfileScreen() {
           </View>
         )}
 
+        {/* THE DISTRIBUTION — one block, same height whether this seller
+            has five ratings or five thousand.
+
+            One hue for all five bars, not five colours. Every bar
+            measures the same thing (how many people gave that score), so
+            this is a magnitude comparison, not five categories. Colouring
+            5★ green and 1★ red would also quietly editorialise: the star
+            label already carries that meaning, and a 1★ is a legitimate
+            data point, not an error state.
+
+            Bar length is the true proportion of the total, with a small
+            floor so a single 1★ among a hundred 5★ is still a visible
+            mark rather than nothing. The exact count sits beside it
+            either way — the number is the precise value, the bar is only
+            the shape. */}
+        {totalRatings > 0 && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Ratings</Text>
+            <View style={styles.breakdownBox}>
+              {[5, 4, 3, 2, 1].map((level) => {
+                const n = starCounts[level - 1];
+                const pct = totalRatings > 0 ? (n / totalRatings) * 100 : 0;
+                return (
+                  <View key={level} style={styles.breakdownRow}>
+                    <Text style={styles.breakdownLabel}>{level}★</Text>
+                    <View style={styles.breakdownTrack}>
+                      {n > 0 && (
+                        <View style={[styles.breakdownFill, { width: `${Math.max(pct, 2)}%` }]} />
+                      )}
+                    </View>
+                    <Text style={styles.breakdownCount}>{n}</Text>
+                  </View>
+                );
+              })}
+            </View>
+          </View>
+        )}
+
+        {/* Only ratings with words. A bare star is already counted above;
+            listing it again is length without information. */}
         {reviews.length > 0 && (
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Recent reviews</Text>
+            <Text style={styles.sectionTitle}>
+              What people said {reviews.length > 0 ? `(${reviews.length})` : ''}
+            </Text>
             {reviews.map((r, i) => (
               <View key={i} style={styles.reviewItem}>
                 <View style={styles.reviewHeader}>
@@ -371,6 +454,14 @@ const styles = StyleSheet.create({
   listingTitle: { color: '#fff', fontSize: 11, fontWeight: '600', marginBottom: 2 },
   listingPrice: { color: GOLD, fontSize: 12, fontWeight: '700' },
 
+  breakdownBox: { backgroundColor: BLACK, borderRadius: 12, padding: 14, borderWidth: 0.5, borderColor: '#333' },
+  breakdownRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 8 },
+  breakdownLabel: { width: 28, fontSize: 12, color: GREY },
+  // The track is the recessive element: it shows the full width a bar
+  // COULD reach, so a short bar reads as short rather than as missing.
+  breakdownTrack: { flex: 1, height: 8, backgroundColor: '#2a2a2a', borderRadius: 4, overflow: 'hidden', marginHorizontal: 8 },
+  breakdownFill: { height: 8, backgroundColor: GOLD, borderRadius: 4 },
+  breakdownCount: { width: 34, fontSize: 12, color: '#ccc', textAlign: 'right' },
   reviewItem: { backgroundColor: BLACK, borderRadius: 12, padding: 14, marginBottom: 10, borderWidth: 0.5, borderColor: '#333' },
   reviewHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 },
   reviewMeta: { fontSize: 11, color: GREY },
