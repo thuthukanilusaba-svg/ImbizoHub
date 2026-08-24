@@ -4,16 +4,16 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 
-<title>Contact ImbizoHub</title>
-<meta name="description" content="Questions about buying, selling, transport or payments on ImbizoHub? Send us a message and we'll get back to you.">
-<link rel="canonical" href="https://imbizohub.com/contact">
+<title>Data Retention &middot; ImbizoHub</title>
+<meta name="description" content="How long ImbizoHub keeps your information, why each period is what it is, and how deletion is enforced automatically.">
+<link rel="canonical" href="https://imbizohub.com/data-retention">
 <meta name="theme-color" content="#111111">
 
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="ImbizoHub">
-<meta property="og:url" content="https://imbizohub.com/contact">
-<meta property="og:title" content="Contact ImbizoHub">
-<meta property="og:description" content="Questions about buying, selling, transport or payments? Send us a message.">
+<meta property="og:url" content="https://imbizohub.com/data-retention">
+<meta property="og:title" content="Data Retention &middot; ImbizoHub">
+<meta property="og:description" content="How long ImbizoHub keeps your information, and why.">
 <meta property="og:image" content="https://imbizohub.com/og-image.png">
 
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -206,170 +206,173 @@
   .lede,.card p,.step p,.t p{max-width:62ch}
 </style>
 <style>
-  .form-wrap{max-width:620px;margin:0 auto}
-  label{display:block;font-weight:600;font-size:15px;margin:20px 0 7px}
-  label .opt{color:var(--muted);font-weight:400}
-  input,select,textarea{
-    width:100%;background:var(--panel);color:#fff;border:1px solid var(--line);
-    border-radius:10px;padding:13px 14px;font-size:16px;font-family:inherit;
-  }
-  input:focus,select:focus,textarea:focus{
-    outline:none;border-color:var(--gold);box-shadow:0 0 0 3px rgba(184,134,11,.18);
-  }
-  textarea{min-height:150px;resize:vertical;line-height:1.6}
-  /* Honeypot: hidden from people, irresistible to bots. Not display:none,
-     which some bots detect and skip. */
-  .hp{position:absolute;left:-9999px;width:1px;height:1px;overflow:hidden}
-  .submit{margin-top:26px;width:100%;font-size:16px;padding:15px 20px}
-  .submit[disabled]{opacity:.6;cursor:not-allowed}
-  .msg{margin-top:18px;padding:14px 16px;border-radius:10px;font-size:15.5px;display:none}
-  .msg.ok{display:block;background:#122A17;border:1px solid #23492C;color:var(--green)}
-  .msg.err{display:block;background:#3a1a1a;border:1px solid #5a2a2a;color:#ff9a9a}
-  .side{color:var(--muted);font-size:15.5px;margin-top:34px;padding-top:22px;border-top:1px solid var(--line)}
+  /* Scoped to this page. The site's global <table> rules are tuned for
+     the landing page's two-column pricing table (fixed layout, gold
+     right-aligned last cell) and would fight a three-column policy
+     table, so this page uses cards instead of a table. Cards also read
+     properly on a phone without the display:block reflow the pricing
+     table needs. */
+  .policy{max-width:820px}
+  .policy h2{margin-top:38px}
+  .rule{border:1px solid var(--line);background:var(--panel);border-radius:14px;padding:20px 22px;margin:14px 0}
+  .rule-top{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:10px 18px}
+  .rule-name{font-weight:700;font-size:17px;letter-spacing:-.01em}
+  .rule-period{color:var(--gold-bright);font-weight:700;font-size:15px;white-space:nowrap}
+  .rule-why{color:var(--muted);font-size:15px;line-height:1.65;margin:10px 0 0}
+  .jobs{list-style:none;padding:0;margin:14px 0 0}
+  .jobs li{border-bottom:1px solid var(--line);padding:13px 0;display:flex;flex-wrap:wrap;
+           justify-content:space-between;gap:6px 18px;font-size:15px}
+  .jobs li:last-child{border-bottom:none}
+  .jobs code{color:var(--gold-bright);font-size:14px}
+  .jobs .when{color:var(--muted);font-size:14px}
+  .updated{color:var(--muted);font-size:14px;margin-top:34px}
 </style>
 </head>
-
 <body>
 
 <header>
   <div class="wrap nav">
     <a class="brand" href="/"><img class="mark" src="/logo.png" alt="ImbizoHub" width="34" height="34">ImbizoHub</a>
     <nav class="nav-links">
-      <a href="/#how">How it works</a>
-      <a href="/#pricing">Pricing</a>
-      <a href="/#safety">Safety</a>
+      <a href="#how">How it works</a>
+      <a href="#pricing">Pricing</a>
+      <a href="#safety">Safety</a>
+      <a href="/contact">Contact</a>
       <a class="btn" href="/app">Open app</a>
     </nav>
   </div>
 </header>
 
 <main>
-  <section style="border-top:none">
-    <div class="wrap form-wrap">
-      <h2>Get in touch</h2>
-      <p class="lede">
-        Question about buying, selling, transport or payments? Send it here and
-        we'll come back to you by email. If it's about a specific deal, mention
-        the item or trip so we can find it quickly.
-      </p>
+  <div class="wrap policy">
 
-      <form id="contactForm" novalidate>
-        <label for="name">Your name</label>
-        <input id="name" name="name" type="text" autocomplete="name" maxlength="120" required>
+    <h1>Data <em>retention</em></h1>
+    <p class="lede">
+      How long ImbizoHub keeps the information you give us, and why each period is what it is.
+    </p>
 
-        <label for="email">Email address</label>
-        <input id="email" name="email" type="email" autocomplete="email" maxlength="200" required>
+    <p class="rule-why">
+      The rule we work to is the one every data protection framework shares, including Zimbabwe's
+      Cyber and Data Protection Act: personal information is kept only as long as it serves the
+      purpose it was collected for. Not one arbitrary number applied to everything. Each period
+      below is tied to a reason we can explain.
+    </p>
 
-        <label for="phone">Phone number <span class="opt">(optional)</span></label>
-        <input id="phone" name="phone" type="tel" autocomplete="tel" maxlength="40" placeholder="+263 …">
+    <h2>What we keep, and for how long</h2>
 
-        <label for="topic">What is it about?</label>
-        <select id="topic" name="topic">
-          <option>General question</option>
-          <option>Problem with the app</option>
-          <option>Seller / operator help</option>
-          <option>Payments</option>
-          <option>Report abuse</option>
-          <option>Business enquiry</option>
-        </select>
-
-        <label for="message">Your message</label>
-        <textarea id="message" name="message" maxlength="5000" required
-                  placeholder="Tell us what you need help with…"></textarea>
-
-        <div class="hp" aria-hidden="true">
-          <label for="website">Leave this empty</label>
-          <input id="website" name="website" type="text" tabindex="-1" autocomplete="off">
+      <div class="rule">
+        <div class="rule-top">
+          <div class="rule-name">ID verification documents — approved</div>
+          <div class="rule-period">Image deleted after 1 year</div>
         </div>
-
-        <button class="btn submit" type="submit" id="submitBtn">Send message</button>
-        <div class="msg" id="formMsg" role="status" aria-live="polite"></div>
-      </form>
-
-      <div class="side">
-        We read everything and reply as quickly as we can. For anything urgent
-        involving money or safety, please also report it inside the app so it
-        reaches the right place immediately.
+        <p class="rule-why">The document exists to confirm identity once. After approval the record that verification happened is what matters; the photograph itself is pure risk with diminishing benefit. One year covers realistic dispute and re-verification windows. Verified status is kept for as long as the account exists.</p>
       </div>
-    </div>
-  </section>
+      <div class="rule">
+        <div class="rule-top">
+          <div class="rule-name">ID verification documents — rejected</div>
+          <div class="rule-period">Deleted after 90 days</div>
+        </div>
+        <p class="rule-why">There is no ongoing purpose once a document has been rejected. Ninety days leaves a reasonable window to appeal.</p>
+      </div>
+      <div class="rule">
+        <div class="rule-top">
+          <div class="rule-name">Payment and transaction records</div>
+          <div class="rule-period">5 years</div>
+        </div>
+        <p class="rule-why">This is the one category where financial and tax regulation sets the requirement rather than data protection law. Zimbabwe's statutory financial record retention period is three to five years; we keep to the longer end.</p>
+      </div>
+      <div class="rule">
+        <div class="rule-top">
+          <div class="rule-name">Chat messages</div>
+          <div class="rule-period">2 years after the conversation goes quiet</div>
+        </div>
+        <p class="rule-why">Balances genuine value in resolving disputes against indefinite accumulation of potentially sensitive conversation. Removed immediately if both participants delete their accounts.</p>
+      </div>
+      <div class="rule">
+        <div class="rule-top">
+          <div class="rule-name">Listing, dispatch and response photos</div>
+          <div class="rule-period">With the item, or 1 year after it completes</div>
+        </div>
+        <p class="rule-why">Tied to the life of whatever the photograph documents — whichever of the two comes later.</p>
+      </div>
+      <div class="rule">
+        <div class="rule-top">
+          <div class="rule-name">Ratings and reviews</div>
+          <div class="rule-period">Anonymised, not deleted</div>
+        </div>
+        <p class="rule-why">If either party deletes their account the name is removed while the score and any written text remain. Deleting reviews outright would undermine the trust other people rely on, but the personal identifier should still go.</p>
+      </div>
+      <div class="rule">
+        <div class="rule-top">
+          <div class="rule-name">Push notification tokens</div>
+          <div class="rule-period">6 months after last successful delivery</div>
+        </div>
+        <p class="rule-why">Tokens go stale on their own as people change or reinstall apps. This formalises clearing out the dead ones.</p>
+      </div>
+      <div class="rule">
+        <div class="rule-top">
+          <div class="rule-name">Profile data</div>
+          <div class="rule-period">Deleted within 30 days of a deletion request</div>
+        </div>
+        <p class="rule-why">Name, phone, email, location and profile photo. Deletion is requested from inside the app; the account is anonymised immediately and fully purged within thirty days.</p>
+      </div>
+      <div class="rule">
+        <div class="rule-top">
+          <div class="rule-name">Trip and delivery records</div>
+          <div class="rule-period">Kept</div>
+        </div>
+        <p class="rule-why">A deliberate decision rather than an oversight. City-level pickup and drop-off points are not sensitive in the way the categories above are, and removing the transaction rows would break legitimate uses that continue — a seller's own history, and the ability to resolve a dispute on a completed job. The genuinely sensitive part of these records, the photographs, is covered above. This is the treatment order history receives on most marketplaces.</p>
+      </div>
+
+    <h2>How this is enforced</h2>
+    <p class="rule-why">
+      These are not intentions. Each period above is carried out by an automated job that runs on a
+      schedule, without anyone having to remember:
+    </p>
+    <ul class="jobs">
+        <li><span><code>delete-expired-accounts</code> &mdash; Purges accounts 30 days after a deletion request.</span><span class="when">Daily, 03:00</span></li>
+        <li><span><code>cleanup-expired-data</code> &mdash; ID documents, stale push tokens, listing and dispatch photos, expired payment records.</span><span class="when">Daily, 04:00</span></li>
+        <li><span><code>cleanup_inactive_messages</code> &mdash; Removes conversations inactive for two years.</span><span class="when">Weekly, Sunday 02:00</span></li>
+    </ul>
+
+    <h2>Deleting your account</h2>
+    <p class="rule-why">
+      You can request deletion from inside the app, under your profile. Your details are anonymised
+      straight away and fully removed within thirty days. Reviews you left stay visible to protect
+      other people who relied on them, but your name is taken off them.
+    </p>
+
+    <h2>Questions</h2>
+    <p class="rule-why">
+      Ask us anything about your data through the <a href="/contact">contact page</a>, or email
+      <a href="mailto:support@imbizohub.com">support@imbizohub.com</a>.
+    </p>
+
+    <p class="updated">Last updated 24 August 2026.</p>
+
+  </div>
 </main>
 
 <footer>
   <div class="wrap">
     <nav class="fnav">
-      <a href="/#how">How it works</a>
-      <a href="/#pricing">Pricing</a>
-      <a href="/#safety">Safety</a>
+      <a href="#how">How it works</a>
+      <a href="#pricing">Pricing</a>
+      <a href="#safety">Safety</a>
       <a href="/contact">Contact</a>
       <a href="/app">Open app</a>
+      <!-- These live on the imbizohub.app GitHub Pages site (the
+           imbizohub-legal repo), NOT on this Vercel deployment.
+           Filenames verified against that repo — an earlier guess at
+           /privacy and /terms 404'd in production. Do not "tidy" these
+           to shorter paths without checking the repo first. -->
       <a href="https://imbizohub.app/privacy-policy.html">Privacy</a>
       <a href="https://imbizohub.app/terms-of-service.html">Terms</a>
       <a href="/data-retention">Data retention</a>
     </nav>
-    <div>&copy; 2026 ImbizoHub &middot; Zimbabwe</div>
+    <div>© 2026 ImbizoHub · Zimbabwe</div>
   </div>
 </footer>
-
-<script>
-(function () {
-  var form = document.getElementById('contactForm');
-  var btn  = document.getElementById('submitBtn');
-  var out  = document.getElementById('formMsg');
-  // Used server-side to reject submissions completed impossibly fast.
-  var started = Date.now();
-
-  function show(kind, text) {
-    out.className = 'msg ' + kind;
-    out.textContent = text;
-  }
-
-  form.addEventListener('submit', async function (e) {
-    e.preventDefault();
-    out.className = 'msg';
-
-    var data = {
-      name: form.name.value,
-      email: form.email.value,
-      phone: form.phone.value,
-      topic: form.topic.value,
-      message: form.message.value,
-      website: form.website.value,
-      started: started
-    };
-
-    if (!data.name.trim())  return show('err', 'Please enter your name.');
-    if (!data.email.trim()) return show('err', 'Please enter your email address.');
-    if (data.message.trim().length < 10) return show('err', 'Please write a little more so we can help properly.');
-
-    btn.disabled = true;
-    btn.textContent = 'Sending…';
-
-    try {
-      var r = await fetch('/api/contact', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(data)
-      });
-      var j = await r.json().catch(function () { return {}; });
-
-      if (r.ok && j.ok) {
-        form.reset();
-        started = Date.now();
-        show('ok', 'Thank you — your message has reached us. We will reply to the email address you gave.');
-        btn.textContent = 'Sent';
-        return;
-      }
-      show('err', j.error || 'Something went wrong. Please try again.');
-    } catch (err) {
-      show('err', 'Could not send just now — please check your connection and try again.');
-    }
-
-    btn.disabled = false;
-    btn.textContent = 'Send message';
-  });
-})();
-</script>
 
 </body>
 </html>
