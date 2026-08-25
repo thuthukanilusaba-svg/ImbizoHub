@@ -169,6 +169,10 @@ Deno.serve(withCors(async (req) => {
   }
 
   try {
+    // seller_id is still accepted so existing clients keep working, but it
+    // is now IGNORED — the operator is read from the quote instead. It was
+    // previously used to address the acceptance notification, which let the
+    // caller point that notification anywhere.
     const { trip_quote_id, buyer_id, seller_id } = await req.json();
     if (!trip_quote_id || !buyer_id || !seller_id) {
       return new Response(JSON.stringify({ error: 'Missing required fields' }), { status: 400 });
@@ -181,13 +185,44 @@ Deno.serve(withCors(async (req) => {
 
     const { data: quote, error: quoteFetchError } = await supabase
       .from('quotes')
-      .select('id, request_id, price')
+      .select('id, request_id, price, operator_id, status')
       .eq('id', trip_quote_id)
       .maybeSingle();
 
     if (quoteFetchError || !quote) {
       console.error('accept-quote-free-promo: quote not found', trip_quote_id);
       return new Response(JSON.stringify({ error: 'Quote not found' }), { status: 404 });
+    }
+
+    // SECURITY: the caller must own the REQUEST this quote is for.
+    //
+    // Checking buyer_id === callerId above proves only that the caller is
+    // who they claim to be — it says nothing about whose trip this is. This
+    // function runs on the service-role key, so row-level security does not
+    // apply and nothing else stood between an authenticated user and any
+    // quote id. Posting someone else's quote id would award their trip,
+    // decline every rival bid on it, mark their request filled and push
+    // "your quote was accepted" to an operator of the caller's choosing.
+    const { data: ownedRequest, error: requestFetchError } = await supabase
+      .from('requests')
+      .select('id, user_id, status')
+      .eq('id', quote.request_id)
+      .maybeSingle();
+
+    if (requestFetchError || !ownedRequest) {
+      console.error('accept-quote-free-promo: request not found', quote.request_id);
+      return new Response(JSON.stringify({ error: 'Trip request not found' }), { status: 404 });
+    }
+    if (ownedRequest.user_id !== callerId) {
+      console.error('accept-quote-free-promo: caller does not own request', { callerId, request: ownedRequest.id });
+      return new Response(JSON.stringify({ error: 'This is not your trip request' }), { status: 403 });
+    }
+
+    // Already settled. Returning early rather than re-running keeps a
+    // retried or duplicated call from demoting an operator who has already
+    // been told they won.
+    if (quote.status !== 'pending' || ownedRequest.status !== 'open') {
+      return new Response(JSON.stringify({ error: 'This trip has already been awarded' }), { status: 409 });
     }
 
     // Mirrors trip_deposit exactly, with depositAmount forced to 0 —
@@ -205,7 +240,8 @@ Deno.serve(withCors(async (req) => {
         deposit_amount: depositAmount,
         balance_amount: balanceAmount,
       })
-      .eq('id', quote.id);
+      .eq('id', quote.id)
+      .eq('status', 'pending');
 
     if (quoteUpdateError) {
       console.error('accept-quote-free-promo: quotes update failed', quoteUpdateError.message);
@@ -217,12 +253,14 @@ Deno.serve(withCors(async (req) => {
       .update({ status: 'declined' })
       .eq('request_id', quote.request_id)
       .neq('id', quote.id)
+      .eq('status', 'pending')
       .select('operator_id');
 
     const { error: requestUpdateError } = await supabase
       .from('requests')
       .update({ status: 'filled' })
-      .eq('id', quote.request_id);
+      .eq('id', quote.request_id)
+      .eq('status', 'open');
 
     if (requestUpdateError) {
       console.error('accept-quote-free-promo: requests update failed', requestUpdateError.message);
@@ -238,7 +276,10 @@ Deno.serve(withCors(async (req) => {
       notes: `Commitment fee waived — free launch promotion (through Jan 31, 2027)`,
     });
 
-    await notifyTripDepositPaid(seller_id, quote.request_id);
+    // quote.operator_id, NOT the body's seller_id — the body is caller-
+    // supplied and was previously able to direct this notification at any
+    // account at all.
+    await notifyTripDepositPaid(quote.operator_id, quote.request_id);
 
     const declinedOperatorIds = (declinedQuotes ?? []).map((q) => q.operator_id);
     await notifyQuotesDeclined(declinedOperatorIds, quote.request_id);
