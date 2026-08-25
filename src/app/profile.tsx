@@ -146,7 +146,13 @@ export default function ProfileScreen() {
   // operator registration all happen on other screens and come back
   // here — and a screen that read the row once showed the value from
   // before the change, indistinguishable from the save having failed.
-  useFocusEffect(useCallback(() => { loadProfile(); }, []));
+  // Skipped while the edit form is open. Reloading mid-edit would replace
+  // what the person is typing with the values already in the database —
+  // and because the form then saves those, the edit is lost silently and
+  // looks exactly like a save that does not work.
+  useFocusEffect(useCallback(() => {
+    if (!editing) loadProfile();
+  }, [editing]));
 
   async function loadProfile() {
     setLoading(true);
@@ -175,9 +181,11 @@ export default function ProfileScreen() {
       setCreatedAt(profile.created_at ?? '');
       setRating(profile.rating ?? 0);
       setRatingCount(profile.rating_count ?? 0);
-      setDraftName(profile.full_name ?? '');
-      setDraftPhone(profile.phone ?? '');
-      setDraftLocation(profile.location ?? '');
+      // Drafts are deliberately NOT set here. startEditing() seeds them
+      // from these same values at the moment the form opens, which is the
+      // only time they should change. Setting them on every load meant a
+      // reload could overwrite an edit in progress.
+
     }
 
     const { count } = await supabase
