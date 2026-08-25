@@ -633,7 +633,14 @@ export default function QuotesScreen() {
                     );
                   }}
                 >
-                  <Text style={styles.meetPayBtnText}>🔒 Meet & Pay (confirm trip complete)</Text>
+                  {/* 'Meet & Pay' is the marketplace feature name, where a
+                      buyer genuinely meets a seller and pays them. On a van
+                      hire the money has already been agreed with the driver
+                      and is paid directly, so the name described something
+                      that does not happen here — leaving the real purpose
+                      confined to the brackets. Renamed for this flow only;
+                      the marketplace keeps the name it has always had. */}
+                  <Text style={styles.meetPayBtnText}>🔒 Proceed</Text>
                 </TouchableOpacity>
 
                 <TouchableOpacity
