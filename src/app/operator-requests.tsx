@@ -267,7 +267,12 @@ export default function OperatorRequestsScreen() {
       // is buyer_confirmed_at and the operator-side one is named for the
       // role, not the seller/buyer pairing used elsewhere.
       .select('reference_id, operator_confirmed_at, status')
-      .in('reference_id', quoteIds);
+      .in('reference_id', quoteIds)
+      // Scoped to van_hire: reference_id holds quote ids, listing ids and
+      // UUIDs in one text column, and quote ids and listing ids are both
+      // small integers. Without this a trip can read a listing's session
+      // and show the wrong confirmation state.
+      .eq('type', 'van_hire');
     const sessionMap: Record<string, any> = {};
     (sessions ?? []).forEach((s: any) => { sessionMap[s.reference_id] = s; });
 

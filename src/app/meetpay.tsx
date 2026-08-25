@@ -99,6 +99,11 @@ export default function MeetPayScreen() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [confirming, setConfirming] = useState(false);
+  // Whether this person has already rated this trip. Rating is once-only
+  // server-side (submit_rating returns 'already_rated'), but nothing said
+  // so — the button kept inviting a second rating that would quietly do
+  // nothing.
+  const [iAlreadyRated, setIAlreadyRated] = useState(false);
   const channelRef = useRef<any>(null);
 
   useEffect(() => {
@@ -182,6 +187,11 @@ export default function MeetPayScreen() {
       .from('meetpay_sessions')
       .select('*')
       .eq('reference_id', effectiveReferenceId)
+      // Scoped to van_hire. reference_id holds quote ids, listing ids and
+      // UUIDs in the same text column, and quote ids and listing ids are
+      // both small integers — without this a trip can pick up a listing's
+      // session and show the wrong confirmation state entirely.
+      .eq('type', 'van_hire')
       .order('created_at', { ascending: false })
       .limit(1)
       .maybeSingle();
@@ -189,6 +199,13 @@ export default function MeetPayScreen() {
     if (existing) {
       setSession(existing);
       subscribeToSession(existing.id);
+      const { data: mine } = await supabase
+        .from('ratings')
+        .select('id')
+        .eq('meetpay_session_id', existing.id)
+        .eq('reviewer_id', user.id)
+        .maybeSingle();
+      setIAlreadyRated(!!mine);
     } else {
       // FIX: pass the DB-verified quote.operator_id, not the raw
       // seller_id URL param — see top-of-file comment. Without this, a
@@ -343,14 +360,21 @@ export default function MeetPayScreen() {
             <Text style={styles.confirmedAmountValue}>${session.amount}</Text>
           </View>
         ) : null}
-        <TouchableOpacity
-          style={styles.doneBtn}
-          onPress={() => router.push(
-            `/rating?session_id=${session.id}&reviewee_id=${role === 'buyer' ? session.seller_id : session.buyer_id}&role=${role}`
-          )}
-        >
-          <Text style={styles.doneBtnText}>⭐ Rate this trip</Text>
-        </TouchableOpacity>
+        {/* Rating is once-only in the database — submit_rating returns
+            'already_rated' rather than writing a second row. This says so,
+            instead of offering a button that quietly does nothing. */}
+        {iAlreadyRated ? (
+          <Text style={styles.alreadyRatedNote}>⭐ You have already rated this trip</Text>
+        ) : (
+          <TouchableOpacity
+            style={styles.doneBtn}
+            onPress={() => router.push(
+              `/rating?session_id=${session.id}&reviewee_id=${role === 'buyer' ? session.seller_id : session.buyer_id}&role=${role}`
+            )}
+          >
+            <Text style={styles.doneBtnText}>⭐ Rate this trip</Text>
+          </TouchableOpacity>
+        )}
         <TouchableOpacity style={styles.skipLink} onPress={() => router.replace('/')}>
           <Text style={styles.skipLinkText}>Skip for now</Text>
         </TouchableOpacity>
@@ -373,6 +397,27 @@ export default function MeetPayScreen() {
           <ActivityIndicator color={GOLD} style={{ marginVertical: 12 }} />
           <Text style={styles.waitingText}>Waiting for {otherRoleLabel} to confirm too...</Text>
         </View>
+
+        {/* Without this the passenger was stuck. Confirming alone leaves the
+            session 'pending', which used to land here — a screen with no
+            rate button and no confirm button — so a driver who simply never
+            confirmed could block the rating entirely. That is precisely
+            what the two-sided flow exists to prevent, so the way out has to
+            stay open from this screen too. */}
+        {role === 'buyer' && (
+          iAlreadyRated ? (
+            <Text style={styles.alreadyRatedNote}>⭐ You have already rated this trip</Text>
+          ) : (
+            <TouchableOpacity
+              style={styles.confirmBtn}
+              onPress={() => router.push(
+                `/rating?session_id=${session.id}&reviewee_id=${session.seller_id}&role=${role}`
+              )}
+            >
+              <Text style={styles.confirmBtnText}>⭐ Rate your driver</Text>
+            </TouchableOpacity>
+          )
+        )}
       </View>
     );
   }
@@ -510,6 +555,7 @@ const styles = StyleSheet.create({
   confirmedEmoji: { fontSize: 64, marginBottom: 20 },
   confirmedTitle: { fontSize: 24, fontWeight: '800', color: '#fff', marginBottom: 10, textAlign: 'center' },
   confirmedBody: { fontSize: 14, color: GREY, textAlign: 'center', lineHeight: 20, marginBottom: 24 },
+  alreadyRatedNote: { color: '#777', fontSize: 13, textAlign: 'center', marginTop: 18, fontWeight: '600' },
   confirmedAmountBox: { backgroundColor: BLACK, borderRadius: 14, padding: 18, alignItems: 'center', marginBottom: 28, borderWidth: 0.5, borderColor: '#333', minWidth: 160 },
   confirmedAmountLabel: { fontSize: 11, color: GREY, marginBottom: 4 },
   confirmedAmountValue: { fontSize: 28, fontWeight: '800', color: GREEN },
