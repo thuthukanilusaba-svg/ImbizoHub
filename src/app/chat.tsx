@@ -183,6 +183,12 @@ export default function ChatScreen() {
   // is shown to both, and each side describes the same event in its own
   // terms — the passenger received a service, the driver finished a job.
   const [iAmTheOperator, setIAmTheOperator] = useState(false);
+  // Whether the driver has already confirmed his half, and whether the
+  // trip is fully done. Drives the prompt below: the passenger should be
+  // told when it is their turn rather than having to know that a pill in
+  // the header is waiting for them.
+  const [operatorConfirmed, setOperatorConfirmed] = useState(false);
+  const [tripFullyConfirmed, setTripFullyConfirmed] = useState(false);
 
   const [itemIsPhysical, setItemIsPhysical] = useState(true);
 
@@ -454,6 +460,19 @@ export default function ChatScreen() {
           // The accepted quote already names the operator, so working
           // out which side this reader is on costs no extra query.
           setIAmTheOperator(!!data && !!myId && data.operator_id === myId);
+        }
+        if (!cancelled && data?.id) {
+          // reference_id on a van_hire session is the quote id, stored as text.
+          const { data: sess } = await supabase
+            .from('meetpay_sessions')
+            .select('operator_confirmed_at, status')
+            .eq('reference_id', String(data.id))
+            .eq('type', 'van_hire')
+            .maybeSingle();
+          if (!cancelled) {
+            setOperatorConfirmed(!!sess?.operator_confirmed_at);
+            setTripFullyConfirmed(sess?.status === 'confirmed');
+          }
         }
       })();
       return () => { cancelled = true; };
@@ -1250,6 +1269,35 @@ export default function ChatScreen() {
         </View>
       )}
 
+      {/* The passenger's turn, announced rather than waited for.
+
+          The header pill has always been there, but a pill is something
+          you have to already know to look for — and the moment that
+          matters is the one the passenger cannot see: the driver marking
+          the trip finished on his own phone. This says so, in the place
+          they are already looking.
+
+          The pill deliberately stays. A passenger must still be able to
+          reach this screen when a driver never confirms — otherwise a
+          driver expecting a poor review could withhold confirmation and
+          silently block the rating, which is the exact failure the
+          two-sided flow was built to prevent. */}
+      {isRequestChat && acceptedQuoteId && !iAmTheOperator
+        && operatorConfirmed && !tripFullyConfirmed && (
+        <TouchableOpacity
+          style={styles.tripPromptBar}
+          onPress={() => router.push(`/meetpay?type=van_hire&reference_id=${acceptedQuoteId}`)}
+          activeOpacity={0.85}
+        >
+          <Text style={styles.tripPromptIcon}>✅</Text>
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <Text style={styles.tripPromptTitle}>Your driver marked this trip finished</Text>
+            <Text style={styles.tripPromptBody}>Tap to confirm the service was delivered and rate your driver.</Text>
+          </View>
+          <Text style={styles.tripPromptChevron}>›</Text>
+        </TouchableOpacity>
+      )}
+
       {contactWarning && (
         <View style={styles.contactWarningBar}>
           <Text style={styles.contactWarningText}>
@@ -1607,6 +1655,11 @@ const styles = StyleSheet.create({
   warningBar: { backgroundColor: '#1a1a2e', padding: 8, paddingHorizontal: 16, flexDirection: 'row', alignItems: 'center', gap: 8, borderBottomWidth: 0.5, borderBottomColor: '#333' },
   warningIcon: { fontSize: 14 },
   warningText: { color: '#8888ff', fontSize: 11, flex: 1 },
+  tripPromptBar: { backgroundColor: '#12301a', borderBottomWidth: 0.5, borderBottomColor: '#2c6b3f', paddingVertical: 12, paddingHorizontal: 16, flexDirection: 'row', alignItems: 'center', gap: 12 },
+  tripPromptIcon: { fontSize: 18 },
+  tripPromptTitle: { color: '#7ee2a0', fontSize: 13, fontWeight: '800' },
+  tripPromptBody: { color: '#9fdcb4', fontSize: 11, marginTop: 2 },
+  tripPromptChevron: { color: '#7ee2a0', fontSize: 20, fontWeight: '700' },
   contactWarningBar: { backgroundColor: '#3a1a1a', padding: 10, paddingHorizontal: 16, borderBottomWidth: 0.5, borderBottomColor: '#5a2a2a' },
   contactWarningText: { color: '#ff8a8a', fontSize: 11, lineHeight: 16 },
   messages: { flex: 1, backgroundColor: '#111', padding: 16 },
