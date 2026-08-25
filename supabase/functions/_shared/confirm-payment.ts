@@ -461,14 +461,23 @@ export async function confirmPaymentIntent(
       return { ok: false, error: 'DB error' };
     }
 
-    await supabase.from('transactions').insert({
+    // Same bug as accept-quote-free-promo had, on the REAL payment path:
+    // quotes.id is bigint, transactions.reference_id was uuid, so every
+    // paid trip deposit would have failed to record a ledger row — with
+    // the error swallowed, because this was a bare insert with no error
+    // check. It has not bitten yet only because the launch promo bypasses
+    // this branch entirely; it would have started the day the promo ends.
+    const { error: txError } = await supabase.from('transactions').insert({
       user_id: intent.buyer_id,
       type: 'deposit',
       amount: depositAmount,
-      reference_id: quote.id,
+      reference_id: String(quote.id),
       status: 'completed',
       notes: `Commitment fee (7%, capped at $15) — trip request, paid via Paynow`,
     });
+    if (txError) {
+      console.error('confirm-payment: trip_deposit transactions insert failed', txError.message, txError.code);
+    }
 
     await notifyTripDepositPaid(supabase, intent.seller_id, quote.request_id);
 

@@ -267,14 +267,29 @@ Deno.serve(withCors(async (req) => {
       return new Response(JSON.stringify({ error: 'DB error' }), { status: 500 });
     }
 
-    await supabase.from('transactions').insert({
+    // String(quote.id): quotes.id is bigint and transactions.reference_id
+    // was uuid, so this insert was rejected by Postgres on every single
+    // accept. The column is now text (see the
+    // transactions_reference_id_to_text migration) and the value is
+    // stringified explicitly rather than relying on PostgREST to coerce it.
+    //
+    // The error is checked now too. It was a bare `await ... .insert()`
+    // with no error handling, so the rejection was swallowed and this
+    // function still returned ok — two quotes were accepted today and the
+    // transactions table had zero rows. Still non-fatal: the trip really
+    // is awarded by this point, and failing the whole call over a missing
+    // ledger row would be worse. But it must not be silent.
+    const { error: txError } = await supabase.from('transactions').insert({
       user_id: buyer_id,
       type: 'deposit',
       amount: 0,
-      reference_id: quote.id,
+      reference_id: String(quote.id),
       status: 'completed',
       notes: `Commitment fee waived — free launch promotion (through Jan 31, 2027)`,
     });
+    if (txError) {
+      console.error('accept-quote-free-promo: transactions insert failed', txError.message, txError.code);
+    }
 
     // quote.operator_id, NOT the body's seller_id — the body is caller-
     // supplied and was previously able to direct this notification at any
