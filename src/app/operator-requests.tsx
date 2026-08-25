@@ -63,6 +63,21 @@ function cityRouteLabel(
   return from ? `From ${from}` : `To ${to}`;
 }
 
+// A quote this operator submitted that did not (or has not yet) turned
+// into a trip. Deliberately separate from AcceptedTrip: a won trip is
+// work to do, these are a record of bids — different urgency, different
+// place on the screen.
+type MyQuote = {
+  quote_id: string;
+  price: number;
+  pickup: string;
+  destination: string;
+  pickup_city: string | null;
+  destination_city: string | null;
+  date: string;
+  status: 'pending' | 'declined';
+};
+
 type AcceptedTrip = {
   quote_id: string;
   price: number;
@@ -108,6 +123,7 @@ export default function OperatorRequestsScreen() {
   // driver to confirm too..." forever, because the driver had no way to
   // do it. Reported exactly that way.
   const [acceptedTrips, setAcceptedTrips] = useState<AcceptedTrip[]>([]);
+  const [myQuotes, setMyQuotes] = useState<MyQuote[]>([]);
 
   // This operator's base city, used to filter the open-trip list.
   // null means 'not set' and deliberately shows everything — see
@@ -200,17 +216,18 @@ export default function OperatorRequestsScreen() {
     const { data: { user } } = await supabase.auth.getUser();
     if (user && !user.is_anonymous && data && data.length > 0) {
       const ids = data.map((r: any) => r.id);
-      const { data: myQuotes } = await supabase
+      const { data: quotesOnOpenRequests } = await supabase
         .from('quotes')
         .select('request_id')
         .eq('operator_id', user.id)
         .in('request_id', ids);
-      setMyQuoteRequestIds(new Set((myQuotes ?? []).map((q: any) => q.request_id)));
+      setMyQuoteRequestIds(new Set((quotesOnOpenRequests ?? []).map((q: any) => q.request_id)));
     } else {
       setMyQuoteRequestIds(new Set());
     }
 
     await fetchAcceptedTrips();
+    await fetchMyQuotes();
 
     setLoading(false);
   }
@@ -271,6 +288,53 @@ export default function OperatorRequestsScreen() {
             fullyConfirmed: s?.status === 'confirmed',
           };
         })
+    );
+  }
+
+  // Every quote this operator has submitted that is not a won trip.
+  //
+  // WHY THIS EXISTS: until now a quote simply vanished the moment it lost.
+  // The "Quote sent" badge only appears on requests still listed as open,
+  // and "Your trips" only holds accepted ones — so a declined quote was in
+  // neither, and the only notice an operator got was a push notification
+  // that goes nowhere if they have no push token, and nowhere at all on
+  // the website. Someone paying a yearly fee to bid for work could not see
+  // what they had bid on.
+  async function fetchMyQuotes() {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user || user.is_anonymous) { setMyQuotes([]); return; }
+
+    const { data: quotes } = await supabase
+      .from('quotes')
+      .select('id, price, request_id, status, created_at')
+      .eq('operator_id', user.id)
+      .in('status', ['pending', 'declined'])
+      .order('created_at', { ascending: false })
+      .limit(30);
+
+    if (!quotes || quotes.length === 0) { setMyQuotes([]); return; }
+
+    const ids = [...new Set(quotes.map((q: any) => q.request_id))];
+    const { data: reqRows } = await supabase
+      .from('requests')
+      .select('id, pickup, destination, pickup_city, destination_city, date')
+      .in('id', ids);
+    const reqMap: Record<string, any> = {};
+    (reqRows ?? []).forEach((r: any) => { reqMap[r.id] = r; });
+
+    setMyQuotes(
+      quotes
+        .filter((q: any) => reqMap[q.request_id])
+        .map((q: any) => ({
+          quote_id: q.id,
+          price: q.price,
+          pickup: reqMap[q.request_id].pickup,
+          destination: reqMap[q.request_id].destination,
+          pickup_city: reqMap[q.request_id].pickup_city ?? null,
+          destination_city: reqMap[q.request_id].destination_city ?? null,
+          date: reqMap[q.request_id].date,
+          status: q.status,
+        }))
     );
   }
 
@@ -421,7 +485,8 @@ export default function OperatorRequestsScreen() {
         // might bid on, and this is the only place in the app an operator
         // can complete their half of the confirmation.
         ListHeaderComponent={
-          acceptedTrips.length > 0 ? (
+          <>
+          {acceptedTrips.length > 0 ? (
             <View style={styles.wonSection}>
               <Text style={styles.wonHeading}>Your trips</Text>
               {acceptedTrips.map((t) => (
@@ -457,7 +522,40 @@ export default function OperatorRequestsScreen() {
                 </View>
               ))}
             </View>
-          ) : null
+          ) : null}
+
+          {/* Bids that are not (yet) work. Below "Your trips" on purpose —
+              a trip you have been hired for matters more than one you are
+              waiting to hear about. */}
+          {myQuotes.length > 0 ? (
+            <View style={styles.quotesSection}>
+              <Text style={styles.quotesHeading}>Your quotes</Text>
+              {myQuotes.map((q) => (
+                <View key={q.quote_id} style={styles.quoteCard}>
+                  <View style={{ flex: 1, minWidth: 0 }}>
+                    {cityRouteLabel(q.pickup_city, q.destination_city) ? (
+                      <Text style={styles.quoteCity} numberOfLines={1}>
+                        {cityRouteLabel(q.pickup_city, q.destination_city)}
+                      </Text>
+                    ) : null}
+                    <Text style={styles.quoteRoute} numberOfLines={1}>
+                      {q.pickup} → {q.destination}
+                    </Text>
+                    <Text style={styles.quoteMeta}>{q.date} · ${q.price}</Text>
+                  </View>
+                  {/* Named for what it means to the operator, not for the
+                      database value. 'Declined' reads as a judgement on
+                      them; the customer simply chose someone else. */}
+                  <View style={q.status === 'pending' ? styles.chipWaiting : styles.chipLost}>
+                    <Text style={q.status === 'pending' ? styles.chipWaitingText : styles.chipLostText}>
+                      {q.status === 'pending' ? 'Waiting' : 'Not selected'}
+                    </Text>
+                  </View>
+                </View>
+              ))}
+            </View>
+          ) : null}
+          </>
         }
         ListEmptyComponent={
           <View style={styles.empty}>
@@ -680,6 +778,16 @@ const styles = StyleSheet.create({
   // home-indicator/gesture bar.
   listContainer: { flex: 1 },
   list: { padding: 16 },
+  quotesSection: { marginBottom: 18 },
+  quotesHeading: { color: '#888', fontSize: 12, fontWeight: '800', letterSpacing: 0.5, textTransform: 'uppercase', marginBottom: 8 },
+  quoteCard: { backgroundColor: DARK, borderRadius: 12, padding: 12, marginBottom: 8, flexDirection: 'row', alignItems: 'center', gap: 10, borderWidth: 0.5, borderColor: '#2a2a2a' },
+  quoteCity: { color: '#777', fontSize: 10, fontWeight: '800', letterSpacing: 0.4, textTransform: 'uppercase', marginBottom: 3 },
+  quoteRoute: { color: '#ddd', fontSize: 13, fontWeight: '600' },
+  quoteMeta: { color: '#666', fontSize: 11, marginTop: 2 },
+  chipWaiting: { backgroundColor: '#2a2410', borderRadius: 20, paddingHorizontal: 10, paddingVertical: 4, borderWidth: 0.5, borderColor: '#5a4a12' },
+  chipWaitingText: { color: GOLD, fontSize: 10, fontWeight: '800' },
+  chipLost: { backgroundColor: '#241a1a', borderRadius: 20, paddingHorizontal: 10, paddingVertical: 4, borderWidth: 0.5, borderColor: '#4a2a2a' },
+  chipLostText: { color: '#b98080', fontSize: 10, fontWeight: '800' },
   cityRoute: { color: GOLD, fontSize: 12, fontWeight: '800', letterSpacing: 0.4, textTransform: 'uppercase', marginBottom: 8 },
   card: {
     backgroundColor: BLACK, borderRadius: 14, padding: 16,
