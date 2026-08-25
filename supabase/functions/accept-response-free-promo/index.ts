@@ -178,6 +178,50 @@ Deno.serve(withCors(async (req) => {
       return new Response(JSON.stringify({ error: 'buyer_id must match the authenticated user' }), { status: 403 });
     }
 
+    // SECURITY: the caller must own the WANTED POST being matched.
+    //
+    // buyer_id === callerId proves only that the caller is who they claim
+    // to be — it says nothing about whose wanted post this is. This
+    // function runs on the service-role key, so row-level security does
+    // not apply and nothing else stood between an authenticated user and
+    // any item_request_id. Posting someone else's ids would accept a
+    // response on their behalf, decline every other responder and mark
+    // their post matched. Same hole, same fix, as
+    // accept-quote-free-promo.
+    const { data: ownedRequest, error: requestFetchError } = await supabase
+      .from('item_requests')
+      .select('id, user_id, status')
+      .eq('id', item_request_id)
+      .maybeSingle();
+
+    if (requestFetchError || !ownedRequest) {
+      console.error('accept-response-free-promo: item_request not found', item_request_id);
+      return new Response(JSON.stringify({ error: 'Wanted post not found' }), { status: 404 });
+    }
+    if (ownedRequest.user_id !== callerId) {
+      console.error('accept-response-free-promo: caller does not own item_request', { callerId, request: ownedRequest.id });
+      return new Response(JSON.stringify({ error: 'This is not your wanted post' }), { status: 403 });
+    }
+
+    // The response must actually belong to this post, and must still be
+    // open. Without the first check a caller could match their own post
+    // against a response posted on someone else's.
+    const { data: theResponse, error: responseFetchError } = await supabase
+      .from('item_responses')
+      .select('id, item_request_id, responder_id, status')
+      .eq('id', item_response_id)
+      .maybeSingle();
+
+    if (responseFetchError || !theResponse) {
+      return new Response(JSON.stringify({ error: 'Response not found' }), { status: 404 });
+    }
+    if (String(theResponse.item_request_id) !== String(item_request_id)) {
+      return new Response(JSON.stringify({ error: 'That response is not on this wanted post' }), { status: 400 });
+    }
+    if (theResponse.status !== 'pending' || ownedRequest.status === 'matched') {
+      return new Response(JSON.stringify({ error: 'This wanted post has already been matched' }), { status: 409 });
+    }
+
     const { error: responseError } = await supabase
       .from('item_responses')
       .update({
@@ -185,7 +229,8 @@ Deno.serve(withCors(async (req) => {
         commission_paid: true,
         commission_amount: 0,
       })
-      .eq('id', item_response_id);
+      .eq('id', item_response_id)
+      .eq('status', 'pending');
 
     if (responseError) {
       console.error('accept-response-free-promo: item_responses update failed', responseError.message);
@@ -206,7 +251,8 @@ Deno.serve(withCors(async (req) => {
     const { error: requestError } = await supabase
       .from('item_requests')
       .update({ status: 'matched' })
-      .eq('id', item_request_id);
+      .eq('id', item_request_id)
+      .neq('status', 'matched');
 
     if (requestError) {
       console.error('accept-response-free-promo: item_requests update failed', requestError.message);
@@ -221,7 +267,10 @@ Deno.serve(withCors(async (req) => {
       notes: `Wanted-post match fee waived — free launch promotion (through Jan 31, 2027)`,
     });
 
-    await notifyWantedMatchAccepted(seller_id, item_request_id);
+    // theResponse.responder_id, NOT the body's seller_id — the body is
+    // caller-supplied and could previously direct this notification at any
+    // account at all.
+    await notifyWantedMatchAccepted(theResponse.responder_id, item_request_id);
     await notifyResponsesDeclined(
       (declinedResponses ?? []).map((r: any) => r.responder_id),
       item_request_id
