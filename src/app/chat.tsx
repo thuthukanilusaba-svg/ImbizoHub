@@ -71,6 +71,7 @@ import {
   notifyTransactionConfirmed
 } from '../../lib/notifications';
 import { supabase } from '../../lib/supabase';
+import { useWebKeyboardInset } from '../../lib/useWebKeyboardInset';
 
 const GOLD = '#B8860B';
 const BLACK = '#1A1A18';
@@ -94,6 +95,8 @@ function getInitials(name: string): string {
 export default function ChatScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  // 0 on native and on any browser without visualViewport; see the hook.
+  const webKeyboardInset = useWebKeyboardInset();
   const { listing_id, receiver_id, openDeal, request_id, item_request_id } = useLocalSearchParams();
   const isRequestChat = !listing_id && !item_request_id && !!request_id;
   const isItemRequestChat = !listing_id && !request_id && !!item_request_id;
@@ -1106,8 +1109,13 @@ export default function ChatScreen() {
   }
 
   return (
+    // KeyboardAvoidingView still does the work in the native apps. On the
+    // website it is inert — the browser emits no keyboard events — so the
+    // padding below is what keeps the message input above the keyboard
+    // there. Both are harmless where the other applies: the inset is
+    // always 0 on native, and the component is a plain View on web.
     <KeyboardAvoidingView
-      style={styles.container}
+      style={[styles.container, webKeyboardInset > 0 && { paddingBottom: webKeyboardInset }]}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
       <StatusBar style="light" />
