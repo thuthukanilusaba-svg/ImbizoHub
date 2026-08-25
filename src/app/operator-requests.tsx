@@ -439,7 +439,7 @@ export default function OperatorRequestsScreen() {
                   </Text>
 
                   {t.fullyConfirmed ? (
-                    <Text style={styles.wonDone}>✓ Trip confirmed by both of you</Text>
+                    <Text style={styles.wonDone}>✓ Completed and confirmed by both of you</Text>
                   ) : t.iConfirmed ? (
                     <Text style={styles.wonWaiting}>You confirmed — waiting for your customer</Text>
                   ) : (
@@ -451,7 +451,7 @@ export default function OperatorRequestsScreen() {
                         )
                       }
                     >
-                      <Text style={styles.wonBtnText}>Confirm trip complete</Text>
+                      <Text style={styles.wonBtnText}>Trip completed</Text>
                     </TouchableOpacity>
                   )}
                 </View>

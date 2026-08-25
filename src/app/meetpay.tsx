@@ -322,13 +322,18 @@ export default function MeetPayScreen() {
   const myConfirmedAt = role === 'buyer' ? session?.buyer_confirmed_at : session?.operator_confirmed_at;
   const otherConfirmedAt = role === 'buyer' ? session?.operator_confirmed_at : session?.buyer_confirmed_at;
   const otherRoleLabel = role === 'buyer' ? 'your driver' : 'your customer';
+  // The two sides describe the same event differently, because they did
+  // different things. The passenger received a service; the driver
+  // finished a job. Naming it from each person's own point of view reads
+  // as written for them rather than translated from the other side.
+  const actionLabel = role === 'buyer' ? 'Service delivered' : 'Trip completed';
   const isFullyConfirmed = session?.status === 'confirmed';
 
   if (isFullyConfirmed) {
     return (
       <View style={styles.confirmedScreen}>
         <Text style={styles.confirmedEmoji}>✅</Text>
-        <Text style={styles.confirmedTitle}>Trip confirmed!</Text>
+        <Text style={styles.confirmedTitle}>{actionLabel}!</Text>
         <Text style={styles.confirmedBody}>
           Both you and {otherRoleLabel} confirmed the trip is complete. Thank you for using ImbizoHub safely.
         </Text>
@@ -360,7 +365,7 @@ export default function MeetPayScreen() {
           <Text style={styles.backText}><Text style={styles.backArrow}>‹</Text> Back</Text>
         </TouchableOpacity>
 
-        <Text style={styles.heading}>Confirm Trip Complete</Text>
+        <Text style={styles.heading}>{actionLabel}</Text>
 
         <View style={styles.waitingBox}>
           <Text style={styles.waitingEmoji}>✅</Text>
@@ -382,7 +387,7 @@ export default function MeetPayScreen() {
         <Text style={styles.backText}><Text style={styles.backArrow}>‹</Text> Back</Text>
       </TouchableOpacity>
 
-      <Text style={styles.heading}>Confirm Trip Complete</Text>
+      <Text style={styles.heading}>{actionLabel}</Text>
       <Text style={styles.subheading}>
         Once your trip is actually finished, both you and {otherRoleLabel} need to confirm — tap below once you're ready.
       </Text>
@@ -455,7 +460,7 @@ export default function MeetPayScreen() {
           onPress={() => handleConfirmMyself()}
           disabled={confirming}
         >
-          {confirming ? <ActivityIndicator color={BLACK} /> : <Text style={styles.confirmBtnText}>Confirm Trip Complete</Text>}
+          {confirming ? <ActivityIndicator color={BLACK} /> : <Text style={styles.confirmBtnText}>{actionLabel}</Text>}
         </TouchableOpacity>
       )}
 

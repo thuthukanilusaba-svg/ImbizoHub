@@ -179,6 +179,10 @@ export default function ChatScreen() {
   // so the same pill serves both without branching.
   const [listingSold, setListingSold] = useState(false);
   const [acceptedQuoteId, setAcceptedQuoteId] = useState<string | null>(null);
+  // Which side of the trip the person reading this chat is on. The pill
+  // is shown to both, and each side describes the same event in its own
+  // terms — the passenger received a service, the driver finished a job.
+  const [iAmTheOperator, setIAmTheOperator] = useState(false);
 
   const [itemIsPhysical, setItemIsPhysical] = useState(true);
 
@@ -441,14 +445,19 @@ export default function ChatScreen() {
       (async () => {
         const { data } = await supabase
           .from('quotes')
-          .select('id')
+          .select('id, operator_id')
           .eq('request_id', request_id as string)
           .eq('status', 'accepted')
           .maybeSingle();
-        if (!cancelled) setAcceptedQuoteId(data?.id ?? null);
+        if (!cancelled) {
+          setAcceptedQuoteId(data?.id ?? null);
+          // The accepted quote already names the operator, so working
+          // out which side this reader is on costs no extra query.
+          setIAmTheOperator(!!data && !!myId && data.operator_id === myId);
+        }
       })();
       return () => { cancelled = true; };
-    }, [isRequestChat, request_id])
+    }, [isRequestChat, request_id, myId])
   );
 
   async function fetchOtherPersonName(idOverride?: string) {
@@ -1165,7 +1174,9 @@ export default function ChatScreen() {
               onPress={() => router.push(`/meetpay?type=van_hire&reference_id=${acceptedQuoteId}`)}
             >
               <Text style={styles.meetPayHeaderIcon}>🔒</Text>
-              <Text style={styles.meetPayHeaderText}>Confirm trip</Text>
+              <Text style={styles.meetPayHeaderText}>
+                {iAmTheOperator ? 'Trip completed' : 'Service delivered'}
+              </Text>
             </TouchableOpacity>
           )}
           {!isRequestChat && (listing_id || isItemRequestChat) && (
