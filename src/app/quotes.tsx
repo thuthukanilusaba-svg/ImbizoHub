@@ -37,6 +37,7 @@ import {
   Modal,
   Platform,
   RefreshControl,
+  ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -109,6 +110,9 @@ export default function QuotesScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const [request, setRequest] = useState<Request | null>(null);
+  // Every trip worth showing, not just the newest. See loadData().
+  const [myRequests, setMyRequests] = useState<Request[]>([]);
+  const [selectedRequestId, setSelectedRequestId] = useState<string | null>(null);
   const [quotes, setQuotes] = useState<Quote[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -122,7 +126,7 @@ export default function QuotesScreen() {
   const [verifying, setVerifying] = useState(false);
   const [payError, setPayError] = useState('');
 
-  useEffect(() => { loadData(); }, []);
+  useEffect(() => { loadData(); }, [selectedRequestId]);
 
   async function loadData() {
     setLoading(true);
@@ -149,17 +153,40 @@ export default function QuotesScreen() {
     // maybeSingle(), not single(): single() treats zero rows as an
     // error, which is a normal state here for someone who has never
     // posted a trip.
-    const { data: req } = await supabase
+    // FIX (second half of the same bug). The status filter above was
+    // corrected, but .limit(1) was not — so only the NEWEST trip was ever
+    // reachable. Posting a second trip made the first disappear, taking
+    // the operator's phone number and the confirm button with it, and
+    // this screen is the only route to either. 'completed' also has to be
+    // here now that trips reach it, or a finished trip vanishes the same
+    // way and the same blank screen returns.
+    const { data: reqs, error: reqError } = await supabase
       .from('requests')
       .select('*')
       .eq('user_id', user.id)
-      .in('status', ['open', 'filled'])
+      .in('status', ['open', 'filled', 'completed'])
       .order('created_at', { ascending: false })
-      .limit(1)
-      .maybeSingle();
+      .limit(10);
 
+    // Checked, unlike before. A failure here used to render "No active
+    // requests found" beside a "Post a trip" button — inviting a customer
+    // to post a duplicate because their real trip appeared to vanish.
+    if (reqError) {
+      console.log('loadData requests error:', reqError.message);
+      setLoading(false);
+      return;
+    }
+
+    // Most actionable first: a trip already awarded needs confirming, an
+    // open one is still waiting on quotes, a completed one is history.
+    const rank = (r: any) => (r.status === 'filled' ? 0 : r.status === 'open' ? 1 : 2);
+    const ordered = [...(reqs ?? [])].sort((a: any, b: any) => rank(a) - rank(b));
+    setMyRequests(ordered);
+
+    const req = ordered.find((r: any) => r.id === selectedRequestId) ?? ordered[0];
     if (!req) { setLoading(false); return; }
     setRequest(req);
+    setSelectedRequestId(req.id);
 
     // FIX: same bug class just found and confirmed live in
     // wanted-responses.tsx. This embedded profiles via
@@ -385,6 +412,36 @@ export default function QuotesScreen() {
           </Text>
         )}
       </View>
+
+      {/* Only when there is genuinely a choice to make. One trip needs no
+          switcher, and a row of one chip reads as clutter. */}
+      {myRequests.length > 1 && (
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={styles.tripStrip}
+          contentContainerStyle={styles.tripStripContent}
+        >
+          {myRequests.map((r) => {
+            const active = r.id === request?.id;
+            return (
+              <TouchableOpacity
+                key={r.id}
+                style={[styles.tripChip, active && styles.tripChipActive]}
+                onPress={() => setSelectedRequestId(r.id)}
+                activeOpacity={0.85}
+              >
+                <Text style={[styles.tripChipText, active && styles.tripChipTextActive]} numberOfLines={1}>
+                  {r.pickup} → {r.destination}
+                </Text>
+                <Text style={[styles.tripChipStatus, active && styles.tripChipTextActive]}>
+                  {r.status === 'filled' ? 'Awarded' : r.status === 'open' ? 'Open' : 'Done'}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </ScrollView>
+      )}
 
       {!request ? (
         <View style={styles.center}>
@@ -710,6 +767,13 @@ const styles = StyleSheet.create({
   // were enough quotes to overflow one screen. Also folded insets.bottom
   // into the existing paddingBottom so the last card/button doesn't sit
   // flush against the phone's home-indicator/gesture bar.
+  tripStrip: { maxHeight: 62, flexGrow: 0 },
+  tripStripContent: { paddingHorizontal: 16, paddingBottom: 10, gap: 8 },
+  tripChip: { backgroundColor: '#1a1a1a', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8, borderWidth: 1, borderColor: '#2c2c2c', maxWidth: 200 },
+  tripChipActive: { borderColor: GOLD, backgroundColor: '#241f10' },
+  tripChipText: { color: '#bbb', fontSize: 12, fontWeight: '700' },
+  tripChipStatus: { color: '#666', fontSize: 10, marginTop: 2, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.4 },
+  tripChipTextActive: { color: GOLD },
   listContainer: { flex: 1 },
   list: { padding: 16 },
 
