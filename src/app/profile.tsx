@@ -653,6 +653,22 @@ export default function ProfileScreen() {
                     </Text>
                   </>
                 )}
+                {/* The shared error box lives near the top of this screen,
+                    beside the stats. That is far above the edit form on
+                    anything but a very tall display, so a failed save
+                    reported there is invisible to the person who just
+                    pressed Save — they see the form stay open and nothing
+                    else, which reads as the button not working.
+
+                    Shown here as well, next to the button that caused it.
+                    Duplicating the message is a smaller fault than putting
+                    it where nobody will read it. */}
+                {error ? (
+                  <View style={styles.errorBox}>
+                    <Text style={styles.errorText}>⚠️ {error}</Text>
+                  </View>
+                ) : null}
+
                 <View style={styles.editActions}>
                   <TouchableOpacity style={styles.cancelBtn} onPress={() => setEditing(false)}>
                     <Text style={styles.cancelBtnText}>Cancel</Text>
