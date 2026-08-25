@@ -13,9 +13,39 @@
 // in any way. The retention policy is specific: only the RAW
 // DOCUMENT FILE loses its purpose after a year: the fact that
 // someone was verified needs to remain permanent. Only
-// document_path is nulled and the file itself removed from storage.
+// document_url is nulled and the file itself removed from storage.
 //
 // Meant to run daily via cron (see cleanup-expired-data-cron.sql).
+//
+// DEPLOYED WITH verify_jwt: false. It had been deployed with verify_jwt
+// left at the default true, so every nightly cron call was rejected by
+// the platform with 401 before reaching the shared-secret check below —
+// this function had never once actually run. pg_cron reported the job as
+// succeeded throughout, because net.http_post succeeds as a SQL
+// statement no matter what HTTP status comes back.
+//
+// Four column references were wrong and could not have worked. They were
+// invisible for as long as the 401 stopped the code running at all:
+//   - verification_requests.document_path  -> document_url  (FIXED)
+//     Despite the name, that column holds a bare storage path, not a
+//     URL: submit_verification() writes p_document_path straight into
+//     it. So .remove() still takes it directly, no parsing needed.
+//   - item_responses.image_url             -> photo_url     (FIXED)
+//     Latent: the block never ran, because the item_requests query
+//     above it errored first.
+//   - item_requests.updated_at             -> COLUMN ADDED (FIXED)
+//   - listings.updated_at                  -> COLUMN ADDED (FIXED)
+//     Neither table recorded when a row last changed, so both queries
+//     referenced a column that did not exist. Switching them to
+//     created_at would have been worse than the error: "one year after
+//     the listing was marked sold" and "one year after it was posted"
+//     are different promises, and the second deletes the photos of a
+//     listing posted two years ago and sold last week. The column the
+//     rule actually depends on was added instead, with a trigger to
+//     maintain it, backfilled to created_at for existing rows.
+//
+// Verified after all four fixes: the function returns 200 with
+// "errors":[] — an empty list, not an absent one.
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
@@ -60,10 +90,10 @@ Deno.serve(async (req) => {
     // appeal period.
     const { data: rejected, error: rejectedError } = await supabase
       .from('verification_requests')
-      .select('id, document_path')
+      .select('id, document_url')
       .eq('status', 'rejected')
       .lt('reviewed_at', daysAgoIso(REJECTED_ID_DAYS))
-      .not('document_path', 'is', null);
+      .not('document_url', 'is', null);
 
     if (rejectedError) {
       results.errors.push(`rejected fetch: ${rejectedError.message}`);
@@ -71,12 +101,12 @@ Deno.serve(async (req) => {
       for (const row of rejected ?? []) {
         const { error: removeError } = await supabase.storage
           .from('verification-documents')
-          .remove([row.document_path]);
+          .remove([row.document_url]);
         if (removeError) {
           results.errors.push(`rejected remove ${row.id}: ${removeError.message}`);
           continue;
         }
-        await supabase.from('verification_requests').update({ document_path: null }).eq('id', row.id);
+        await supabase.from('verification_requests').update({ document_url: null }).eq('id', row.id);
         results.rejected_documents_deleted++;
       }
     }
@@ -86,10 +116,10 @@ Deno.serve(async (req) => {
     // never touched here; the fact of verification stays permanent.
     const { data: approved, error: approvedError } = await supabase
       .from('verification_requests')
-      .select('id, document_path')
+      .select('id, document_url')
       .eq('status', 'approved')
       .lt('reviewed_at', daysAgoIso(APPROVED_ID_DAYS))
-      .not('document_path', 'is', null);
+      .not('document_url', 'is', null);
 
     if (approvedError) {
       results.errors.push(`approved fetch: ${approvedError.message}`);
@@ -97,12 +127,12 @@ Deno.serve(async (req) => {
       for (const row of approved ?? []) {
         const { error: removeError } = await supabase.storage
           .from('verification-documents')
-          .remove([row.document_path]);
+          .remove([row.document_url]);
         if (removeError) {
           results.errors.push(`approved remove ${row.id}: ${removeError.message}`);
           continue;
         }
-        await supabase.from('verification_requests').update({ document_path: null }).eq('id', row.id);
+        await supabase.from('verification_requests').update({ document_url: null }).eq('id', row.id);
         results.approved_documents_deleted++;
       }
     }
@@ -172,22 +202,22 @@ Deno.serve(async (req) => {
     } else if (closedRequests && closedRequests.length > 0) {
       const { data: oldResponses, error: responsesError } = await supabase
         .from('item_responses')
-        .select('id, image_url')
+        .select('id, photo_url')
         .in('item_request_id', closedRequests.map((r) => r.id))
-        .not('image_url', 'is', null);
+        .not('photo_url', 'is', null);
 
       if (responsesError) {
         results.errors.push(`wanted responses fetch: ${responsesError.message}`);
       } else {
         for (const response of oldResponses ?? []) {
-          const match = response.image_url?.match(/listing-photos\/(.+)$/);
+          const match = response.photo_url?.match(/listing-photos\/(.+)$/);
           if (!match) continue;
           const { error: removeError } = await supabase.storage.from('listing-photos').remove([match[1]]);
           if (removeError) {
             results.errors.push(`wanted photo remove ${response.id}: ${removeError.message}`);
             continue;
           }
-          await supabase.from('item_responses').update({ image_url: null }).eq('id', response.id);
+          await supabase.from('item_responses').update({ photo_url: null }).eq('id', response.id);
           results.wanted_response_photos_deleted++;
         }
       }
