@@ -203,10 +203,20 @@ export default function ProfileScreen() {
       .eq('user_id', user.id);
     setListingCount(count ?? 0);
 
+    // Only ratings that actually SAY something.
+    //
+    // This list used to show every rating, so a bare five stars with no
+    // words became a row of its own. Ten silent five-star ratings produced
+    // ten identical rows carrying no more information than the average
+    // already shown above — the same problem the public profile had, fixed
+    // there and missed here. The count and the average live at the top of
+    // this screen; this section is for what people wrote.
     const { data: reviews } = await supabase
       .from('ratings')
       .select('stars, review, role, created_at')
       .eq('reviewee_id', user.id)
+      .not('review', 'is', null)
+      .neq('review', '')
       .order('created_at', { ascending: false })
       .limit(5);
     setRecentReviews(reviews ?? []);
@@ -722,7 +732,11 @@ export default function ProfileScreen() {
                   <View style={styles.reviewHeader}>
                     {renderStars(r.stars, 14)}
                     <Text style={styles.reviewRole}>
-                      {r.role === 'buyer' ? 'Buyer' : 'Seller'} · {new Date(r.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
+                      {/* role names the REVIEWER's side, so 'Buyer' here
+                          means a buyer wrote this — i.e. it is feedback on
+                          you as a seller. Spelling that out avoids reading
+                          it as a label for the person being reviewed. */}
+                      {r.role === 'buyer' ? 'From a buyer' : 'From a seller'} · {new Date(r.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
                     </Text>
                   </View>
                   {r.review ? <Text style={styles.reviewText}>{r.review}</Text> : null}
