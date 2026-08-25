@@ -74,7 +74,10 @@ const isPromoActive = () => new Date() < FREE_PROMO_END;
 function calculateDeposit(price: number): number {
   return Math.min(parseFloat((price * DEPOSIT_PCT).toFixed(2)), DEPOSIT_CAP);
 }
-const COMMISSION_PCT = 0.03;
+// COMMISSION_PCT (0.03) removed: declared but referenced nowhere, and it
+// contradicted the comments a few lines up that correctly say the separate
+// 3% commission was abolished. A live-looking constant is the first thing
+// someone trusts when working out what this app charges.
 
 const POLL_INTERVAL_MS = 2000;
 const POLL_MAX_ATTEMPTS = 20; // ~40 seconds total — was 15 (~30s); a real
@@ -287,7 +290,7 @@ export default function QuotesScreen() {
     setPaying(false);
 
     if (fnError || data?.error) {
-      setPayError(fnError?.message || data?.error || 'Could not accept this quote. Please try again.');
+      setPayError(await extractFunctionError(fnError, data, 'Could not accept this quote. Please try again.'));
       return;
     }
 
@@ -489,7 +492,11 @@ export default function QuotesScreen() {
                 isAccepted && styles.cardAccepted,
                 isDeclined && styles.cardDeclined,
               ]}>
-                {isBest && !isDeclined && (
+                {/* Not shown once accepted: the cheapest quote is usually
+                    also the one accepted, which stacked "Best price" above
+                    "Accepted" on the same card. After the decision is made
+                    the price ranking is no longer the useful fact. */}
+                {isBest && !isDeclined && !isAccepted && (
                   <View style={styles.bestBadge}><Text style={styles.bestBadgeText}>⭐ Best price</Text></View>
                 )}
                 {isAccepted && (
@@ -506,7 +513,14 @@ export default function QuotesScreen() {
                   </View>
                   <View style={{ alignItems: 'flex-end' }}>
                     <Text style={styles.priceText}>${item.price}</Text>
-                    <Text style={styles.depositHint}>Platform fee: ${dep}</Text>
+                    {/* During the promo this sat directly above a button
+                        reading "Accept — free (launch promo)", so the same
+                        card both charged and did not charge for the same
+                        action. Wording matches the confirm sheet's summary
+                        row so the two screens agree. */}
+                    <Text style={styles.depositHint}>
+                      {isPromoActive() ? 'Platform fee: FREE' : `Platform fee: $${dep}`}
+                    </Text>
                   </View>
                 </View>
 
@@ -630,7 +644,11 @@ export default function QuotesScreen() {
             {step === 'revealed' && chosenQuote && (
               <>
                 <Text style={styles.modalTitle}>Booking confirmed 🎉</Text>
-                <Text style={styles.modalSub}>Platform fee paid. Here are your operator's contact details.</Text>
+                <Text style={styles.modalSub}>
+                  {isPromoActive()
+                    ? "Accepted free under the launch promotion. Here are your operator's contact details."
+                    : "Platform fee paid. Here are your operator's contact details."}
+                </Text>
 
                 <View style={styles.contactBox}>
                   <Text style={styles.contactLabel}>Operator</Text>

@@ -88,7 +88,7 @@ export default function FeatureListingPayScreen() {
     setPaying(false);
 
     if (fnError || data?.error) {
-      setError(fnError?.message || data?.error || 'Could not feature this listing. Please try again.');
+      setError(await extractFunctionError(fnError, data, 'Could not feature this listing. Please try again.'));
       return;
     }
 

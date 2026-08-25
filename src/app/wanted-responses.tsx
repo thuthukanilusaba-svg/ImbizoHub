@@ -194,7 +194,7 @@ export default function WantedResponsesScreen() {
     setAcceptingId(null);
 
     if (fnError || data?.error) {
-      setError(fnError?.message || data?.error || 'Could not accept this response. Please try again.');
+      setError(await extractFunctionError(fnError, data, 'Could not accept this response. Please try again.'));
       return;
     }
 

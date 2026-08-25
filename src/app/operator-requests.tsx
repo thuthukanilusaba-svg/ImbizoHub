@@ -29,7 +29,9 @@ const RED = '#ff8a8a';
 // UPDATED (pricing model simplified): COMMISSION constant removed —
 // the separate 3% commission no longer exists. See confirm-payment.ts's
 // trip_deposit branch for the current, simplified fee model (7%,
-// capped at $30).
+// capped at $15 — quotes.tsx DEPOSIT_CAP is the source of truth; this
+// comment said $30, the pre-launch figure, long after the cap was
+// lowered).
 
 type Request = {
   id: string;
@@ -203,17 +205,31 @@ export default function OperatorRequestsScreen() {
 
   async function fetchRequests() {
     setLoading(true);
-    const { data } = await supabase
+
+    // Read the caller BEFORE the query, so their own requests can be
+    // excluded from it. An operator who also books trips was being shown
+    // their own request in a list of available work, and could bid on it.
+    // The database refuses that outright (see the quotes_no_self_quoting
+    // trigger); this just stops the app offering something it will then
+    // reject.
+    const { data: { user } } = await supabase.auth.getUser();
+
+    let query = supabase
       .from('requests')
       .select('*')
       .eq('status', 'open')
       .order('created_at', { ascending: false });
+
+    if (user && !user.is_anonymous) {
+      query = query.neq('user_id', user.id);
+    }
+
+    const { data } = await query;
     setRequests(data ?? []);
 
     // FIX: see myQuoteRequestIds' declaration above — without this,
     // the list had no idea which of these open requests the current
     // operator had already quoted.
-    const { data: { user } } = await supabase.auth.getUser();
     if (user && !user.is_anonymous && data && data.length > 0) {
       const ids = data.map((r: any) => r.id);
       const { data: quotesOnOpenRequests } = await supabase
@@ -379,9 +395,9 @@ export default function OperatorRequestsScreen() {
     // set here — the separate 3% commission was removed entirely, see
     // confirm-payment.ts's trip_deposit branch and quotes.tsx for the
     // full reasoning. ImbizoHub's entire take is now the customer's
-    // single commitment fee (7%, capped at $30), charged at the
-    // deposit step; the
-    // operator keeps their full quoted price with nothing owed on top.
+    // single commitment fee (7%, capped at $15), charged at the deposit
+    // step; the operator keeps their full quoted price with nothing owed
+    // on top.
     const { error } = await supabase.from('quotes').insert({
       request_id: selected!.id,
       operator_id: user.id,
@@ -401,8 +417,19 @@ export default function OperatorRequestsScreen() {
       if (error.code === '23505') {
         setSubmitError('You already submitted a quote for this trip.');
         setMyQuoteRequestIds((prev) => new Set(prev).add(selected!.id));
-      } else {
+      } else if (error.code === '23514' || error.code === 'P0001') {
+        // Our own triggers raise these, and they are written to be read by
+        // an operator: "Add a phone number to your operator profile before
+        // quoting", "Select the city you are based in", "You cannot quote
+        // on your own trip request." Passing them through is the point.
         setSubmitError(error.message);
+      } else {
+        // Anything else is Postgres talking to a developer, not to a
+        // person — an RLS refusal reads "new row violates row-level
+        // security policy for table \"quotes\"", which tells an operator
+        // nothing and looks like the app is broken.
+        console.error('quote insert failed', error.code, error.message);
+        setSubmitError('Could not send your quote. Please try again, and let us know if it keeps happening.');
       }
       return;
     }
@@ -661,9 +688,8 @@ export default function OperatorRequestsScreen() {
                     commission no longer exists. Operators keep their
                     full quoted price; ImbizoHub's entire take is the
                     customer's separate commitment fee (7%, capped at
-                    $30), charged at
-                    the deposit step, nothing owed by the operator on
-                    top of what they quote. */}
+                    $15), charged at the deposit step, nothing owed by the
+                    operator on top of what they quote. */}
 
                 <Text style={styles.modalLabel}>Your vehicle *</Text>
                 <TextInput

@@ -249,7 +249,7 @@ export default function DepositScreen() {
     setClaimingFree(false);
 
     if (fnError || data?.error) {
-      setError(fnError?.message || data?.error || 'Could not unlock. Please try again.');
+      setError(await extractFunctionError(fnError, data, 'Could not unlock. Please try again.'));
       return;
     }
 

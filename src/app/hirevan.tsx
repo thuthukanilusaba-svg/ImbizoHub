@@ -128,8 +128,26 @@ export default function HireVanScreen() {
 
     setError('');
 
-    if (!pickup || !destination || !date || !passengers) {
+    // Trimmed, because a string of spaces is truthy. Typing a space into
+    // Pickup satisfied the old check and then stored '' — the insert below
+    // has always written pickup.trim() — producing a live trip request
+    // with no pickup address for operators to quote on.
+    const pickupText = pickup.trim();
+    const destinationText = destination.trim();
+
+    if (!pickupText || !destinationText || !date || !passengers) {
       setError('Please fill in all required fields.');
+      return;
+    }
+
+    // The web build uses a real <input type="date"> whose min attribute
+    // stops the browser's own picker offering earlier dates — but it does
+    // not stop someone typing one, and nothing here re-checked it. The
+    // native pickers already enforce minimumDate, so this closes the web
+    // gap and gives both platforms the same rule in one place.
+    const todayIso = toIsoDate(new Date());
+    if (date < todayIso) {
+      setError('Pick a date from today onwards.');
       return;
     }
 
@@ -176,8 +194,8 @@ export default function HireVanScreen() {
 
     const { error: insertError } = await supabase.from('requests').insert({
       user_id: user.id,
-      pickup: pickup.trim(),
-      destination: destination.trim(),
+      pickup: pickupText,
+      destination: destinationText,
       pickup_city: pickupCity || null,
       destination_city: destinationCity || null,
       date: date.trim(),
@@ -189,7 +207,15 @@ export default function HireVanScreen() {
     setLoading(false);
 
     if (insertError) {
-      setError(insertError.message);
+      // Postgres error text is written for a developer. Trigger-raised
+      // messages (check_violation / P0001) are written for a person and
+      // are worth showing; everything else is not.
+      if (insertError.code === '23514' || insertError.code === 'P0001') {
+        setError(insertError.message);
+      } else {
+        console.error('request insert failed', insertError.code, insertError.message);
+        setError('Could not post your trip. Please try again.');
+      }
       return;
     }
 

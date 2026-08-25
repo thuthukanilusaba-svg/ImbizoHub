@@ -464,3 +464,126 @@ entrypoint = "./functions/whats-my-ip/index.ts"
 # Specifies static files to be bundled with the function. Supports glob patterns.
 # For example, if you want to serve static HTML pages in your function:
 # static_files = [ "./functions/whats-my-ip/*.html" ]
+
+# ----------------------------------------------------------------------
+# Declarations for every function in this repo that had none.
+#
+# Without an entry here the CLI falls back to its own default of
+# verify_jwt = true. That is how cleanup-expired-data broke: deployed
+# undeclared, silently gated behind a JWT its cron job never sends, and
+# it returned 401 every night for months while pg_cron reported success.
+#
+# Each value below is the setting the function is ACTUALLY running with
+# in production, read from the deployed functions rather than assumed, so
+# `supabase functions deploy` is now a no-op for settings instead of a
+# coin toss. debug-secret-check and admin-purge-storage are deliberately
+# absent: both are temporary and due for deletion before launch.
+# ----------------------------------------------------------------------
+
+# Server-to-server. Each of these authenticates itself in code with the
+# X-Notify-Secret header checked against NOTIFY_SHARED_SECRET, so the
+# platform JWT gate must be off or the caller is rejected before the
+# function runs.
+
+[functions.cleanup-expired-data]
+enabled = true
+verify_jwt = false
+entrypoint = "./functions/cleanup-expired-data/index.ts"
+
+[functions.delete-expired-accounts]
+enabled = true
+verify_jwt = false
+entrypoint = "./functions/delete-expired-accounts/index.ts"
+
+[functions.notify-admin-verification]
+enabled = true
+verify_jwt = false
+entrypoint = "./functions/notify-admin-verification/index.ts"
+
+[functions.notify-delivery-status]
+enabled = true
+verify_jwt = false
+entrypoint = "./functions/notify-delivery-status/index.ts"
+
+[functions.notify-listing-sold]
+enabled = true
+verify_jwt = false
+entrypoint = "./functions/notify-listing-sold/index.ts"
+
+[functions.notify-meetpay-event]
+enabled = true
+verify_jwt = false
+entrypoint = "./functions/notify-meetpay-event/index.ts"
+
+[functions.notify-new-message]
+enabled = true
+verify_jwt = false
+entrypoint = "./functions/notify-new-message/index.ts"
+
+[functions.notify-new-quote]
+enabled = true
+verify_jwt = false
+entrypoint = "./functions/notify-new-quote/index.ts"
+
+[functions.notify-new-rating]
+enabled = true
+verify_jwt = false
+entrypoint = "./functions/notify-new-rating/index.ts"
+
+[functions.notify-new-wanted-post]
+enabled = true
+verify_jwt = false
+entrypoint = "./functions/notify-new-wanted-post/index.ts"
+
+[functions.notify-new-wanted-response]
+enabled = true
+verify_jwt = false
+entrypoint = "./functions/notify-new-wanted-response/index.ts"
+
+[functions.notify-registration-expiring]
+enabled = true
+verify_jwt = false
+entrypoint = "./functions/notify-registration-expiring/index.ts"
+
+[functions.notify-user-suspended]
+enabled = true
+verify_jwt = false
+entrypoint = "./functions/notify-user-suspended/index.ts"
+
+[functions.notify-verification-reviewed]
+enabled = true
+verify_jwt = false
+entrypoint = "./functions/notify-verification-reviewed/index.ts"
+
+[functions.seller-preview]
+enabled = true
+verify_jwt = false
+entrypoint = "./functions/seller-preview/index.ts"
+
+# Called by the app with a signed-in user session. These verify the
+# caller's JWT at the platform edge AND check identity in code.
+
+[functions.accept-quote-free-promo]
+enabled = true
+verify_jwt = true
+entrypoint = "./functions/accept-quote-free-promo/index.ts"
+
+[functions.accept-response-free-promo]
+enabled = true
+verify_jwt = true
+entrypoint = "./functions/accept-response-free-promo/index.ts"
+
+[functions.book-delivery-free-promo]
+enabled = true
+verify_jwt = true
+entrypoint = "./functions/book-delivery-free-promo/index.ts"
+
+[functions.feature-listing-free-promo]
+enabled = true
+verify_jwt = true
+entrypoint = "./functions/feature-listing-free-promo/index.ts"
+
+[functions.unlock-free-promo]
+enabled = true
+verify_jwt = true
+entrypoint = "./functions/unlock-free-promo/index.ts"
