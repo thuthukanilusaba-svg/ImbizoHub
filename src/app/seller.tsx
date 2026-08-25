@@ -139,10 +139,16 @@ export default function SellerProfileScreen() {
     //    aggregate if a single seller ever passes a few thousand
     //    ratings; well below that the payload is trivial and this keeps
     //    the logic in one readable place.
+    // role='buyer' means the REVIEWER was buying, so this person was the
+    // seller or operator being rated. This page is a selling profile, so
+    // ratings earned on the other side of a transaction — as a buyer or a
+    // passenger — do not belong in it. Without this filter someone who has
+    // only ever bought appears here with a full seller reputation.
     const { data: allStars } = await supabase
       .from('ratings')
       .select('stars')
-      .eq('reviewee_id', id);
+      .eq('reviewee_id', id)
+      .eq('role', 'buyer');
 
     const counts = [0, 0, 0, 0, 0];
     (allStars ?? []).forEach((r: any) => {
@@ -158,6 +164,7 @@ export default function SellerProfileScreen() {
       .from('ratings')
       .select('stars, review, role, created_at')
       .eq('reviewee_id', id)
+      .eq('role', 'buyer')
       .not('review', 'is', null)
       .neq('review', '')
       .order('created_at', { ascending: false })

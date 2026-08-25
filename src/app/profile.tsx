@@ -114,6 +114,13 @@ export default function ProfileScreen() {
   const [listingCount, setListingCount] = useState(0);
   const [rating, setRating] = useState(0);
   const [ratingCount, setRatingCount] = useState(0);
+  // Ratings earned on the other side of a transaction — as a buyer or a
+  // passenger. Kept apart from the selling reputation above, because the
+  // public profile presents that one as a reason to trust a seller. Shown
+  // here only when there is no selling rating to show instead, so someone
+  // who has only ever bought still sees the reputation they have earned.
+  const [buyerRating, setBuyerRating] = useState(0);
+  const [buyerRatingCount, setBuyerRatingCount] = useState(0);
   const [recentReviews, setRecentReviews] = useState<any[]>([]);
   const [isActiveOperator, setIsActiveOperator] = useState(false);
   const [wantedResponseCount, setWantedResponseCount] = useState(0);
@@ -181,6 +188,8 @@ export default function ProfileScreen() {
       setCreatedAt(profile.created_at ?? '');
       setRating(profile.rating ?? 0);
       setRatingCount(profile.rating_count ?? 0);
+      setBuyerRating(profile.buyer_rating ?? 0);
+      setBuyerRatingCount(profile.buyer_rating_count ?? 0);
       // Drafts are deliberately NOT set here. startEditing() seeds them
       // from these same values at the moment the form opens, which is the
       // only time they should change. Setting them on every load meant a
@@ -519,6 +528,14 @@ export default function ProfileScreen() {
             <Text style={styles.name}>{fullName || 'Add your name'}</Text>
             <Text style={styles.email}>{email}</Text>
 
+            {ratingCount === 0 && buyerRatingCount > 0 && (
+              <View style={styles.ratingRow}>
+                {renderStars(buyerRating)}
+                <Text style={styles.ratingText}>
+                  {buyerRating.toFixed(1)} as a buyer ({buyerRatingCount})
+                </Text>
+              </View>
+            )}
             {ratingCount > 0 && (
               <View style={styles.ratingRow}>
                 {renderStars(rating)}
