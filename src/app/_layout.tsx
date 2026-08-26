@@ -12,7 +12,7 @@
 // read from.
 
 import { Inter_400Regular, Inter_600SemiBold, Inter_700Bold, Inter_800ExtraBold, useFonts } from '@expo-google-fonts/inter';
-import { Stack, useRouter } from 'expo-router';
+import { Stack, usePathname, useRouter } from 'expo-router';
 import * as ScreenOrientation from 'expo-screen-orientation';
 import * as SplashScreen from 'expo-splash-screen';
 import { useEffect, useRef } from 'react';
@@ -21,6 +21,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { useIsDesktopWeb } from '../../lib/responsive';
 import { supabase } from '../../lib/supabase';
 import { theme } from '../../lib/theme';
+import { installCrashReporter, setCrashRoute } from '../../lib/crashReporter';
 import { clearNotificationBadge, registerForPushNotifications, registerNotificationListeners, savePushToken } from '../../lib/notifications';
 
 SplashScreen.preventAutoHideAsync();
@@ -128,6 +129,19 @@ export default function RootLayout() {
     // which is normal/expected browser behavior anyway.
     ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP).catch(() => {});
   }, []);
+
+  // Installed as early as possible, and before anything else in this
+  // component runs — an error during startup is exactly the kind that is
+  // hardest to hear about otherwise.
+  installCrashReporter();
+
+  // The screen someone was on when it broke is most of the diagnosis.
+  // ErrorUtils runs outside React and cannot read hooks, so the current
+  // path is pushed into the reporter from here instead.
+  const pathname = usePathname();
+  useEffect(() => {
+    setCrashRoute(pathname);
+  }, [pathname]);
 
   useEffect(() => {
     // Clear the icon badge whenever the app is actually in front of the
