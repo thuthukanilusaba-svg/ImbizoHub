@@ -103,6 +103,35 @@ export async function savePushToken(token: string) {
     .eq('id', user.id);
 }
 
+// Clear the launcher badge and remove already-delivered notifications.
+//
+// WHY: nothing in this app ever cleared either one, and no push payload we
+// send carries a `badge` value — so the number on the icon was Android's
+// own count of notifications still sitting in the tray. Reading every
+// message in the app did nothing to it; it only went away by swiping the
+// notifications off the shade. A badge that survives doing everything it
+// asked is a badge people learn to ignore, and then it stops working for
+// the ones that matter — an operator being told their quote was accepted.
+//
+// Same lazy-load guard as everything else here: a no-op on web and on
+// Expo Go for Android, where the native module cannot be loaded at all.
+export async function clearNotificationBadge() {
+  const Notifications = await getNotificationsModule();
+  if (!Notifications) return;
+
+  try {
+    // Both, deliberately. setBadgeCountAsync covers the iOS-style numeric
+    // badge; dismissAllNotificationsAsync clears the tray entries that are
+    // what Android actually counts. Neither alone covers both platforms.
+    await Notifications.setBadgeCountAsync(0);
+    await Notifications.dismissAllNotificationsAsync();
+  } catch (error) {
+    // Never fatal — housekeeping should not affect anything the person is
+    // actually trying to do.
+    console.log('clearNotificationBadge failed:', error);
+  }
+}
+
 // Show a local notification immediately (for foreground alerts)
 export async function showLocalNotification(title: string, body: string, data?: Record<string, any>) {
   const Notifications = await getNotificationsModule();

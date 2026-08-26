@@ -16,12 +16,12 @@ import { Stack, useRouter } from 'expo-router';
 import * as ScreenOrientation from 'expo-screen-orientation';
 import * as SplashScreen from 'expo-splash-screen';
 import { useEffect, useRef } from 'react';
-import { Platform, StyleSheet, useWindowDimensions, View } from 'react-native';
+import { AppState, Platform, StyleSheet, useWindowDimensions, View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { useIsDesktopWeb } from '../../lib/responsive';
 import { supabase } from '../../lib/supabase';
 import { theme } from '../../lib/theme';
-import { registerForPushNotifications, registerNotificationListeners, savePushToken } from '../../lib/notifications';
+import { clearNotificationBadge, registerForPushNotifications, registerNotificationListeners, savePushToken } from '../../lib/notifications';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -127,6 +127,24 @@ export default function RootLayout() {
     // surfacing as an error anywhere; the app just won't lock there,
     // which is normal/expected browser behavior anyway.
     ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP).catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    // Clear the icon badge whenever the app is actually in front of the
+    // person — on launch, and every time it returns from the background.
+    //
+    // Foregrounding is the right trigger rather than opening the messages
+    // screen: the notifications behind that count are not only messages.
+    // Quotes accepted, quotes declined, ratings, trip confirmations and
+    // registration reminders all push too, and none of them live on the
+    // messages screen. Once the app is open, the tray has done its job.
+    clearNotificationBadge();
+
+    const appStateSub = AppState.addEventListener('change', (state) => {
+      if (state === 'active') clearNotificationBadge();
+    });
+
+    return () => appStateSub.remove();
   }, []);
 
   useEffect(() => {
