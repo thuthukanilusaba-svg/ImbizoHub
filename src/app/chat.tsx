@@ -162,6 +162,10 @@ export default function ChatScreen() {
   const isBuyerRoleRef = useRef(false);
   const sessionChannelRef = useRef<any>(null);
   const newSessionChannelRef = useRef<any>(null);
+  // Which session id sessionChannelRef is currently listening to. Without
+  // this there is no way to tell "subscribe to the session you are already
+  // subscribed to" from a genuine change, and the former throws.
+  const subscribedSessionIdRef = useRef<string | null>(null);
 
   // Van-hire only. The accepted quote's id, which is what meetpay.tsx
   // keys a van_hire session on (reference_id).
@@ -382,6 +386,7 @@ export default function ChatScreen() {
       if (sessionChannelRef.current) {
         supabase.removeChannel(sessionChannelRef.current);
         sessionChannelRef.current = null;
+        subscribedSessionIdRef.current = null;
       }
       if (newSessionChannelRef.current) {
         supabase.removeChannel(newSessionChannelRef.current);
@@ -723,12 +728,15 @@ export default function ChatScreen() {
   // had no way to find out short of leaving and reopening the whole
   // chat screen. This listens from the moment the screen opens, so a
   // session created any time after is picked up live, no reopen needed.
-  function subscribeToNewMeetPaySession(currentUserId: string, otherId?: string) {
+  // Async for the same reason as subscribeToSession below: removeChannel()
+  // is a promise, and not awaiting it means the next .channel() call can
+  // still find the old one registered and hand it back already-subscribed.
+  async function subscribeToNewMeetPaySession(currentUserId: string, otherId?: string) {
     const referenceId = isItemRequestChat ? item_request_id : listing_id;
     if (!referenceId || !otherId) return;
 
     if (newSessionChannelRef.current) {
-      supabase.removeChannel(newSessionChannelRef.current);
+      await supabase.removeChannel(newSessionChannelRef.current);
       newSessionChannelRef.current = null;
     }
 
@@ -759,10 +767,36 @@ export default function ChatScreen() {
     newSessionChannelRef.current = channel;
   }
 
-  function subscribeToSession(sessionId: string) {
+  // ASYNC, and both guards below matter. Reported by the crash reporter as
+  // "cannot add `postgres_changes` callbacks for
+  // realtime:chat-meetpay-session-… after `subscribe()`".
+  //
+  // Two causes, both real:
+  //
+  //  1. supabase.channel(name) does NOT always create a channel. If one with
+  //     that exact name is already registered it hands back the EXISTING
+  //     one — already subscribed — and .on() after subscribe() is rejected.
+  //     subscribeToSession() is called from three places (loadExisting, the
+  //     INSERT handler, and openMeetPay), so landing on the same id twice is
+  //     the normal case, not an edge case.
+  //
+  //  2. supabase.removeChannel() is asynchronous and returns a promise. The
+  //     old code did not await it, so the new .channel() call frequently ran
+  //     while the old channel of the same name was still registered — losing
+  //     the race with itself.
+  //
+  // Consequence when it fires: the listener never attaches, so the screen
+  // stops reacting to the other person confirming. It looks exactly like a
+  // dead button, which is how it was first reported.
+  async function subscribeToSession(sessionId: string) {
+    // Already listening to this exact session — nothing to do, and
+    // re-attaching is precisely what throws.
+    if (subscribedSessionIdRef.current === sessionId && sessionChannelRef.current) return;
+
     if (sessionChannelRef.current) {
-      supabase.removeChannel(sessionChannelRef.current);
+      await supabase.removeChannel(sessionChannelRef.current);
       sessionChannelRef.current = null;
+      subscribedSessionIdRef.current = null;
     }
 
     const channel = supabase
@@ -779,6 +813,7 @@ export default function ChatScreen() {
       .subscribe();
 
     sessionChannelRef.current = channel;
+    subscribedSessionIdRef.current = sessionId;
   }
 
   const fetchMessages = async (uid: string, idOverride?: string) => {
@@ -985,7 +1020,19 @@ export default function ChatScreen() {
   }
 
   async function openMeetPay() {
-    if (!depositPaid) return;
+    // Was a bare `return`. When this was false the button did nothing at
+    // all — no modal, no message, no error — which is how a broken realtime
+    // subscription came to be reported as "Confirm sale not reacting". A
+    // control that declines to act must say why.
+    if (!depositPaid) {
+      setPinError(
+        isItemRequestChat
+          ? 'This deal is not ready yet. The buyer needs to accept your response first.'
+          : 'This deal is not ready yet. The buyer needs to unlock the chat first.'
+      );
+      setMeetPayModal(true);
+      return;
+    }
     setPinError('');
     setMeetPayModal(true);
 

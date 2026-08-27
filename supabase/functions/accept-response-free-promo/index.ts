@@ -259,13 +259,28 @@ Deno.serve(withCors(async (req) => {
       return new Response(JSON.stringify({ error: 'DB error' }), { status: 500 });
     }
 
-    await supabase.from('transactions').insert({
+    // reference_id was omitted entirely, so the first real Wanted-post
+    // transaction (27 Aug) landed with a null reference and no way to trace
+    // it back to the post it came from. The quote and listing paths both
+    // record theirs. String() because item_requests.id is a uuid while
+    // quotes.id and listings.id are bigint — transactions.reference_id is
+    // text precisely so it can hold either.
+    //
+    // The error is checked now too: this was a bare insert, the same shape
+    // that silently swallowed every rejected ledger write until the column
+    // type was fixed. Non-fatal — the match is already made by this point —
+    // but never silent again.
+    const { error: txError } = await supabase.from('transactions').insert({
       user_id: buyer_id,
       type: 'wanted_request_match',
       amount: 0,
+      reference_id: String(item_request_id),
       status: 'completed',
       notes: `Wanted-post match fee waived — free launch promotion (through Jan 31, 2027)`,
     });
+    if (txError) {
+      console.error('accept-response-free-promo: transactions insert failed', txError.message, txError.code);
+    }
 
     // theResponse.responder_id, NOT the body's seller_id — the body is
     // caller-supplied and could previously direct this notification at any
