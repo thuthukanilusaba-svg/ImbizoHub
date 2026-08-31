@@ -166,7 +166,7 @@ const styles = StyleSheet.create({
   // that height via ID_ASPECT_RATIO — this keeps the guide shaped like
   // a real ID card regardless of device screen size, rather than a
   // fixed pixel box that would look right on only one screen size.
-  overlay: { ...StyleSheet.absoluteFillObject, flexDirection: 'column' },
+  overlay: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, flexDirection: 'column' },
   maskRow: { flex: 1, backgroundColor: 'rgba(0,0,0,0.55)' },
   maskMiddleRow: { flexDirection: 'row', height: '32%' },
   maskSide: { flex: 1, backgroundColor: 'rgba(0,0,0,0.55)' },

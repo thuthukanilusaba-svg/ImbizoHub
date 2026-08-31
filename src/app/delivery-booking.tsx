@@ -310,9 +310,9 @@ export default function DeliveryBookingScreen() {
       return;
     }
 
-    let filtered = (data ?? []).filter((d) => !excludedOperatorIds.includes(d.id));
+    let filtered = (data ?? []).filter((d: any) => !excludedOperatorIds.includes(d.id));
     if (bookingRow.parcel_size === 'large') {
-      filtered = filtered.filter((d) => canCarryLargeItems(d.vehicle_type));
+      filtered = filtered.filter((d: any) => canCarryLargeItems(d.vehicle_type));
     }
 
     setAvailableDrivers(filtered);
@@ -365,7 +365,7 @@ export default function DeliveryBookingScreen() {
     }
 
     const filtered = parcelSize === 'large'
-      ? (data ?? []).filter((d) => canCarryLargeItems(d.vehicle_type))
+      ? (data ?? []).filter((d: any) => canCarryLargeItems(d.vehicle_type))
       : (data ?? []);
 
     setAvailableDrivers(filtered);

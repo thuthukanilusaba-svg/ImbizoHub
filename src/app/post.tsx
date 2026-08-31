@@ -497,7 +497,7 @@ const styles = StyleSheet.create({
   // the row itself stays a tidy, uniform strip.
   photoThumb: { height: PHOTO_THUMB_HEIGHT, borderRadius: 12, marginRight: 10, overflow: 'hidden', position: 'relative', backgroundColor: DARK },
   photoImage: { width: '100%', height: '100%' },
-  photoUploadingOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.5)', alignItems: 'center', justifyContent: 'center' },
+  photoUploadingOverlay: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.5)', alignItems: 'center', justifyContent: 'center' },
   photoRemoveBtn: { position: 'absolute', top: 4, right: 4, width: 22, height: 22, borderRadius: 11, backgroundColor: 'rgba(0,0,0,0.7)', alignItems: 'center', justifyContent: 'center' },
   photoRemoveText: { color: '#fff', fontSize: 12, fontWeight: '700' },
   addPhotoBtn: { width: 90, height: 90, borderRadius: 12, borderWidth: 1.5, borderColor: '#444', borderStyle: 'dashed', alignItems: 'center', justifyContent: 'center', backgroundColor: DARK },

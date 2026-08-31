@@ -29,10 +29,18 @@
 // experience as reaching the real end of a shorter list.
 const MAX_CONTEXT_IDS = 200;
 
+// RETURN TYPE (fixed 31 Aug 2026): this used to say `string`, which made
+// every caller fail typed-route checking — router.push() accepts Expo
+// Router's Href union, and a bare `string` is not in it. Five screens
+// carried that error.
+//
+// The union does include `/listing` followed by a query string, so
+// declaring that shape exactly satisfies it with no cast anywhere: the
+// route is still checked, rather than silenced.
 export function buildListingHref(
   id: number | string,
   contextIds?: Array<number | string>
-): string {
+): `/listing?${string}` {
   if (!contextIds || contextIds.length === 0) {
     return `/listing?id=${id}`;
   }

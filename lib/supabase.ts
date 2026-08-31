@@ -27,6 +27,14 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
     flowType: 'pkce',
   },
   realtime: {
-    transport: ws,
+    // The `ws` package's constructor is declared more widely than
+    // supabase-js's WebSocketLikeConstructor expects (it accepts
+    // `string | URL` where the interface narrows that parameter). The two
+    // are compatible in practice — this is a disagreement between two
+    // libraries' .d.ts files, not a real mismatch — so the cast states
+    // that rather than leaving a permanent error in the build.
+    transport: ws as unknown as NonNullable<
+      NonNullable<Parameters<typeof createClient>[2]>['realtime']
+    >['transport'],
   },
 });

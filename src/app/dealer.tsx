@@ -181,7 +181,7 @@ export default function DealerScreen() {
     }
 
     const withLabels = await Promise.all(
-      sessions.map(async (s) => {
+      sessions.map(async (s: any) => {
         if (s.type === 'item_request') {
           const { data } = await supabase
             .from('item_requests')

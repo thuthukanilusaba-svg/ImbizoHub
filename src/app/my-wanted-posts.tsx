@@ -107,7 +107,7 @@ export default function MyWantedPostsScreen() {
       return;
     }
 
-    const ids = requests.map((r) => r.id);
+    const ids = requests.map((r: any) => r.id);
     const { data: responses } = await supabase
       .from('item_responses')
       .select('item_request_id')
@@ -118,7 +118,7 @@ export default function MyWantedPostsScreen() {
       countMap[r.item_request_id] = (countMap[r.item_request_id] ?? 0) + 1;
     });
 
-    setPosts(requests.map((r) => ({ ...r, responseCount: countMap[r.id] ?? 0 })));
+    setPosts(requests.map((r: any) => ({ ...r, responseCount: countMap[r.id] ?? 0 })));
     setLoading(false);
   }
 

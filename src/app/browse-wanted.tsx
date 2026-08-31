@@ -148,13 +148,13 @@ export default function BrowseWantedScreen() {
 
     const currentUid = uid ?? myId;
     if (currentUid && data && data.length > 0) {
-      const ids = data.map((r) => r.id);
+      const ids = data.map((r: any) => r.id);
       const { data: myResponses } = await supabase
         .from('item_responses')
         .select('item_request_id')
         .eq('responder_id', currentUid)
         .in('item_request_id', ids);
-      setMyResponseIds(new Set((myResponses ?? []).map((r) => r.item_request_id)));
+      setMyResponseIds(new Set((myResponses ?? []).map((r: any) => r.item_request_id)));
     }
 
     setLoading(false);
