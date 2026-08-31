@@ -50,7 +50,7 @@
 // without relying on this screen remounting.
 
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Platform,
@@ -100,6 +100,78 @@ export default function RatingScreen() {
     target === 'driver' ? 'driver' : 'seller'
   );
 
+  // NEW (found by a tester: "it still asks for rating, I'm afraid one
+  // would rate many times"). Their reputation was never actually at
+  // risk — submit_rating()/submit_delivery_rating() both refuse a second
+  // rating, and there are unique constraints behind both — but this
+  // screen treated the refusal as a success. Someone could give 5 stars,
+  // come back a week later, give 1 star and a bad review, and be told
+  // "Rating submitted! Thank you for your feedback." Nothing was
+  // written. The app lied to them about their own opinion.
+  //
+  // So: find out BEFORE showing an empty star picker. ratings is
+  // publicly readable ("Anyone can view ratings"), so this needs no new
+  // RPC — and it is the same row the RPC would have found.
+  const [checkingExisting, setCheckingExisting] = useState(true);
+  const [existing, setExisting] = useState<{
+    stars: number; review: string | null; created_at: string;
+  } | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    (async () => {
+      setCheckingExisting(true);
+      try {
+        const { data: auth } = await supabase.auth.getUser();
+        const uid = auth?.user?.id;
+        // chat.tsx builds this URL with `session_id=${session?.id}`, so a
+        // missing session arrives here as the literal string "undefined"
+        // rather than as absent. Treat it as absent.
+        const validSession = session_id && session_id !== 'undefined' ? session_id : null;
+        const validBooking = booking_id && booking_id !== 'undefined' ? booking_id : null;
+
+        if (!uid || (isDelivery ? !validBooking : !validSession)) {
+          if (!cancelled) { setExisting(null); setCheckingExisting(false); }
+          return;
+        }
+
+        let query = supabase
+          .from('ratings')
+          .select('stars, review, created_at')
+          .eq('reviewer_id', uid);
+
+        query = isDelivery
+          ? query.eq('delivery_booking_id', validBooking).eq('target', currentTarget)
+          : query.eq('meetpay_session_id', validSession);
+
+        const { data } = await query.maybeSingle();
+        if (!cancelled) setExisting(data ?? null);
+      } catch {
+        // A failed lookup must not block someone from rating. Worst case
+        // they submit, the RPC says already_rated, and handleSubmit()
+        // below shows them the same screen this would have.
+        if (!cancelled) setExisting(null);
+      } finally {
+        if (!cancelled) setCheckingExisting(false);
+      }
+    })();
+
+    return () => { cancelled = true; };
+    // currentTarget is in here on purpose: the chained "rate the driver"
+    // step re-runs this for the driver row without remounting.
+  }, [isDelivery, session_id, booking_id, currentTarget]);
+
+  function formatRatedOn(iso: string) {
+    try {
+      return new Date(iso).toLocaleDateString(undefined, {
+        day: 'numeric', month: 'short', year: 'numeric',
+      });
+    } catch {
+      return '';
+    }
+  }
+
   async function handleSubmit() {
     if (stars === 0) {
       setError('Please select a star rating before submitting.');
@@ -132,10 +204,21 @@ export default function RatingScreen() {
       return;
     }
 
-    // data.status is either 'submitted' or 'already_rated' — both are
-    // shown as success from the user's point of view (see
-    // submit_rating()'s own comment on why 'already_rated' isn't an
-    // error).
+    // CHANGED: 'already_rated' used to be shown as a success. It is not
+    // one — nothing was written, and the stars and review this person
+    // just typed were discarded. It is not an ERROR either (they did
+    // nothing wrong), so it gets its own screen: their existing rating,
+    // shown back to them, so they can see what they actually said.
+    if ((data as any)?.status === 'already_rated') {
+      const { data: row } = await (isDelivery
+        ? supabase.from('ratings').select('stars, review, created_at')
+            .eq('id', (data as any).rating_id).maybeSingle()
+        : supabase.from('ratings').select('stars, review, created_at')
+            .eq('id', (data as any).rating_id).maybeSingle());
+      setExisting(row ?? { stars: 0, review: null, created_at: '' });
+      return;
+    }
+
     setSubmitted(true);
   }
 
@@ -149,6 +232,11 @@ export default function RatingScreen() {
     setReview('');
     setError('');
     setSubmitted(false);
+    // Clear rather than leave the seller's row on screen while the
+    // effect re-runs for the driver — otherwise the first frame of the
+    // driver step shows the rating they gave the seller.
+    setExisting(null);
+    setCheckingExisting(true);
   }
 
   if (submitted) {
@@ -180,6 +268,70 @@ export default function RatingScreen() {
   }
 
   const isSeller = role === 'seller';
+
+  // NEW: don't show a star picker until we know whether it would do
+  // anything. A brief spinner is honest; an empty form that silently
+  // discards what you type is not.
+  if (checkingExisting) {
+    return (
+      <View style={styles.container}>
+        <View style={styles.successCard}>
+          <ActivityIndicator color={GOLD} />
+        </View>
+      </View>
+    );
+  }
+
+  // NEW: they already rated this. Show them what they said instead of
+  // inviting them to say it again.
+  if (existing) {
+    const offerDriverStep = isDelivery && currentTarget === 'seller' && has_driver === '1';
+    const ratedWhom = isDelivery
+      ? (currentTarget === 'driver' ? 'the driver' : 'the seller')
+      : (isSeller ? 'the buyer' : 'the seller');
+    return (
+      <View style={styles.container}>
+        <View style={styles.successCard}>
+          <Text style={styles.successIcon}>✅</Text>
+          <Text style={styles.successTitle}>You already rated {ratedWhom}</Text>
+
+          <View style={styles.existingCard}>
+            <Text style={styles.existingStars}>
+              {'★'.repeat(Math.max(0, Math.min(5, existing.stars)))}
+              <Text style={styles.existingStarsDim}>
+                {'★'.repeat(Math.max(0, 5 - existing.stars))}
+              </Text>
+            </Text>
+            {existing.review ? (
+              <Text style={styles.existingReview}>“{existing.review}”</Text>
+            ) : null}
+            {existing.created_at ? (
+              <Text style={styles.existingDate}>{formatRatedOn(existing.created_at)}</Text>
+            ) : null}
+          </View>
+
+          <Text style={styles.successBody}>
+            A rating can only be given once per transaction — that is what keeps
+            ratings on ImbizoHub worth trusting.
+          </Text>
+
+          {offerDriverStep && (
+            <TouchableOpacity style={styles.doneBtn} onPress={startDriverRating}>
+              <Text style={styles.doneBtnText}>⭐ Rate the driver →</Text>
+            </TouchableOpacity>
+          )}
+          <TouchableOpacity
+            style={offerDriverStep ? styles.skipBtn : styles.doneBtn}
+            onPress={() => router.replace('/')}
+          >
+            <Text style={offerDriverStep ? styles.skipText : styles.doneBtnText}>
+              {offerDriverStep ? 'Skip — back to home' : 'Back to home'}
+            </Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  }
 
   return (
     // FIX (clean-sweep bug): same missing-ScrollView pattern found and
@@ -307,4 +459,18 @@ const styles = StyleSheet.create({
     paddingVertical: 16, paddingHorizontal: 40, alignItems: 'center',
   },
   doneBtnText: { color: BLACK, fontSize: 15, fontWeight: '800' },
+
+  // NEW: the read-only card showing a rating already given.
+  existingCard: {
+    backgroundColor: DARK, borderRadius: 14, paddingVertical: 18,
+    paddingHorizontal: 20, alignItems: 'center', alignSelf: 'stretch',
+    borderWidth: 0.5, borderColor: '#333', marginBottom: 24,
+  },
+  existingStars: { fontSize: 28, color: GOLD, letterSpacing: 2 },
+  existingStarsDim: { color: '#3a3a3a' },
+  existingReview: {
+    color: '#ddd', fontSize: 13, lineHeight: 20, fontStyle: 'italic',
+    textAlign: 'center', marginTop: 12,
+  },
+  existingDate: { color: '#666', fontSize: 11, marginTop: 12 },
 });

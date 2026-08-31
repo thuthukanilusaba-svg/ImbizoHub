@@ -114,6 +114,13 @@ export default function ChatScreen() {
   const [pinError, setPinError] = useState('');
   const [confirming, setConfirming] = useState(false);
   const [confirmed, setConfirmed] = useState(false);
+  // NEW (tester: "it still asks for rating, I'm afraid one would rate
+  // many times"). A second rating was never actually written — the RPC
+  // and a unique constraint both refuse it — but nothing on THIS screen
+  // knew that, so it kept offering the button as if there were work to
+  // do. rating.tsx now shows an already-given rating read-only; this
+  // just stops sending people there under false pretences.
+  const [hasRated, setHasRated] = useState(false);
   const [secondsLeft, setSecondsLeft] = useState(0);
   const [listingPrice, setListingPrice] = useState<number | null>(null);
   const [sellerIsDealerPro, setSellerIsDealerPro] = useState(false);
@@ -398,6 +405,24 @@ export default function ChatScreen() {
 
   const channelRef = useRef<any>(null);
 
+  // NEW: has this person already rated this transaction? ratings is
+  // publicly readable ("Anyone can view ratings"), so no new RPC — and
+  // it is the same row submit_rating() checks before refusing.
+  useEffect(() => {
+    if (!confirmed || !session?.id || !myId) { setHasRated(false); return; }
+    let cancelled = false;
+    (async () => {
+      const { data } = await supabase
+        .from('ratings')
+        .select('id')
+        .eq('meetpay_session_id', session.id)
+        .eq('reviewer_id', myId)
+        .maybeSingle();
+      if (!cancelled) setHasRated(!!data);
+    })();
+    return () => { cancelled = true; };
+  }, [confirmed, session?.id, myId]);
+
   useEffect(() => {
     if (!session?.pin_expires_at || session.status !== 'pending') return;
 
@@ -416,11 +441,17 @@ export default function ChatScreen() {
 
   useEffect(() => {
     if (isRequestChat) return;
-    if (openDeal === '1' && depositChecked && depositPaid && isBuyerRoleRef.current && !openDealHandled.current) {
+    // `&& !confirmed` NEW: this deep link (from a push notification)
+    // used to reopen the "how do you want to receive this?" chooser on a
+    // deal that had already been completed and confirmed. The chooser's
+    // own render guards this too — `confirmed` is loaded asynchronously
+    // and may still be false at this instant, so the guard that matters
+    // is the one at render time.
+    if (openDeal === '1' && depositChecked && depositPaid && !confirmed && isBuyerRoleRef.current && !openDealHandled.current) {
       openDealHandled.current = true;
       setDealModal(true);
     }
-  }, [openDeal, depositChecked, depositPaid]);
+  }, [openDeal, depositChecked, depositPaid, confirmed]);
 
   // FIX (real bug, reported: "some messages do not come through
   // especially if the other phone is not active"): there was no
@@ -1017,6 +1048,24 @@ export default function ChatScreen() {
   isBuyerRoleRef.current = isBuyerRole;
 
   function handleArrangeDealPress() {
+    // NEW (reported: "why does it allow to arrange deal if it's done?").
+    // `confirmed` was read in exactly one place — inside the Meet & Pay
+    // modal's render — so this button led people three screens deep into
+    // arranging a deal that had already happened, and only admitted it
+    // at the very end. Worse, the chooser it opened still offered "Book
+    // delivery": once DELIVERY_BOOKING_ENABLED goes true, a buyer could
+    // reopen a finished chat and pay for delivery of an item already
+    // handed to them in person.
+    //
+    // Straight to the Meet & Pay modal, which renders the confirmed
+    // receipt. Deliberately NOT via openMeetPay() — that gates on
+    // depositPaid, and a completed deal must be viewable regardless of
+    // what that flag says today.
+    if (confirmed) {
+      setPinError('');
+      setMeetPayModal(true);
+      return;
+    }
     if (isItemRequestChat) {
       if (!isBuyerRole) {
         openMeetPay();
@@ -1308,7 +1357,13 @@ export default function ChatScreen() {
                     handleConfirmPin() below) — this pill label is just
                     the entry point's name. Text-only change: no logic,
                     PIN flow, or rating eligibility touched. */}
-                {isBuyerRole ? 'Arrange deal' : 'Confirm sale'}
+                {/* CHANGED: was role-only, with no reference to whether
+                    the deal was actually finished, so a completed
+                    transaction kept a live-looking "Arrange deal" /
+                    "Confirm sale" button forever. */}
+                {confirmed
+                  ? 'Deal complete'
+                  : isBuyerRole ? 'Arrange deal' : 'Confirm sale'}
               </Text>
             </TouchableOpacity>
           )}
@@ -1462,7 +1517,13 @@ export default function ChatScreen() {
         </TouchableOpacity>
       </View>
 
-      <Modal visible={dealModal} animationType="slide" transparent onRequestClose={() => setDealModal(false)}>
+      {/* `&& !confirmed` NEW: the render-time guard for the chooser.
+          handleArrangeDealPress() already returns early on a confirmed
+          deal, but this modal has a second entry point (the openDeal
+          deep link above) whose own guard races an async load. This one
+          cannot be raced: if the deal is confirmed, the chooser — and
+          with it the "Book delivery" option — is simply not there. */}
+      <Modal visible={dealModal && !confirmed} animationType="slide" transparent onRequestClose={() => setDealModal(false)}>
         <View style={styles.modalOverlay}>
           <View style={styles.modalSheet}>
             <Text style={styles.modalTitle}>Arrange the deal</Text>
@@ -1569,10 +1630,21 @@ export default function ChatScreen() {
                     );
                   }}
                 >
-                  <Text style={styles.modalBtnText}>⭐ Rate this transaction</Text>
+                  {/* CHANGED: this always read "Rate this transaction",
+                      even to someone who had already rated — which is
+                      what "it still asks for rating" was about. The
+                      rating itself was never at risk (submit_rating()
+                      refuses a second one, and a unique constraint sits
+                      behind it), but sending someone to a blank star
+                      picker that will discard what they type is not an
+                      honest button. rating.tsx now shows them what they
+                      said; this names it correctly on the way in. */}
+                  <Text style={styles.modalBtnText}>
+                    {hasRated ? '⭐ View your rating' : '⭐ Rate this transaction'}
+                  </Text>
                 </TouchableOpacity>
                 <TouchableOpacity style={styles.cancelLink} onPress={() => setMeetPayModal(false)}>
-                  <Text style={styles.cancelLinkText}>Skip for now</Text>
+                  <Text style={styles.cancelLinkText}>{hasRated ? 'Close' : 'Skip for now'}</Text>
                 </TouchableOpacity>
               </View>
             ) : isBuyerRole ? (
