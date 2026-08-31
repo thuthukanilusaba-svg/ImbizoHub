@@ -71,6 +71,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { openChannel } from '../../lib/realtime';
 import { supabase } from '../../lib/supabase';
 
 const GOLD = '#B8860B';
@@ -105,6 +106,9 @@ export default function MeetPayScreen() {
   // nothing.
   const [iAlreadyRated, setIAlreadyRated] = useState(false);
   const channelRef = useRef<any>(null);
+  // Which session id channelRef is listening to. Claimed synchronously in
+  // subscribeToSession() below, before any await — see lib/realtime.ts.
+  const subscribedSessionIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     init();
@@ -113,6 +117,7 @@ export default function MeetPayScreen() {
         supabase.removeChannel(channelRef.current);
         channelRef.current = null;
       }
+      subscribedSessionIdRef.current = null;
     };
   }, []);
 
@@ -222,21 +227,39 @@ export default function MeetPayScreen() {
   // party's confirmation (or the session first being created, if this
   // side got here before a session existed at all) without needing a
   // manual reload.
-  function subscribeToSession(sessionId: string) {
-    if (channelRef.current) {
-      supabase.removeChannel(channelRef.current);
-      channelRef.current = null;
+  // CHANGED (31 Aug): this was the same unguarded shape as chat.tsx's —
+  // an un-awaited removeChannel() followed immediately by .channel(), which
+  // hands back an already-subscribed channel if the removal has not landed,
+  // and then throws on .on(). chat.tsx crashed on it three times; this
+  // screen has simply never been exercised (0 quotes, 0 trips confirmed),
+  // so it has had no chance to. Routed through openChannel() so it cannot
+  // start now. See lib/realtime.ts.
+  //
+  // Subscribing is claimed by session id before the await, for the reason
+  // spelled out there: a guard written after an await guards nothing.
+  async function subscribeToSession(sessionId: string) {
+    if (subscribedSessionIdRef.current === sessionId) return;
+    subscribedSessionIdRef.current = sessionId;
+
+    const previous = channelRef.current;
+    channelRef.current = null;
+    if (previous) {
+      try { await supabase.removeChannel(previous); } catch {}
     }
 
-    const channel = supabase
-      .channel(`meetpay-session-${sessionId}`)
-      .on('postgres_changes', {
+    const channel = await openChannel(`meetpay-session-${sessionId}`, (ch) => {
+      ch.on('postgres_changes', {
         event: 'UPDATE', schema: 'public', table: 'meetpay_sessions',
         filter: `id=eq.${sessionId}`,
-      }, (payload) => {
+      }, (payload: any) => {
         if (payload.new) setSession(payload.new);
-      })
-      .subscribe();
+      }).subscribe();
+    });
+
+    if (!channel) {
+      if (subscribedSessionIdRef.current === sessionId) subscribedSessionIdRef.current = null;
+      return;
+    }
 
     channelRef.current = channel;
   }

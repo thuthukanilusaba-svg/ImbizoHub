@@ -22,6 +22,7 @@
 // session. Components subscribe to a plain callback instead — no channels,
 // no lifecycle, nothing to get wrong when a screen unmounts mid-navigation.
 
+import { openChannel } from './realtime';
 import { supabase } from './supabase';
 
 let currentCount = 0;
@@ -89,46 +90,54 @@ export async function refreshUnreadCount() {
 export async function startUnreadWatcher(userId: string) {
   if (!userId) return;
 
-  if (watchingUserId === userId && channel) {
+  // CHANGED (31 Aug): the guard used to be `watchingUserId === userId &&
+  // channel`, and `channel` is only assigned at the very END of this
+  // function — so a second call arriving mid-setup found it still null,
+  // sailed past, and started a second build of the same channel. That is
+  // the same "guard written after the await" mistake that put chat.tsx in
+  // the crash reports three times. Claim first, then do the slow work.
+  if (watchingUserId === userId) {
     await refreshUnreadCount();
     return;
   }
 
-  // Different user (or a stale channel) — tear the old one down first, and
-  // AWAIT it. removeChannel returns a promise, and not awaiting it is the
-  // other half of the 27 Aug bug: the new .channel() call can still find
-  // the old one registered and hand it back already-subscribed.
+  // Different user — tear the old one down first, and AWAIT it.
   await stopUnreadWatcher();
 
   watchingUserId = userId;
   await refreshUnreadCount();
 
-  try {
-    channel = supabase
-      .channel(`unread-messages-${userId}`)
-      // postgres_changes filters compare a single column, which is exactly
-      // what is needed here: messages addressed to me.
-      .on(
-        'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'messages',
-          filter: `receiver_id=eq.${userId}`,
-        },
-        () => {
-          // Re-count rather than incrementing. A second message in a
-          // conversation you already have unread must NOT raise the number,
-          // and only the database knows how the grouping falls.
-          refreshUnreadCount();
-        }
-      )
-      .subscribe();
-  } catch (err) {
+  // openChannel() sweeps any channel already registered under this name,
+  // awaits the removal, and serialises the whole setup against every other
+  // channel in the app — so neither a half-finished teardown nor a
+  // concurrent caller can hand us an already-subscribed channel.
+  // See lib/realtime.ts.
+  channel = await openChannel(`unread-messages-${userId}`, (ch) => {
+    // postgres_changes filters compare a single column, which is exactly
+    // what is needed here: messages addressed to me.
+    ch.on(
+      'postgres_changes',
+      {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'messages',
+        filter: `receiver_id=eq.${userId}`,
+      },
+      () => {
+        // Re-count rather than incrementing. A second message in a
+        // conversation you already have unread must NOT raise the number,
+        // and only the database knows how the grouping falls.
+        refreshUnreadCount();
+      }
+    ).subscribe();
+  });
+
+  if (!channel) {
     // Without realtime the badge still works, it just updates when a screen
-    // regains focus instead of instantly. Degraded, not broken.
-    console.log('unread watcher subscribe failed:', err);
-    channel = null;
+    // regains focus instead of instantly. Degraded, not broken — but release
+    // the claim so signing in again can retry rather than assuming we are
+    // already watching.
+    if (watchingUserId === userId) watchingUserId = null;
   }
 }
 

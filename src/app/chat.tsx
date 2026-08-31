@@ -70,6 +70,7 @@ import {
   notifyNewMessage,
   notifyTransactionConfirmed
 } from '../../lib/notifications';
+import { openChannel } from '../../lib/realtime';
 import { supabase } from '../../lib/supabase';
 import { useWebKeyboardInset } from '../../lib/useWebKeyboardInset';
 import { markConversationRead } from '../../lib/unreadMessages';
@@ -173,7 +174,16 @@ export default function ChatScreen() {
   // Which session id sessionChannelRef is currently listening to. Without
   // this there is no way to tell "subscribe to the session you are already
   // subscribed to" from a genuine change, and the former throws.
+  //
+  // CHANGED (31 Aug, third round on the same crash): this is now CLAIMED
+  // SYNCHRONOUSLY, before any await. Writing it after the await was the
+  // whole reason the guard did nothing — two concurrent callers both read
+  // the old value, both passed, and both built the same channel. A guard
+  // set after an await guards nothing.
   const subscribedSessionIdRef = useRef<string | null>(null);
+  // Same claim, for the INSERT listener. It never had a guard at all, and
+  // it is in the same crash reports as the session channel.
+  const newSessionKeyRef = useRef<string | null>(null);
 
   // Van-hire only. The accepted quote's id, which is what meetpay.tsx
   // keys a van_hire session on (reference_id).
@@ -326,14 +336,16 @@ export default function ChatScreen() {
     function subscribeToMessages(channelName: string, uid: string, otherId: string | undefined, attempt = 0) {
       if (cancelled) return;
 
-      const staleChannels = supabase.getChannels().filter((ch) => ch.topic?.includes(channelName));
-      staleChannels.forEach((ch) => supabase.removeChannel(ch));
-
-      const channel = supabase
-        .channel(channelName)
-        .on('postgres_changes', {
+      // CHANGED (31 Aug): this had the right idea — clear stale channels
+      // of the same name first — but removeChannel() returns a promise and
+      // forEach does not await it, so the .channel() call below regularly
+      // ran while the old registration was still live. openChannel() does
+      // the same sweep, awaited, and serialised against every other channel
+      // setup in the app. See lib/realtime.ts.
+      openChannel(channelName, (ch) => {
+        ch.on('postgres_changes', {
           event: 'INSERT', schema: 'public', table: 'messages',
-        }, (payload) => {
+        }, (payload: any) => {
           const msg = payload.new;
           // FIX (separate, provable bug found in the same pass): the
           // request_id branch compared a NUMBER to a STRING. messages
@@ -368,7 +380,7 @@ export default function ChatScreen() {
             }
           }
         })
-        .subscribe((status) => {
+        .subscribe((status: string) => {
           if (cancelled) return;
           if (status === 'SUBSCRIBED') {
             fetchMessages(uid, otherId);
@@ -379,12 +391,28 @@ export default function ChatScreen() {
             }, delay);
           }
         });
-
-      channelRef.current = channel;
+      }).then((channel) => {
+        // The screen may have been left while setup was queued. Don't
+        // strand a live channel on an unmounted screen — the cleanup below
+        // has already run and will not run again.
+        if (cancelled) {
+          if (channel) supabase.removeChannel(channel);
+          return;
+        }
+        channelRef.current = channel;
+      });
     }
 
     init();
 
+    // NOTE on this cleanup: it cannot await anything — React discards the
+    // return value of an effect cleanup — so removeChannel() is still
+    // fire-and-forget here, and a fast unmount/remount CAN still leave a
+    // channel registered for a moment. That used to be one half of the
+    // "after `subscribe()`" crash. It is no longer load-bearing: every
+    // channel is now created through openChannel(), which sweeps and awaits
+    // any leftover registration of that name before building. The fix is at
+    // the creation site precisely because teardown here can never be exact.
     return () => {
       cancelled = true;
       if (channelRef.current) {
@@ -400,6 +428,7 @@ export default function ChatScreen() {
         supabase.removeChannel(newSessionChannelRef.current);
         newSessionChannelRef.current = null;
       }
+      newSessionKeyRef.current = null;
     };
   }, []);
 
@@ -767,14 +796,21 @@ export default function ChatScreen() {
     const referenceId = isItemRequestChat ? item_request_id : listing_id;
     if (!referenceId || !otherId) return;
 
-    if (newSessionChannelRef.current) {
-      await supabase.removeChannel(newSessionChannelRef.current);
-      newSessionChannelRef.current = null;
+    const channelName = `chat-meetpay-new-${referenceId}-${currentUserId}`;
+
+    // CHANGED: this had no guard of any kind, so every caller built the
+    // channel unconditionally. Same synchronous claim as subscribeToSession.
+    if (newSessionKeyRef.current === channelName) return;
+    newSessionKeyRef.current = channelName;
+
+    const previousNew = newSessionChannelRef.current;
+    newSessionChannelRef.current = null;
+    if (previousNew) {
+      try { await supabase.removeChannel(previousNew); } catch {}
     }
 
-    const channel = supabase
-      .channel(`chat-meetpay-new-${referenceId}-${currentUserId}`)
-      .on('postgres_changes', {
+    const channel = await openChannel(channelName, (ch) => {
+      ch.on('postgres_changes', {
         event: 'INSERT', schema: 'public', table: 'meetpay_sessions',
         // postgres_changes filters can only compare one column — this
         // narrows to the right listing/item_request, but the same
@@ -782,7 +818,7 @@ export default function ChatScreen() {
         // (a listing can have several different buyers), so the pair
         // itself is verified client-side below before accepting it.
         filter: `reference_id=eq.${String(referenceId)}`,
-      }, (payload) => {
+      }, (payload: any) => {
         const row = payload.new as any;
         if (!row) return;
         const belongsToThisPair =
@@ -793,8 +829,13 @@ export default function ChatScreen() {
           if (row.status === 'confirmed') setConfirmed(true);
           subscribeToSession(row.id);
         }
-      })
-      .subscribe();
+      }).subscribe();
+    });
+
+    if (!channel) {
+      if (newSessionKeyRef.current === channelName) newSessionKeyRef.current = null;
+      return;
+    }
 
     newSessionChannelRef.current = channel;
   }
@@ -823,29 +864,45 @@ export default function ChatScreen() {
   async function subscribeToSession(sessionId: string) {
     // Already listening to this exact session — nothing to do, and
     // re-attaching is precisely what throws.
-    if (subscribedSessionIdRef.current === sessionId && sessionChannelRef.current) return;
+    //
+    // CHANGED: no longer `&& sessionChannelRef.current`. That extra
+    // condition made the guard fail open during setup — the ref is null
+    // while a channel is being built, so a second caller arriving mid-build
+    // sailed straight past it. The claim below is what makes this correct.
+    if (subscribedSessionIdRef.current === sessionId) return;
 
-    if (sessionChannelRef.current) {
-      await supabase.removeChannel(sessionChannelRef.current);
-      sessionChannelRef.current = null;
-      subscribedSessionIdRef.current = null;
+    // Claim BEFORE awaiting anything. Everything after this line is
+    // asynchronous, and any call that arrives during it must bounce off the
+    // guard above rather than start a second build of the same channel.
+    subscribedSessionIdRef.current = sessionId;
+    const previous = sessionChannelRef.current;
+    sessionChannelRef.current = null;
+
+    if (previous) {
+      try { await supabase.removeChannel(previous); } catch {}
     }
 
-    const channel = supabase
-      .channel(`chat-meetpay-session-${sessionId}`)
-      .on('postgres_changes', {
+    const channel = await openChannel(`chat-meetpay-session-${sessionId}`, (ch) => {
+      ch.on('postgres_changes', {
         event: 'UPDATE', schema: 'public', table: 'meetpay_sessions',
         filter: `id=eq.${sessionId}`,
-      }, (payload) => {
+      }, (payload: any) => {
         if (payload.new) {
           setSession(payload.new);
           if ((payload.new as any).status === 'confirmed') setConfirmed(true);
         }
-      })
-      .subscribe();
+      }).subscribe();
+    });
+
+    if (!channel) {
+      // Setup failed. Release the claim so a later attempt — reopening the
+      // modal, or the other party's INSERT arriving — can try again rather
+      // than this screen believing forever that it is listening.
+      if (subscribedSessionIdRef.current === sessionId) subscribedSessionIdRef.current = null;
+      return;
+    }
 
     sessionChannelRef.current = channel;
-    subscribedSessionIdRef.current = sessionId;
   }
 
   const fetchMessages = async (uid: string, idOverride?: string) => {
