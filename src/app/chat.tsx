@@ -61,7 +61,7 @@
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, AppState, KeyboardAvoidingView, Modal, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Alert, AppState, Keyboard, KeyboardAvoidingView, Modal, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { DELIVERY_BOOKING_ENABLED, DELIVERY_PAUSED_MESSAGE, DELIVERY_PAUSED_TITLE } from '../../lib/featureFlags';
 import {
@@ -451,6 +451,43 @@ export default function ChatScreen() {
     })();
     return () => { cancelled = true; };
   }, [confirmed, session?.id, myId]);
+
+  // NEW (reported: "when confirming a deal, the pin hides under the
+  // keyboard"). The Meet & Pay sheet is anchored to the bottom of the
+  // screen, and the PIN field sits near the bottom of that sheet — so the
+  // keyboard opens directly on top of the thing you are being asked to
+  // type into.
+  //
+  // The screen already has a KeyboardAvoidingView wrapped around it, and
+  // it does nothing here: React Native's <Modal> renders into a SEPARATE
+  // native view hierarchy, so nothing the screen does about layout reaches
+  // inside it. On Android the modal gets its own window, which does not
+  // pick up the activity's adjustResize either. A modal has to solve this
+  // for itself.
+  //
+  // Measuring the keyboard directly rather than using another
+  // KeyboardAvoidingView inside the modal: `behavior` has to differ per
+  // platform, behaves differently again inside a Modal, and fails quietly
+  // when it guesses wrong. The keyboard's own reported height is the same
+  // number on both platforms.
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
+
+  useEffect(() => {
+    if (Platform.OS === 'web') return; // web is handled by useWebKeyboardInset
+    // iOS fires the "will" events before the animation, so the sheet moves
+    // with the keyboard instead of after it. Android only has "did".
+    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+    const showSub = Keyboard.addListener(showEvent, (e: any) => {
+      setKeyboardHeight(e?.endCoordinates?.height ?? 0);
+    });
+    const hideSub = Keyboard.addListener(hideEvent, () => setKeyboardHeight(0));
+    return () => { showSub.remove(); hideSub.remove(); };
+  }, []);
+
+  // Web gets its inset from the visual-viewport hook the screen already
+  // uses; native gets the measured keyboard.
+  const sheetLift = Platform.OS === 'web' ? webKeyboardInset : keyboardHeight;
 
   useEffect(() => {
     if (!session?.pin_expires_at || session.status !== 'pending') return;
@@ -1653,7 +1690,10 @@ export default function ChatScreen() {
 
       <Modal visible={meetPayModal} animationType="slide" transparent onRequestClose={() => setMeetPayModal(false)}>
         <View style={styles.modalOverlay}>
-          <View style={styles.modalSheet}>
+          {/* Lifted clear of the keyboard — see the keyboardHeight effect
+              above for why this cannot be left to the screen's own
+              KeyboardAvoidingView. */}
+          <View style={[styles.modalSheet, sheetLift > 0 && { marginBottom: sheetLift }]}>
 
             {confirmed ? (
               <View style={{ alignItems: 'center', paddingVertical: 10 }}>
