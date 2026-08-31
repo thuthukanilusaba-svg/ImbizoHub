@@ -1207,7 +1207,27 @@ export default function ChatScreen() {
               Tapping a notification to cold-launch the app lands here
               with no screen behind it, so the back arrow silently did
               nothing. Falls back to the conversations list instead. */}
-          <TouchableOpacity onPress={() => (router.canGoBack() ? router.back() : router.replace('/messages'))}>
+          {/* SECOND FIX for the same report. The canGoBack() logic above
+              was one cause; this is the other, and it is why "the back
+              button is not reacting" came back after that fix shipped.
+              
+              Every other screen in this app renders "‹ Back" — chevron
+              plus the word — which is a wide, easy target. This screen is
+              the only one rendering a bare "‹", and styles.backBtn carries
+              no padding, width or height. So the tappable area is one
+              narrow glyph: roughly 8x26px, against Android's 48dp and
+              iOS's 44pt minimums. It was never dead, just almost
+              impossible to hit.
+              
+              hitSlop rather than padding, so the touch area grows without
+              moving anything on screen. Same approach as listing.tsx:385,
+              which already solved this for its own small control. */}
+          <TouchableOpacity
+            onPress={() => (router.canGoBack() ? router.back() : router.replace('/messages'))}
+            hitSlop={{ top: 16, bottom: 16, left: 20, right: 20 }}
+            accessibilityRole="button"
+            accessibilityLabel="Go back"
+          >
             <Text style={styles.backBtn}>‹</Text>
           </TouchableOpacity>
           <View style={styles.avatarWrap}>
@@ -1689,7 +1709,10 @@ const styles = StyleSheet.create({
   headerRight: { flexDirection: 'row', alignItems: 'center', gap: 8, flexShrink: 0 },
   reportIconBtn: { width: 34, height: 34, borderRadius: 17, backgroundColor: DARK, alignItems: 'center', justifyContent: 'center' },
   reportIconText: { color: '#888', fontSize: 14 },
-  backBtn: { color: '#fff', fontSize: 22 },
+  // minWidth + textAlign widen the glyph's own box a little, so the
+  // visible target matches the enlarged touch area rather than being a
+  // sliver in the middle of it.
+  backBtn: { color: '#fff', fontSize: 26, minWidth: 16, textAlign: 'center' },
   avatarWrap: { position: 'relative' },
   avatar: { width: 38, height: 38, backgroundColor: GOLD, borderRadius: 19, alignItems: 'center', justifyContent: 'center' },
   avatarText: { color: BLACK, fontSize: 14, fontWeight: '800' },
