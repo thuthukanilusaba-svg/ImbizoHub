@@ -84,7 +84,7 @@ export default function DeliveryOperatorRegisterPayScreen() {
     // web URL — could pay $10 for a registration that grants access to
     // a product that isn't running.
     if (!DELIVERY_BOOKING_ENABLED) {
-      Alert.alert(DELIVERY_PAUSED_TITLE, DELIVERY_OPERATOR_SIGNUP_PAUSED_MESSAGE);
+      Alert.alert(DELIVERY_PAUSED_TITLE, DELIVERY_OPERATOR_SIGNUP_PAUSED_MESSAGE || undefined);
       router.replace('/');
       return;
     }

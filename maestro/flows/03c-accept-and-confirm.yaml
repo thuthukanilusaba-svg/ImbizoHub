@@ -1,0 +1,154 @@
+# Van hire, part 3 of 3: accept the quote, both sides confirm, rate the driver.
+#
+# This is the part with the most untested code behind it. Everything here
+# runs through paths that have never executed against real data:
+#   - accept-quote-free-promo, including the ownership guards added in August
+#   - the transactions ledger write, whose reference_id type bug silently
+#     rejected every write until 25 August
+#   - confirm_meetpay_trip()'s two-sided confirmation
+#   - submit_delivery_rating() and the unique index added 31 August, which
+#     stops a driver's average being counted twice
+#
+# Run 03a and 03b first. This flow switches accounts twice.
+
+appId: com.imbizohub.app
+name: Van hire 3 of 3 — accept, confirm both sides, rate the driver
+---
+
+# ---------- customer accepts the quote ----------
+- runFlow:
+    file: ../subflows/login-as.yaml
+    env:
+      EMAIL: ${MAESTRO_BUYER_EMAIL}
+      PASSWORD: ${MAESTRO_BUYER_PASSWORD}
+
+- tapOn:
+    id: "nav-profile"
+- waitForAnimationToEnd
+- extendedWaitUntil:
+    visible: "My trip requests"
+    timeout: 20000
+- tapOn: "My trip requests"
+
+- extendedWaitUntil:
+    visible: "Quotes for your trip"
+    timeout: 20000
+
+# Promo wording, live until 31 January 2027. After that this button becomes
+# "Accept — pay $N platform fee" and this line needs updating — the same is
+# true of the confirm button below. Both dashes are em dashes.
+- tapOn: "Accept — free (launch promo)"
+- extendedWaitUntil:
+    visible: "Confirm booking"
+    timeout: 15000
+- assertVisible: "Pay the operator directly"
+- tapOn: "Accept free — launch promo"
+
+- extendedWaitUntil:
+    visible: "Booking confirmed 🎉"
+    timeout: 40000
+- assertVisible: "Phone number"
+
+# ---------- operator confirms their half ----------
+- runFlow:
+    file: ../subflows/login-as.yaml
+    env:
+      EMAIL: ${MAESTRO_OPERATOR_EMAIL}
+      PASSWORD: ${MAESTRO_OPERATOR_PASSWORD}
+
+- tapOn:
+    id: "nav-profile"
+- waitForAnimationToEnd
+- tapOn: "Quote on trips"
+- extendedWaitUntil:
+    visible: "Your trips"
+    timeout: 20000
+- tapOn: "Trip completed"
+
+# meetpay.tsx headings and buttons are the same interpolated string on the
+# operator side, so "Trip completed" appears twice here — as the heading
+# and as the button. index 1 is the button.
+- extendedWaitUntil:
+    visible: "Only confirm once your trip has actually finished."
+    timeout: 20000
+- tapOn:
+    text: "Trip completed"
+    index: 1
+
+- extendedWaitUntil:
+    visible: "You confirmed"
+    timeout: 30000
+
+# ---------- customer confirms, then rates ----------
+- runFlow:
+    file: ../subflows/login-as.yaml
+    env:
+      EMAIL: ${MAESTRO_BUYER_EMAIL}
+      PASSWORD: ${MAESTRO_BUYER_PASSWORD}
+
+# Back in via the quote, not via Messages. Accepting a quote does not by
+# itself create a message thread, so the trip may not appear on the
+# Messages tab at all — the accepted-quote card is the reliable route.
+- tapOn:
+    id: "nav-profile"
+- waitForAnimationToEnd
+- tapOn: "My trip requests"
+- extendedWaitUntil:
+    visible: "View contact details"
+    timeout: 20000
+- tapOn: "View contact details"
+- extendedWaitUntil:
+    visible: "🔒 Proceed"
+    timeout: 20000
+- tapOn: "🔒 Proceed"
+
+# The operator confirmed first, so the customer is the last step and the
+# button is the rating one rather than a bare confirm.
+- extendedWaitUntil:
+    visible: "you're the last step"
+    timeout: 20000
+- tapOn: "⭐ Rate your driver"
+
+# rating.tsx renders five identical "★" glyphs with no testID — index 4 is
+# the fifth star, left to right. If the star row is ever reworked, this is
+# the line that breaks.
+- extendedWaitUntil:
+    visible: "Rate your experience"
+    timeout: 20000
+- tapOn:
+    text: "★"
+    index: 4
+- assertVisible: "Excellent"
+- tapOn: "Submit rating"
+
+# THE ASSERTION THAT MATTERS. Zero driver ratings have ever been written.
+- extendedWaitUntil:
+    visible: "Rating submitted!"
+    timeout: 30000
+
+# And a second attempt must NOT claim success. Before 31 August the screen
+# showed "Rating submitted!" for a rating the database had refused — the
+# stars and the review were silently discarded and the person was told it
+# worked. This is the regression guard for that.
+- tapOn: "Back to home"
+- tapOn:
+    id: "nav-profile"
+- waitForAnimationToEnd
+- tapOn: "My trip requests"
+- extendedWaitUntil:
+    visible: "View contact details"
+    timeout: 20000
+- tapOn: "View contact details"
+- extendedWaitUntil:
+    visible: "🔒 Proceed"
+    timeout: 20000
+- tapOn: "🔒 Proceed"
+- runFlow:
+    when:
+      visible: "⭐ Rate this trip"
+    commands:
+      - tapOn: "⭐ Rate this trip"
+      - extendedWaitUntil:
+          visible: "You already rated"
+          timeout: 20000
+      - assertNotVisible: "Submit rating"

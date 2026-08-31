@@ -1,0 +1,90 @@
+# The unread badge appears when mail arrives, and clears when it is read.
+#
+# WHAT THIS GUARDS. The badge counts CONVERSATIONS, not messages — twelve
+# messages from one person is one thing to answer, and that is what every
+# messaging app people already use does. The grouping happens in the
+# database (my_unread_conversation_count) because counting distinct pairs
+# is not expressible through PostgREST, so a regression here would show up
+# as the number quietly counting the wrong thing rather than as an error.
+#
+# It also guards the realtime watcher underneath it. lib/unreadMessages.ts
+# owns one channel for the whole signed-in session; when that channel fails
+# to attach — which it did, silently, until 31 Aug — the badge simply stops
+# updating and nothing anywhere reports a problem.
+#
+# This flow seeds its own data: the seller sends a message, then the buyer
+# signs in and must see exactly one waiting conversation. So it can be run
+# over and over without hand-preparing anything.
+
+appId: com.imbizohub.app
+name: Unread badge appears for one conversation and clears on read
+---
+
+# ---------- as the seller: send something ----------
+- runFlow:
+    file: ../subflows/login-as.yaml
+    env:
+      EMAIL: ${MAESTRO_SELLER_EMAIL}
+      PASSWORD: ${MAESTRO_SELLER_PASSWORD}
+
+- tapOn:
+    id: "nav-messages"
+- waitForAnimationToEnd
+- extendedWaitUntil:
+    visible: "iPhone 15"
+    timeout: 20000
+- tapOn: "iPhone 15"
+
+- extendedWaitUntil:
+    visible: "Type a message..."
+    timeout: 20000
+- tapOn: "Type a message..."
+- inputText: "Maestro check"
+- hideKeyboard
+- tapOn: "➤"
+
+# The message must actually land in the thread. If this fails, the badge
+# assertions below would fail too but for the wrong reason, and you would
+# go looking in the wrong place.
+- extendedWaitUntil:
+    visible: "Maestro check"
+    timeout: 20000
+
+# ---------- as the buyer: the badge must be waiting ----------
+- runFlow:
+    file: ../subflows/login-as.yaml
+    env:
+      EMAIL: ${MAESTRO_BUYER_EMAIL}
+      PASSWORD: ${MAESTRO_BUYER_PASSWORD}
+
+# THE ASSERTION THAT MATTERS. Deliberately by id, not by the number it
+# shows: the badge renders a bare digit, and asserting on "1" would match
+# a price, a rating count, or half the home screen. testID added to
+# components/BottomNav.tsx on 31 Aug for exactly this reason.
+- extendedWaitUntil:
+    visible:
+      id: "unread-badge"
+    timeout: 30000
+
+# ---------- reading it clears it ----------
+- tapOn:
+    id: "nav-messages"
+- waitForAnimationToEnd
+- extendedWaitUntil:
+    visible: "Maestro check"
+    timeout: 20000
+- tapOn: "iPhone 15"
+
+- extendedWaitUntil:
+    visible: "Maestro check"
+    timeout: 20000
+- tapOn:
+    id: "nav-messages"
+- waitForAnimationToEnd
+
+# Opening the conversation is what marks it read. If the badge is still
+# here, mark_conversation_read() is not being called or is not landing.
+- extendedWaitUntil:
+    notVisible:
+      id: "unread-badge"
+    timeout: 20000

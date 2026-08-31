@@ -1,0 +1,69 @@
+# A finished deal must show its receipt, not offer to arrange itself again.
+#
+# WHAT THIS GUARDS. Reported 31 Aug 2026: "why does it allow to arrange
+# deal if it's done?" The MeetPay session for the 27 August iPhone 15 was
+# confirmed a week earlier, but the header pill still read "Confirm sale",
+# the chooser still offered "Book delivery", and the modal still invited a
+# second rating that the database would silently refuse. `confirmed` was
+# read in exactly one place — inside the modal's render — so nothing
+# upstream of it knew the deal was over.
+#
+# The Book delivery half is the one that matters. DELIVERY_BOOKING_ENABLED
+# is false today so it only shows a "paused" alert; the day that flag flips,
+# a buyer could reopen a finished chat and pay for delivery of an item
+# already handed to them in person.
+#
+# PRECONDITION: run as the SELLER on a deal that is already confirmed.
+# Against the current data that is the 27 August "iPhone 15" wanted post,
+# where test2 is the buyer and you are the seller, confirmed 27 Aug 14:56.
+# If you reset the database, this flow needs a new confirmed deal to point at.
+
+appId: com.imbizohub.app
+name: Completed deal shows a receipt, not a live deal
+---
+- runFlow:
+    file: ../subflows/login-as.yaml
+    env:
+      EMAIL: ${MAESTRO_SELLER_EMAIL}
+      PASSWORD: ${MAESTRO_SELLER_PASSWORD}
+
+- tapOn:
+    id: "nav-messages"
+- waitForAnimationToEnd
+
+# The conversation row shows the item request's title.
+- extendedWaitUntil:
+    visible: "iPhone 15"
+    timeout: 20000
+- tapOn: "iPhone 15"
+
+# THE ASSERTION THAT MATTERS. Before the fix this pill read "Confirm sale"
+# on a deal that had been finished for four days.
+- extendedWaitUntil:
+    visible: "Deal complete"
+    timeout: 20000
+- assertNotVisible: "Confirm sale"
+- assertNotVisible: "Arrange deal"
+
+- tapOn: "Deal complete"
+
+# Tapping it must land straight on the receipt. Before the fix this opened
+# the "how do you want to receive this?" chooser — three screens of live
+# deal flow before anything admitted the deal was over.
+- extendedWaitUntil:
+    visible: "Transaction confirmed!"
+    timeout: 20000
+- assertNotVisible: "Book delivery"
+
+# The rating button must name what it actually does. You rated this deal
+# 5 stars on 27 August; submit_rating() will refuse a second one, so
+# inviting it is the app lying about what will happen.
+- assertVisible: "⭐ View your rating"
+- assertNotVisible: "⭐ Rate this transaction"
+
+# And following it must show the rating back, not an empty star picker.
+- tapOn: "⭐ View your rating"
+- extendedWaitUntil:
+    visible: "You already rated"
+    timeout: 20000
+- assertNotVisible: "Submit rating"

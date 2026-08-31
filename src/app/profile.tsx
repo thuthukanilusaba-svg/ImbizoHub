@@ -406,7 +406,7 @@ export default function ProfileScreen() {
     // already) never reach this handler in the first place — the
     // MenuRow that calls it is conditionally hidden for them.
     if (!DELIVERY_BOOKING_ENABLED) {
-      Alert.alert(DELIVERY_PAUSED_TITLE, DELIVERY_OPERATOR_SIGNUP_PAUSED_MESSAGE);
+      Alert.alert(DELIVERY_PAUSED_TITLE, DELIVERY_OPERATOR_SIGNUP_PAUSED_MESSAGE || undefined);
       return;
     }
 

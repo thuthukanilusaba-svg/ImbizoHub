@@ -27,12 +27,18 @@
 // directly without going through chat.tsx).
 export const DELIVERY_BOOKING_ENABLED = false;
 
-export const DELIVERY_PAUSED_TITLE = 'Delivery coming soon';
-export const DELIVERY_PAUSED_MESSAGE =
-  "We're building a safer way to protect your payment for Book & Deliver orders. It's paused for new bookings in the meantime — check back soon. Meet & Pay is still available for same-city deals.";
+// CHANGED (product decision, 31 Aug 2026): the dialogs say "Coming soon"
+// and nothing else. The previous copy explained the reason — that there is
+// no payment protection yet and escrow is being built — which told every
+// person tapping the button about a gap in the product they had not asked
+// about. "Coming soon" is the whole message.
+//
+// The reasoning is kept here in the comments, where it belongs: it is for
+// whoever maintains this, not for the customer.
+export const DELIVERY_PAUSED_TITLE = 'Coming soon';
+export const DELIVERY_PAUSED_MESSAGE = '';
 
 // NOTE: existing delivery-operator accounts will be cleaned up before this
-// relaunches, so this message must not promise already-registered accounts
-// are unaffected — that's no longer true.
-export const DELIVERY_OPERATOR_SIGNUP_PAUSED_MESSAGE =
-  'New delivery-operator registration is paused while we build a safer payment system for Book & Deliver. Check back soon.';
+// relaunches, so nothing here must promise already-registered accounts are
+// unaffected — that is no longer true.
+export const DELIVERY_OPERATOR_SIGNUP_PAUSED_MESSAGE = '';

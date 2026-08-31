@@ -1621,7 +1621,7 @@ export default function ChatScreen() {
                   // nothing or navigating to a broken/empty flow.
                   if (!DELIVERY_BOOKING_ENABLED) {
                     setDealModal(false);
-                    Alert.alert(DELIVERY_PAUSED_TITLE, DELIVERY_PAUSED_MESSAGE);
+                    Alert.alert(DELIVERY_PAUSED_TITLE, DELIVERY_PAUSED_MESSAGE || undefined);
                     return;
                   }
                   setDealModal(false);

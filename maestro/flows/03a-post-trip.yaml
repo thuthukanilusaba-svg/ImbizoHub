@@ -1,0 +1,88 @@
+# Van hire, part 1 of 3: a customer posts a trip.
+#
+# WHY THIS SUITE EXISTS AT ALL. As of 31 August 2026 the van-hire half of
+# ImbizoHub has never carried a real transaction: 0 quotes, 0 registered
+# operators, 0 delivery bookings, 0 driver ratings. Every guard in the
+# accept-quote path, the two-sided trip confirmation in meetpay.tsx, and
+# the driver-rating unique index added on 31 Aug are all untested code
+# sitting in production. Done by hand this is fifteen minutes of careful
+# clicking across two accounts, which is exactly why nobody has done it.
+#
+# Run the three parts in order: 03a, then 03b, then 03c.
+#
+# HONEST WARNING about two steps below. The travel-date field opens the
+# platform's own date picker, and the city fields open a modal list — both
+# are native UI I could not see when writing this. The "OK" tap and the
+# city taps are my best reading of the code, not something I have watched
+# work. Run this once with `maestro studio` open and correct those two
+# steps if they miss; everything else is matched against strings taken
+# verbatim from hirevan.tsx.
+
+appId: com.imbizohub.app
+name: Van hire 1 of 3 — customer posts a trip
+---
+- runFlow:
+    file: ../subflows/login-as.yaml
+    env:
+      EMAIL: ${MAESTRO_BUYER_EMAIL}
+      PASSWORD: ${MAESTRO_BUYER_PASSWORD}
+
+- tapOn:
+    id: "nav-home"
+- waitForAnimationToEnd
+
+# The home feed's banner card. Note the banner says "Hire Transport" while
+# the screen it opens is headed "Hire a Van" — worth keeping in mind if
+# this line ever stops matching.
+- extendedWaitUntil:
+    visible: "Hire Transport"
+    timeout: 20000
+- tapOn: "Hire Transport"
+
+- extendedWaitUntil:
+    visible: "Hire a Van"
+    timeout: 20000
+
+- tapOn: "e.g. Mbare Musika, Harare"
+- inputText: "Mbare Musika"
+- hideKeyboard
+
+- tapOn: "e.g. Chinhoyi Bus Terminus"
+- inputText: "Chinhoyi Bus Terminus"
+- hideKeyboard
+
+# CityPicker opens a modal headed "Select city" listing lib/cities.ts.
+- tapOn: "Select pickup city"
+- extendedWaitUntil:
+    visible: "Select city"
+    timeout: 10000
+- tapOn: "Harare"
+
+- tapOn: "Select destination city"
+- extendedWaitUntil:
+    visible: "Select city"
+    timeout: 10000
+- tapOn: "Chitungwiza"
+
+# GUESSWORK — see the warning at the top. On native this opens the OS date
+# picker, which defaults to today, and today is valid ("Pick a date from
+# today onwards"). "OK" is the standard Android confirm button.
+- tapOn: "Select date"
+- runFlow:
+    when:
+      visible: "OK"
+    commands:
+      - tapOn: "OK"
+
+- tapOn: "e.g. 4"
+- inputText: "3"
+- hideKeyboard
+
+- tapOn: "Post trip request"
+
+# THE ASSERTION THAT MATTERS. Until this passes, no quote can exist,
+# and 03b has nothing to bid on.
+- extendedWaitUntil:
+    visible: "Trip request posted!"
+    timeout: 30000
+- assertVisible: "View quotes"

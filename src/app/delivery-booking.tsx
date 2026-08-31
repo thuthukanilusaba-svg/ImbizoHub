@@ -232,7 +232,7 @@ export default function DeliveryBookingScreen() {
     // that was already made (and already paid its $2 fee) before the
     // pause, not a new booking, so it must keep working.
     if (!DELIVERY_BOOKING_ENABLED && !isReassignMode) {
-      Alert.alert(DELIVERY_PAUSED_TITLE, DELIVERY_PAUSED_MESSAGE, [
+      Alert.alert(DELIVERY_PAUSED_TITLE, DELIVERY_PAUSED_MESSAGE || undefined, [
         { text: 'OK', onPress: () => router.back() },
       ]);
       return;

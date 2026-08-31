@@ -1,0 +1,85 @@
+# Sign in as whoever the calling flow names.
+#
+# Called as:
+#   - runFlow:
+#       file: ../subflows/login-as.yaml
+#       env:
+#         EMAIL: ${MAESTRO_SELLER_EMAIL}
+#         PASSWORD: ${MAESTRO_SELLER_PASSWORD}
+#
+# NEVER put a password in this file, or in any file in this folder. The
+# values come from environment variables set in your shell — see the
+# README. Anything written here goes into git.
+#
+# NOTE ON clearState: it is deliberately NOT used anywhere in this suite.
+# Clearing app data also clears the expo-updates cache, so the app falls
+# back to the bundle that was compiled into the APK and re-downloads the
+# OTA update in the background. Every test would then run against the
+# EMBEDDED build rather than the update you just published — which is the
+# exact opposite of what these tests are for. Sign out through the UI
+# instead; it is slower and it is correct.
+
+appId: com.imbizohub.app
+---
+- launchApp
+
+# Whoever ran this last may still be signed in. Get out first, so the
+# flow always starts from a known place rather than from whatever the
+# previous run left behind.
+- runFlow:
+    when:
+      visible:
+        id: "nav-profile"
+    commands:
+      - tapOn:
+          id: "nav-profile"
+      - waitForAnimationToEnd
+      - runFlow:
+          when:
+            visible: "Logout"
+          commands:
+            - tapOn: "Logout"
+            - waitForAnimationToEnd
+
+# Reach the sign-in screen. The Messages tab shows a "Sign in" link when
+# signed out, which is the shortest reliable route to the login form.
+- runFlow:
+    when:
+      visible:
+        id: "nav-messages"
+    commands:
+      - tapOn:
+          id: "nav-messages"
+      - waitForAnimationToEnd
+
+- runFlow:
+    when:
+      visible: "Already have an account?"
+    commands:
+      - tapOn: "Sign in"
+      - waitForAnimationToEnd
+
+- extendedWaitUntil:
+    visible: "you@email.com"
+    timeout: 20000
+
+- tapOn: "you@email.com"
+- inputText: ${EMAIL}
+- tapOn: "Your password"
+- inputText: ${PASSWORD}
+- hideKeyboard
+
+# FRAGILE, and worth knowing about: login.tsx renders the heading and the
+# button with the identical string "Sign in". index 0 is the heading,
+# index 1 is the button. If someone reworks that screen this is the line
+# that breaks first — the fix is a testID on the button, not a cleverer
+# selector here.
+- tapOn:
+    text: "Sign in"
+    index: 1
+
+# Signed in when the bottom nav is back.
+- extendedWaitUntil:
+    visible:
+      id: "nav-messages"
+    timeout: 30000

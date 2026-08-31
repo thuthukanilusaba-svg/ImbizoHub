@@ -163,6 +163,15 @@ export default function BottomNav({ active, showDashboardTab, isAdmin }: BottomN
       return (
         <TouchableOpacity
           key="post"
+          // NEW: this button renders two bare <View> bars inside a circle —
+          // no text, no glyph, nothing a UI test or a screen reader can
+          // name. It was the only nav target that could not be selected at
+          // all. testID is what Maestro matches with `id:`; the
+          // accessibility props are the same information for anyone using
+          // TalkBack or VoiceOver, which is the better reason.
+          testID="nav-post"
+          accessibilityRole="button"
+          accessibilityLabel="Post a listing"
           style={styles.navPost}
           onPress={() => router.push(entry.route as any)}
         >
@@ -186,6 +195,11 @@ export default function BottomNav({ active, showDashboardTab, isAdmin }: BottomN
     return (
       <TouchableOpacity
         key={entry.key}
+        // NEW: stable handles for UI tests. Text labels change with
+        // wording; `nav-messages` does not.
+        testID={`nav-${entry.key}`}
+        accessibilityRole="button"
+        accessibilityLabel={entry.label}
         style={[styles.navItem, IS_WEB && styles.navItemWeb]}
         onLayout={(e: LayoutChangeEvent) => {
           layoutsRef.current[entry.key] = {
@@ -209,7 +223,18 @@ export default function BottomNav({ active, showDashboardTab, isAdmin }: BottomN
               person is one thing to answer. Capped at 9+ so the pill never
               grows wide enough to unbalance the row. */}
           {entry.key === 'messages' && unreadCount > 0 && (
-            <View style={styles.navBadge} pointerEvents="none">
+            // NEW: the badge renders a bare number, which is unassertable
+            // in a UI test — "1" matches prices, counts and half the home
+            // screen. This gives it a name, and puts the count in the
+            // accessibility label so a screen reader announces something
+            // meaningful instead of a lone digit.
+            <View
+              style={styles.navBadge}
+              pointerEvents="none"
+              testID="unread-badge"
+              accessible
+              accessibilityLabel={`${unreadCount} unread ${unreadCount === 1 ? 'conversation' : 'conversations'}`}
+            >
               <Text style={styles.navBadgeText} allowFontScaling={false}>
                 {unreadCount > 9 ? '9+' : String(unreadCount)}
               </Text>

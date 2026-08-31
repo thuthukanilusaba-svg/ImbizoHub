@@ -295,7 +295,9 @@ export default function BecomeOperatorScreen() {
     return (
       <View style={styles.gateCenter}>
         <Text style={styles.gateTitle}>{DELIVERY_PAUSED_TITLE}</Text>
-        <Text style={styles.gateBody}>{DELIVERY_OPERATOR_SIGNUP_PAUSED_MESSAGE}</Text>
+        {DELIVERY_OPERATOR_SIGNUP_PAUSED_MESSAGE ? (
+          <Text style={styles.gateBody}>{DELIVERY_OPERATOR_SIGNUP_PAUSED_MESSAGE}</Text>
+        ) : null}
         <TouchableOpacity style={styles.gateBtn} onPress={() => router.replace('/')}>
           <Text style={styles.gateBtnText}>Back to ImbizoHub</Text>
         </TouchableOpacity>

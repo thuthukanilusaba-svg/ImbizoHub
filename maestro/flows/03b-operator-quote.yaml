@@ -1,0 +1,76 @@
+# Van hire, part 2 of 3: an operator bids on the trip.
+#
+# PRECONDITION — read this before the first run. The operator account must
+# already be a registered transport operator. If it is not, this flow stops
+# at the "Registration required" gate, and that is the correct result: it is
+# telling you the account is not set up, not that the app is broken.
+#
+# Registering is a one-off, and it is deliberately NOT automated here,
+# because it ends at a payment screen. Do it by hand once:
+#   Profile → "Become a Transport Operator" → pay the $10 yearly fee
+#   (free under the launch promotion) → "Finish setup" with a phone
+#   number, vehicle type, capacity and base city of Harare.
+# The base city must match the trip's PICKUP city, or the operator never
+# sees the job — operator-requests.tsx filters on exactly that, and the
+# failure is silent.
+#
+# There is one more thing this flow cannot do: quoting your own trip. If
+# MAESTRO_OPERATOR_EMAIL is the same account as MAESTRO_BUYER_EMAIL, the
+# database will refuse the quote (prevent_quoting_own_request, added after
+# a reputation-gaming hole was found in August). Use a third account.
+
+appId: com.imbizohub.app
+name: Van hire 2 of 3 — operator submits a quote
+---
+- runFlow:
+    file: ../subflows/login-as.yaml
+    env:
+      EMAIL: ${MAESTRO_OPERATOR_EMAIL}
+      PASSWORD: ${MAESTRO_OPERATOR_PASSWORD}
+
+- tapOn:
+    id: "nav-profile"
+- waitForAnimationToEnd
+# profile.tsx renders this as a menu row ("📋 Quote on trips"), shown only
+# once the account is a registered transport operator. The screen it opens
+# is headed "Open trip requests".
+- extendedWaitUntil:
+    visible: "Quote on trips"
+    timeout: 20000
+- tapOn: "Quote on trips"
+- extendedWaitUntil:
+    visible: "Open trip requests"
+    timeout: 20000
+
+# If this fires, the account is not a registered operator. Fix the account,
+# not the test.
+- assertNotVisible: "Registration required"
+
+- extendedWaitUntil:
+    visible: "Mbare Musika"
+    timeout: 20000
+
+# "✓ Quote sent" replaces this button once this operator has already bid,
+# so a second run against the same trip will fail here — by design. Post a
+# fresh trip with 03a before re-running.
+- tapOn: "Submit a quote"
+
+- extendedWaitUntil:
+    visible: "Your quote"
+    timeout: 15000
+- tapOn: "e.g. 35"
+- inputText: "40"
+- hideKeyboard
+- tapOn: "e.g. Toyota HiAce, 15-seater"
+- inputText: "Toyota HiAce, 15-seater"
+- hideKeyboard
+- tapOn: "Send quote"
+
+# THE ASSERTION THAT MATTERS. No quote has ever been written to this
+# database — quotes is empty. This is the line that would first prove
+# the operator side works at all.
+- extendedWaitUntil:
+    visible: "Quote sent!"
+    timeout: 30000
+- tapOn: "Done"
+- assertVisible: "✓ Quote sent"

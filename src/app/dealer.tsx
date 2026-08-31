@@ -541,7 +541,9 @@ export default function DealerScreen() {
                 ) : (
                   <>
                     <Text style={styles.regRequiredTitle}>{DELIVERY_PAUSED_TITLE}</Text>
-                    <Text style={styles.regRequiredBody}>{DELIVERY_OPERATOR_SIGNUP_PAUSED_MESSAGE}</Text>
+                    {DELIVERY_OPERATOR_SIGNUP_PAUSED_MESSAGE ? (
+                      <Text style={styles.regRequiredBody}>{DELIVERY_OPERATOR_SIGNUP_PAUSED_MESSAGE}</Text>
+                    ) : null}
                   </>
                 )}
               </View>
