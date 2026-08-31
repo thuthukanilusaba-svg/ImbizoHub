@@ -49,6 +49,7 @@ import { useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import { Animated, LayoutChangeEvent, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { refreshUnreadCount, subscribeToUnreadCount } from '../lib/unreadMessages';
 
 // FIX: useNativeDriver: true does not reliably animate Animated.Text on
 // the web target (react-native-web either warns and no-ops, or silently
@@ -143,6 +144,20 @@ export default function BottomNav({ active, showDashboardTab, isAdmin }: BottomN
     }, 200);
   }
 
+  // The badge number. Owned by lib/unreadMessages, not by this component:
+  // BottomNav mounts and unmounts on every navigation, and a realtime
+  // channel with that lifecycle is what broke chat on 27 Aug. Here we only
+  // listen to a plain callback, which has nothing to get wrong.
+  const [unreadCount, setUnreadCount] = useState(0);
+
+  useEffect(() => {
+    const unsubscribe = subscribeToUnreadCount(setUnreadCount);
+    // Re-read on mount as well as listening: covers a message that arrived
+    // while this screen was not on top.
+    refreshUnreadCount();
+    return unsubscribe;
+  }, []);
+
   function renderEntry(entry: Entry) {
     if (entry.type === 'post') {
       return (
@@ -180,15 +195,27 @@ export default function BottomNav({ active, showDashboardTab, isAdmin }: BottomN
         }}
         onPress={() => handlePress(entry)}
       >
-        <Animated.Text
-          style={[
-            styles.navIcon,
-            (isActive || isPressed) && styles.navIconActive,
-            isPressed && { transform: [{ scale: scaleAnim }] },
-          ]}
-        >
-          {entry.icon}
-        </Animated.Text>
+        <View>
+          <Animated.Text
+            style={[
+              styles.navIcon,
+              (isActive || isPressed) && styles.navIconActive,
+              isPressed && { transform: [{ scale: scaleAnim }] },
+            ]}
+          >
+            {entry.icon}
+          </Animated.Text>
+          {/* Conversations waiting, not messages: twelve messages from one
+              person is one thing to answer. Capped at 9+ so the pill never
+              grows wide enough to unbalance the row. */}
+          {entry.key === 'messages' && unreadCount > 0 && (
+            <View style={styles.navBadge} pointerEvents="none">
+              <Text style={styles.navBadgeText} allowFontScaling={false}>
+                {unreadCount > 9 ? '9+' : String(unreadCount)}
+              </Text>
+            </View>
+          )}
+        </View>
         <Text
           style={[styles.navLabel, (isActive || isPressed) && styles.navLabelActive]}
           numberOfLines={1}
@@ -237,6 +264,14 @@ const styles = StyleSheet.create({
   // Web-only override: share the row evenly instead of each tab claiming
   // a fixed minWidth — see the comment near IS_WEB at the top of the file.
   navItemWeb: { flex: 1, minWidth: 0 },
+  // Anchored to the icon rather than the whole tab, so it sits on the
+  // glyph the way people expect and does not drift when the label wraps.
+  navBadge: {
+    position: 'absolute', top: -4, right: -10, minWidth: 18, height: 18,
+    borderRadius: 9, backgroundColor: '#c0392b', alignItems: 'center',
+    justifyContent: 'center', paddingHorizontal: 4,
+  },
+  navBadgeText: { color: '#fff', fontSize: 11, fontWeight: '800' },
   navIcon: { fontSize: 22, color: '#555' },
   navIconActive: { color: GOLD },
   navLabel: { fontSize: 9, color: '#555', marginTop: 2 },

@@ -23,6 +23,7 @@ import { supabase } from '../../lib/supabase';
 import { theme } from '../../lib/theme';
 import { installCrashReporter, setCrashRoute } from '../../lib/crashReporter';
 import { clearNotificationBadge, registerForPushNotifications, registerNotificationListeners, savePushToken } from '../../lib/notifications';
+import { startUnreadWatcher, stopUnreadWatcher } from '../../lib/unreadMessages';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -187,8 +188,24 @@ export default function RootLayout() {
     };
 
     registerPush();
+
+    // The unread-message watcher lives for the whole signed-in session and
+    // owns its own realtime channel. Started here, not in BottomNav, which
+    // remounts on every navigation — a channel with that lifecycle is what
+    // broke chat's realtime on 27 Aug.
+    supabase.auth.getUser().then(({ data }) => {
+      if (data?.user && !data.user.is_anonymous) startUnreadWatcher(data.user.id);
+    });
+
     const { data: authListener } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (session) registerPush();
+      if (session) {
+        registerPush();
+        if (session.user && !session.user.is_anonymous) startUnreadWatcher(session.user.id);
+      } else {
+        // Signed out: drop the channel and clear the badge, so the next
+        // person to sign in on this device never sees someone else's count.
+        stopUnreadWatcher();
+      }
     });
 
     // Listen for notifications received while app is open, and handle taps.

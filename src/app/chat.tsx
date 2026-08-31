@@ -72,6 +72,7 @@ import {
 } from '../../lib/notifications';
 import { supabase } from '../../lib/supabase';
 import { useWebKeyboardInset } from '../../lib/useWebKeyboardInset';
+import { markConversationRead } from '../../lib/unreadMessages';
 
 const GOLD = '#B8860B';
 const BLACK = '#1A1A18';
@@ -848,6 +849,20 @@ export default function ChatScreen() {
 
     setMessages(filtered);
     setLoading(false);
+
+    // Opening the conversation is what makes these messages read, and
+    // fetchMessages runs on open and again whenever a new one arrives while
+    // you are sitting here — which is the same moment. Fire and forget: the
+    // badge dropping a second late is invisible, and a failure here must
+    // never block the messages appearing.
+    if (otherId) {
+      markConversationRead({
+        otherUserId: otherId,
+        listingId: listing_id as string | undefined,
+        requestId: request_id as string | undefined,
+        itemRequestId: item_request_id as string | undefined,
+      });
+    }
   };
 
   function containsContactInfo(message: string): boolean {
@@ -1416,7 +1431,12 @@ export default function ChatScreen() {
                   </View>
                   <Text style={[styles.msgTime, isMine && styles.msgTimeMine]}>
                     {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                    {isMine ? ' · ✓✓' : ''}
+                    {/* Was an unconditional '✓✓' on every message you
+                        sent — shown whether or not the other person had
+                        ever opened the chat. It looked like a read receipt
+                        and was decorative. messages.read_at makes it real:
+                        one tick sent, two ticks seen. */}
+                    {isMine ? (msg.read_at ? ' · ✓✓' : ' · ✓') : ''}
                   </Text>
                 </View>
               </View>
