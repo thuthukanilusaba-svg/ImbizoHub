@@ -299,17 +299,25 @@ export default function HireVanScreen() {
       ) : null}
 
       <View style={styles.card}>
-        {/* Order matters here. The two city pickers sit together, and the
-            two free-text addresses sit together above them, rather than
-            interleaving address/city/address/city.
+        {/* CHANGED (1 Sep 2026, direct product decision): grouped by LEG
+            of the journey — pickup address then pickup city, destination
+            address then destination city.
 
-            The earlier order put the destination address between the two
-            city pickers, which meant the person posting could not see
-            both cities at once — and those two answers are the ones that
-            decide who is shown the trip, so they are the pair worth
-            comparing side by side. The addresses are detail for the
-            driver; the cities are the routing. Grouping them by what they
-            are for reads better than grouping them by leg of the journey. */}
+            This reverses an earlier decision, and the reasoning for that
+            one is worth keeping rather than deleting: the two cities
+            decide who is shown the trip, so putting them side by side let
+            the person compare the pair that actually matters.
+
+            But it asked them to answer in an order nobody thinks in.
+            People plan a journey one end at a time — where am I leaving
+            from, then where am I going — and the earlier layout made them
+            describe both ends loosely, then go back and pin down both
+            ends precisely. Answering "Imbizo" and immediately "Kwekwe" is
+            one thought; answering it four fields later is a second visit
+            to the same question.
+
+            The hint below still ties the pickup city to who sees the
+            trip, which is the part the old order existed to communicate. */}
         <Text style={styles.label}>Pickup location *</Text>
         <TextInput
           style={styles.input}
@@ -319,6 +327,9 @@ export default function HireVanScreen() {
           onChangeText={setPickup}
         />
 
+        <Text style={styles.label}>Pickup city *</Text>
+        <CityPicker value={pickupCity} onChange={setPickupCity} placeholder="Select pickup city" />
+
         <Text style={styles.label}>Destination *</Text>
         <TextInput
           style={styles.input}
@@ -327,9 +338,6 @@ export default function HireVanScreen() {
           value={destination}
           onChangeText={setDestination}
         />
-
-        <Text style={styles.label}>Pickup city *</Text>
-        <CityPicker value={pickupCity} onChange={setPickupCity} placeholder="Select pickup city" />
 
         <Text style={styles.label}>Destination city *</Text>
         <CityPicker value={destinationCity} onChange={setDestinationCity} placeholder="Select destination city" />
