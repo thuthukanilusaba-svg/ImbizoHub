@@ -132,6 +132,13 @@ export default function OperatorRequestsScreen() {
   // operatorCanSeeTrip() in lib/cities.ts for why every unknown fails
   // open rather than closed.
   const [baseCity, setBaseCity] = useState<string | null>(null);
+  // NEW (1 Sep 2026, reported: "people registered in Bulawayo can see
+  // Harare trips"). `null` alone could not tell "this operator has no base
+  // city" apart from "we have not looked yet", and operatorCanSeeTrip()
+  // fails OPEN on a missing city — so during the gap before the profile
+  // loaded, every trip in the country was visible. See the render guard
+  // below for the full story.
+  const [cityChecked, setCityChecked] = useState(false);
 
   const [modalVisible, setModalVisible] = useState(false);
   const [selected, setSelected] = useState<Request | null>(null);
@@ -162,7 +169,7 @@ export default function OperatorRequestsScreen() {
     // becomes 'transport_operator' via a real (non-anonymous) account,
     // so this was defense-in-depth rather than a live hole, but kept
     // consistent with every other account-gated screen regardless.
-    if (!user || user.is_anonymous) { setOperatorActive(false); return; }
+    if (!user || user.is_anonymous) { setOperatorActive(false); setCityChecked(true); return; }
 
     const { data: profile } = await supabase
       .from('profiles')
@@ -171,6 +178,7 @@ export default function OperatorRequestsScreen() {
       .single();
 
     setBaseCity(profile?.base_city ?? null);
+    setCityChecked(true);
 
     if (profile?.account_type !== 'transport_operator') {
       setOperatorActive(false);
@@ -470,7 +478,27 @@ export default function OperatorRequestsScreen() {
     );
   }
 
-  if (loading || operatorActive === null) {
+  // `!cityChecked` NEW — this is the actual fix for the leak.
+  //
+  // checkStatus() and fetchRequests() are fired together by the focus
+  // effect and land independently. fetchRequests() is a single query and
+  // usually wins; checkStatus() has to fetch the user AND their profile.
+  // So there was a window where `loading` was already false, `requests`
+  // was full, and `baseCity` was still null — and because
+  // operatorCanSeeTrip() treats a missing operator city as "no
+  // restriction", the list rendered EVERY open trip in the country for a
+  // moment before snapping down to the right ones. A Bulawayo operator
+  // genuinely did see Harare trips; they just did not stay.
+  //
+  // Worse than the flicker: if the profile query failed, baseCity stayed
+  // null and the list stayed unfiltered for the whole session, with
+  // nothing anywhere reporting a problem.
+  //
+  // Waiting for the answer is the fix. Not defaulting baseCity to
+  // something, and not removing the fail-open — that rule is deliberate
+  // for operators who genuinely have no city — but never letting an
+  // unanswered question look like an answer.
+  if (loading || !cityChecked || operatorActive === null) {
     return (
       <View style={styles.center}>
         <ActivityIndicator size="large" color={GOLD} />
