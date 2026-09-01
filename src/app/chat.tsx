@@ -1713,14 +1713,23 @@ export default function ChatScreen() {
             </TouchableOpacity>
 
             {(!isItemRequestChat || itemIsPhysical) && (
+              // CHANGED (1 Sep 2026): Book & Deliver is paused, and this
+              // option used to look exactly like the working one — same
+              // white title, same gold chevron — so the only way to learn
+              // it was unavailable was to tap it and read an alert. A
+              // control that looks live and is not is a small lie the
+              // person only discovers by being disappointed.
+              //
+              // Now it reads as unavailable before it is touched: greyed
+              // throughout, no chevron (nothing to go to), and a "Coming
+              // soon" chip. Deliberately still rendered rather than
+              // hidden — people should know delivery is a thing ImbizoHub
+              // will do, just not yet — and still tappable so the alert
+              // is there for anyone who wants confirmation.
               <TouchableOpacity
-                style={styles.dealOption}
+                style={[styles.dealOption, !DELIVERY_BOOKING_ENABLED && styles.dealOptionDisabled]}
+                activeOpacity={DELIVERY_BOOKING_ENABLED ? 0.2 : 0.9}
                 onPress={() => {
-                  // NEW: Book & Deliver is paused for new bookings — see
-                  // lib/featureFlags.ts's own header comment for why.
-                  // Keeps the option visible (per product decision) but
-                  // explains it's temporary instead of silently doing
-                  // nothing or navigating to a broken/empty flow.
                   if (!DELIVERY_BOOKING_ENABLED) {
                     setDealModal(false);
                     Alert.alert(DELIVERY_PAUSED_TITLE, DELIVERY_PAUSED_MESSAGE || undefined);
@@ -1733,16 +1742,25 @@ export default function ChatScreen() {
                   router.push(`/delivery-booking?${deliveryParams}`);
                 }}
               >
-                <View style={styles.dealOptionIcon}>
-                  <Text style={{ fontSize: 28 }}>📦</Text>
+                <View style={[styles.dealOptionIcon, !DELIVERY_BOOKING_ENABLED && styles.dealOptionIconDisabled]}>
+                  <Text style={[{ fontSize: 28 }, !DELIVERY_BOOKING_ENABLED && { opacity: 0.4 }]}>📦</Text>
                 </View>
                 <View style={{ flex: 1 }}>
-                  <Text style={styles.dealOptionTitle}>Book delivery</Text>
-                  <Text style={styles.dealOptionDesc}>
+                  <View style={styles.dealOptionTitleRow}>
+                    <Text style={[styles.dealOptionTitle, !DELIVERY_BOOKING_ENABLED && styles.dealOptionTitleDisabled]}>
+                      Book delivery
+                    </Text>
+                    {!DELIVERY_BOOKING_ENABLED && (
+                      <View style={styles.comingSoonChip}>
+                        <Text style={styles.comingSoonChipText}>COMING SOON</Text>
+                      </View>
+                    )}
+                  </View>
+                  <Text style={[styles.dealOptionDesc, !DELIVERY_BOOKING_ENABLED && styles.dealOptionDescDisabled]}>
                     A registered driver delivers the item to you. Rate depends on item size — see next screen.
                   </Text>
                 </View>
-                <Text style={styles.dealOptionArrow}>›</Text>
+                {DELIVERY_BOOKING_ENABLED && <Text style={styles.dealOptionArrow}>›</Text>}
               </TouchableOpacity>
             )}
 
@@ -2048,4 +2066,12 @@ const styles = StyleSheet.create({
   dealOptionTitle: { color: '#fff', fontSize: 14, fontWeight: '700', marginBottom: 3 },
   dealOptionDesc: { color: GREY, fontSize: 11, lineHeight: 16 },
   dealOptionArrow: { color: GOLD, fontSize: 22 },
+  // Paused-feature treatment: same shape, all the affordance removed.
+  dealOptionDisabled: { backgroundColor: '#1b1b1b', borderColor: '#2a2a2a' },
+  dealOptionIconDisabled: { backgroundColor: '#161616' },
+  dealOptionTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 3, flexWrap: 'wrap' },
+  dealOptionTitleDisabled: { color: '#7d7d7d', marginBottom: 0 },
+  dealOptionDescDisabled: { color: '#5f5f5f' },
+  comingSoonChip: { backgroundColor: '#2a2a2a', borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2 },
+  comingSoonChipText: { color: '#9a9a9a', fontSize: 9, fontWeight: '800', letterSpacing: 0.6 },
 });
