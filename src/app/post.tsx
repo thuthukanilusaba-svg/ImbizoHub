@@ -69,6 +69,12 @@ function getAspectRatio(uri: string): Promise<number> {
   });
 }
 
+// Far above anything this marketplace will plausibly carry — a house, a
+// haulage truck — while still low enough that a bigger number is clearly a
+// mistake or a probe. Matches the listings_price_sane database constraint;
+// change both together or the database will refuse what this screen allows.
+const MAX_PRICE = 10000000;
+
 export default function PostScreen() {
   const router = useRouter();
 
@@ -218,6 +224,19 @@ export default function PostScreen() {
     const priceNum = parseFloat(price);
     if (isNaN(priceNum) || priceNum <= 0) {
       setError('Enter a valid price.');
+      return;
+    }
+    // NEW (1 Sep 2026): there was no upper bound at all. A listing priced
+    // at 5000000000000000000000000000000 — thirty-one digits, typed by
+    // someone probing what the form would accept — sat in the live Recent
+    // listings strip rendering as $5e+30.
+    //
+    // The database now refuses this too (listings_price_sane), which is
+    // the check that actually holds since this screen can be bypassed.
+    // This one exists so a person who fat-fingers an extra zero gets a
+    // sentence they can act on instead of a constraint-violation error.
+    if (priceNum > MAX_PRICE) {
+      setError(`That price looks too high — the most you can list is $${MAX_PRICE.toLocaleString()}.`);
       return;
     }
 
