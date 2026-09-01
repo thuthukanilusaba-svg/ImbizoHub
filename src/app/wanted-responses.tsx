@@ -49,9 +49,10 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import * as WebBrowser from 'expo-web-browser';
 import { useEffect, useState } from 'react';
 import {
-  ActivityIndicator, FlatList, Platform, StyleSheet,
+  ActivityIndicator, FlatList, Image, Platform, StyleSheet,
   Text, TouchableOpacity, View,
 } from 'react-native';
+import PhotoZoomViewer from '../../components/PhotoZoomViewer';
 import { extractFunctionError } from '../../lib/paymentError';
 import { supabase } from '../../lib/supabase';
 
@@ -99,6 +100,8 @@ export default function WantedResponsesScreen() {
   const [myEmail, setMyEmail] = useState('');
   const [notYours, setNotYours] = useState(false);
 
+  // Which attached photo is open full-screen, or null. See the card below.
+  const [zoomPhoto, setZoomPhoto] = useState<string | null>(null);
   const [acceptingId, setAcceptingId] = useState<string | null>(null);
   const [verifying, setVerifying] = useState(false);
   const [error, setError] = useState('');
@@ -327,6 +330,30 @@ export default function WantedResponsesScreen() {
               <Text style={styles.priceValue}>${item.price}</Text>
               {item.message ? <Text style={styles.messageText}>"{item.message}"</Text> : null}
 
+              {/* FIX (reported 1 Sep 2026: "pictures attached did not go to
+                  the recipient"). They did go — browse-wanted.tsx uploads
+                  the photo and stores it on item_responses.photo_url, and
+                  there is a real photo sitting on a real response in the
+                  database right now. This screen, the ONLY place a buyer
+                  ever sees responses, simply never rendered it. The seller
+                  took a picture of the item, the app saved it, and nobody
+                  could look at it.
+
+                  Tappable and full-screen on tap, using the same viewer
+                  listing.tsx uses: a thumbnail is not enough to judge
+                  whether a second-hand item is in the condition claimed,
+                  which is the entire reason for attaching one. */}
+              {item.photo_url ? (
+                <TouchableOpacity
+                  activeOpacity={0.85}
+                  onPress={() => setZoomPhoto(item.photo_url)}
+                  style={styles.photoWrap}
+                >
+                  <Image source={{ uri: item.photo_url }} style={styles.photo} resizeMode="cover" />
+                  <Text style={styles.photoHint}>Tap to enlarge</Text>
+                </TouchableOpacity>
+              ) : null}
+
               <TouchableOpacity
                 style={styles.chatBtn}
                 onPress={() => handleChat(item)}
@@ -359,6 +386,15 @@ export default function WantedResponsesScreen() {
           );
         }}
       />
+
+      {/* Same viewer listing.tsx uses, so an attached photo behaves the
+          same way everywhere in the app. */}
+      <PhotoZoomViewer
+        photos={zoomPhoto ? [zoomPhoto] : []}
+        imageIndex={0}
+        visible={!!zoomPhoto}
+        onRequestClose={() => setZoomPhoto(null)}
+      />
     </View>
   );
 }
@@ -384,6 +420,9 @@ const styles = StyleSheet.create({
   sellerName: { color: '#fff', fontSize: 15, fontWeight: '700', marginBottom: 8 },
   priceLabel: { color: GREY, fontSize: 11 },
   priceValue: { color: GOLD, fontSize: 22, fontWeight: '800', marginBottom: 8 },
+  photoWrap: { marginBottom: 12 },
+  photo: { width: '100%', height: 180, borderRadius: 12, backgroundColor: '#222' },
+  photoHint: { color: GREY, fontSize: 11, marginTop: 6, textAlign: 'center' },
   messageText: { color: '#ccc', fontSize: 13, fontStyle: 'italic', marginBottom: 12, lineHeight: 18 },
 
   chatBtn: { borderRadius: 12, paddingVertical: 13, alignItems: 'center', marginBottom: 10, borderWidth: 1, borderColor: GOLD },

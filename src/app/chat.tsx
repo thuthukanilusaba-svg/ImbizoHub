@@ -61,7 +61,8 @@
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, AppState, Keyboard, KeyboardAvoidingView, Modal, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import * as ImagePicker from 'expo-image-picker';
+import { ActivityIndicator, Alert, AppState, Image, Keyboard, KeyboardAvoidingView, Modal, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { DELIVERY_BOOKING_ENABLED, DELIVERY_PAUSED_MESSAGE, DELIVERY_PAUSED_TITLE } from '../../lib/featureFlags';
 import {
@@ -70,10 +71,12 @@ import {
   notifyNewMessage,
   notifyTransactionConfirmed
 } from '../../lib/notifications';
+import PhotoZoomViewer from '../../components/PhotoZoomViewer';
 import { openChannel } from '../../lib/realtime';
 import { supabase } from '../../lib/supabase';
 import { useWebKeyboardInset } from '../../lib/useWebKeyboardInset';
 import { markConversationRead } from '../../lib/unreadMessages';
+import { prepareUpload } from '../../lib/uploadHelpers';
 
 const GOLD = '#B8860B';
 const BLACK = '#1A1A18';
@@ -140,6 +143,20 @@ export default function ChatScreen() {
   const [sellerIsDealerPro, setSellerIsDealerPro] = useState(false);
   const [contactWarning, setContactWarning] = useState(false);
   const [sendError, setSendError] = useState('');
+  // PHOTO ATTACHMENTS (built 1 Sep 2026). Until now the 📎 was a bare
+  // <Text> with no handler at all — not a broken button, a picture of one —
+  // and messages had no column to put an image in.
+  //
+  // Images live in the PRIVATE chat-images bucket, so what a message stores
+  // is an object PATH, not a URL. A path is inert; it has to be exchanged
+  // for a short-lived signed URL by someone the storage policies allow,
+  // which is the sender and the receiver of the message referencing it and
+  // nobody else. Listing photos stay in the public bucket where they
+  // belong — a thing for sale is meant to be seen; a photo sent privately
+  // to one person is not.
+  const [signedUrls, setSignedUrls] = useState<Record<string, string>>({});
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const [zoomPhoto, setZoomPhoto] = useState<string | null>(null);
   const [otherPersonName, setOtherPersonName] = useState('');
 
   const [depositChecked, setDepositChecked] = useState(false);
@@ -1045,6 +1062,156 @@ export default function ChatScreen() {
     return false;
   }
 
+  // Exchange every image path we hold for a signed URL, in one call rather
+  // than one per image. Only paths we do not already have are requested, so
+  // this is cheap on every re-render and does no work at all in a chat with
+  // no photos in it.
+  //
+  // 24h expiry: long enough that a chat left open all day does not turn
+  // into broken images, short enough that a leaked URL is not permanent
+  // access the way a public-bucket URL would be.
+  useEffect(() => {
+    const missing = messages
+      .map((m: any) => m.image_path)
+      .filter((path: string | null): path is string => !!path && !signedUrls[path]);
+    if (missing.length === 0) return;
+
+    let cancelled = false;
+    (async () => {
+      const { data, error } = await supabase.storage
+        .from('chat-images')
+        .createSignedUrls(Array.from(new Set(missing)), 60 * 60 * 24);
+      if (cancelled || error || !data) return;
+      const next: Record<string, string> = {};
+      data.forEach((row: any) => {
+        if (row?.path && row?.signedUrl) next[row.path] = row.signedUrl;
+      });
+      if (Object.keys(next).length > 0) {
+        setSignedUrls((prev) => ({ ...prev, ...next }));
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [messages, signedUrls]);
+
+  /**
+   * Take or choose a photo and send it.
+   *
+   * Kept separate from sendMessage() rather than folded into it: that
+   * function's first line is `if (!text.trim()) return;` and its whole
+   * shape assumes a text message. A photo with no caption is a legitimate
+   * message, and bending sendMessage() around that would put a second set
+   * of rules inside a function that already carries a long history of
+   * subtle bugs.
+   */
+  async function sendPhoto(source: 'camera' | 'library') {
+    if (uploadingPhoto) return;
+    setSendError('');
+
+    try {
+      const permission = source === 'camera'
+        ? await ImagePicker.requestCameraPermissionsAsync()
+        : await ImagePicker.requestMediaLibraryPermissionsAsync();
+
+      if (!permission.granted) {
+        setSendError(
+          source === 'camera'
+            ? 'ImbizoHub needs permission to use your camera.'
+            : 'ImbizoHub needs permission to open your photos.'
+        );
+        return;
+      }
+
+      const result = source === 'camera'
+        ? await ImagePicker.launchCameraAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Images, quality: 0.7 })
+        : await ImagePicker.launchImageLibraryAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Images, quality: 0.7 });
+
+      if (result.canceled || !result.assets?.[0]?.uri) return;
+
+      setUploadingPhoto(true);
+
+      let currentUid = myId;
+      if (!currentUid) {
+        const { data: { session } } = await supabase.auth.getSession();
+        currentUid = session?.user?.id ?? '';
+      }
+      if (!currentUid) {
+        setSendError('Couldn\'t send — please sign in and try again.');
+        return;
+      }
+
+      // prepareUpload() handles the React Native blob problem documented at
+      // the top of lib/uploadHelpers.ts — the same helper every other
+      // upload in this app already uses.
+      const { data: uploadData, contentType, extension } = await prepareUpload(result.assets[0].uri);
+
+      // Folder named after the sender, because the storage write policy
+      // requires exactly that: you may only write inside your own folder.
+      const path = `${currentUid}/${Date.now()}-${Math.random().toString(36).slice(2, 10)}.${extension}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from('chat-images')
+        .upload(path, uploadData, { contentType, upsert: false });
+
+      if (uploadError) {
+        setSendError('Could not upload that photo: ' + uploadError.message);
+        return;
+      }
+
+      const { data: sentMessage, error: insertError } = await supabase
+        .from('messages')
+        .insert({
+          // A caption if one was typed, otherwise a readable stand-in —
+          // this same string is what the push notification and the
+          // conversation preview on messages.tsx show, and an empty one
+          // there reads as a message that failed to arrive.
+          text: text.trim() || '📷 Photo',
+          image_path: path,
+          sender_id: currentUid,
+          receiver_id: (receiver_id as string | undefined) || resolvedReceiverId || null,
+          listing_id: !isRequestChat && !isItemRequestChat && listing_id ? parseInt(listing_id as string) : null,
+          request_id: isRequestChat ? request_id : null,
+          item_request_id: isItemRequestChat ? item_request_id : null,
+        })
+        .select()
+        .single();
+
+      if (insertError) {
+        // The upload succeeded but the message did not, so nothing will
+        // ever reference this file. Clean up rather than leave an orphan —
+        // this project already has orphaned storage files and should not
+        // manufacture more.
+        await supabase.storage.from('chat-images').remove([path]).catch(() => {});
+        setSendError('Couldn\'t send: ' + insertError.message);
+        return;
+      }
+
+      if (sentMessage) {
+        setMessages((prev) => (prev.some((m) => m.id === sentMessage.id) ? prev : [...prev, sentMessage]));
+      }
+      setText('');
+      setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 100);
+    } catch (err: any) {
+      setSendError('Could not attach that photo. Please try again.');
+      console.log('sendPhoto failed:', err);
+    } finally {
+      setUploadingPhoto(false);
+    }
+  }
+
+  function openAttachMenu() {
+    if (uploadingPhoto) return;
+    Alert.alert(
+      'Send a photo',
+      undefined,
+      [
+        { text: '📷 Take a photo', onPress: () => sendPhoto('camera') },
+        { text: '🖼️ Choose from gallery', onPress: () => sendPhoto('library') },
+        { text: 'Cancel', style: 'cancel' },
+      ],
+      { cancelable: true }
+    );
+  }
+
   const sendMessage = async () => {
     // See isSendingRef's declaration for the evidence behind this.
     if (isSendingRef.current) return;
@@ -1639,9 +1806,41 @@ export default function ChatScreen() {
                 )}
                 <View style={styles.bubble}>
                   <View style={isMine ? styles.bubbleBuyer : styles.bubbleSeller}>
-                    <Text style={isMine ? styles.bubbleTextBuyer : styles.bubbleTextSeller}>
-                      {msg.text}
-                    </Text>
+                    {/* An attached photo, if this message has one. The
+                        signed URL may not have arrived yet on the very
+                        first render — show the frame with a spinner rather
+                        than nothing, so the message does not appear to be
+                        empty for a moment. */}
+                    {msg.image_path ? (
+                      signedUrls[msg.image_path] ? (
+                        <TouchableOpacity
+                          activeOpacity={0.85}
+                          onPress={() => setZoomPhoto(signedUrls[msg.image_path])}
+                        >
+                          <Image
+                            source={{ uri: signedUrls[msg.image_path] }}
+                            style={styles.msgImage}
+                            resizeMode="cover"
+                          />
+                        </TouchableOpacity>
+                      ) : (
+                        <View style={[styles.msgImage, styles.msgImageLoading]}>
+                          <ActivityIndicator color={GOLD} />
+                        </View>
+                      )
+                    ) : null}
+                    {/* '📷 Photo' is the stand-in written when a photo is
+                        sent with no caption — it exists for the push
+                        notification and the conversation preview, and
+                        repeating it under the picture would just be noise. */}
+                    {msg.text && !(msg.image_path && msg.text === '📷 Photo') ? (
+                      <Text style={[
+                        isMine ? styles.bubbleTextBuyer : styles.bubbleTextSeller,
+                        msg.image_path && { marginTop: 8 },
+                      ]}>
+                        {msg.text}
+                      </Text>
+                    ) : null}
                   </View>
                   <Text style={[styles.msgTime, isMine && styles.msgTimeMine]}>
                     {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
@@ -1662,7 +1861,25 @@ export default function ChatScreen() {
       )}
 
       <View style={[styles.inputRow, { paddingBottom: 10 + insets.bottom }]}>
-        <Text style={styles.attachIcon}>📎</Text>
+        {/* Was a bare <Text>📎</Text> — no TouchableOpacity, no onPress,
+            nothing behind it. It had never done anything; reported as
+            "attach not opening". Now it opens a camera/gallery chooser and
+            sends the photo, with a spinner in its place while uploading so
+            a slow connection does not look like another dead button. */}
+        <TouchableOpacity
+          onPress={openAttachMenu}
+          disabled={uploadingPhoto}
+          hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+          accessibilityRole="button"
+          accessibilityLabel="Attach a photo"
+        >
+          {uploadingPhoto
+            // Fixed width so the row does not jump when the paperclip
+            // is swapped for the spinner. styles.attachIcon is a TEXT style
+            // (fontSize/color) and cannot be applied to a View.
+            ? <ActivityIndicator color={GOLD} style={{ width: 20 }} />
+            : <Text style={styles.attachIcon}>📎</Text>}
+        </TouchableOpacity>
         <TextInput
           style={styles.inputBar}
           placeholder="Type a message..."
@@ -1770,6 +1987,15 @@ export default function ChatScreen() {
           </View>
         </View>
       </Modal>
+
+      {/* Full-screen photo, the same viewer listing.tsx and
+          wanted-responses.tsx use. */}
+      <PhotoZoomViewer
+        photos={zoomPhoto ? [zoomPhoto] : []}
+        imageIndex={0}
+        visible={!!zoomPhoto}
+        onRequestClose={() => setZoomPhoto(null)}
+      />
 
       <Modal visible={meetPayModal} animationType="slide" transparent onRequestClose={() => setMeetPayModal(false)}>
         <View style={styles.modalOverlay}>
@@ -2029,6 +2255,8 @@ const styles = StyleSheet.create({
   msgTimeMine: { textAlign: 'right' },
   inputRow: { backgroundColor: BLACK, padding: 10, paddingHorizontal: 16, flexDirection: 'row', alignItems: 'center', gap: 10, borderTopWidth: 0.5, borderTopColor: DARK },
   attachIcon: { fontSize: 20, color: GREY },
+  msgImage: { width: 200, height: 200, borderRadius: 10, backgroundColor: '#222' },
+  msgImageLoading: { alignItems: 'center', justifyContent: 'center' },
   inputBar: { flex: 1, backgroundColor: DARK, borderRadius: 24, padding: 10, paddingHorizontal: 16, borderWidth: 0.5, borderColor: '#333', color: '#fff', fontSize: 13 },
   sendBtn: { width: 40, height: 40, backgroundColor: GOLD, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
   sendIcon: { color: BLACK, fontSize: 18 },
