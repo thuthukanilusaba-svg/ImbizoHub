@@ -605,7 +605,7 @@ export default function ProfileScreen() {
             <MenuRow icon="🚐" label="My trip requests" dimmed={tripRequestCount === 0} onPress={() => router.push('/quotes')} />
             <MenuRow
               icon="🔍"
-              label="My wanted posts"
+              label="What I'm looking for"
               dimmed={wantedPostCount === 0}
               badge={wantedResponseCount > 0 ? wantedResponseCount : undefined}
               onPress={() => router.push('/my-wanted-posts')}
@@ -618,7 +618,7 @@ export default function ProfileScreen() {
                 no way to see what you offered, no way to change it. */}
             <MenuRow
               icon="🏷️"
-              label="My responses"
+              label="Prices I've offered"
               dimmed={myResponseCount === 0}
               onPress={() => router.push('/my-responses')}
             />

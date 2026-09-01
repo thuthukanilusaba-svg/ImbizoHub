@@ -158,7 +158,7 @@ export default function MyWantedPostsScreen() {
           <TouchableOpacity onPress={() => router.back()}>
             <Text style={styles.backText}><Text style={styles.backArrow}>‹</Text> Back</Text>
           </TouchableOpacity>
-          <Text style={styles.heading}>My wanted posts</Text>
+          <Text style={styles.heading}>What I'm looking for</Text>
         </View>
         <View style={styles.needsAccountCard}>
           <Text style={styles.needsAccountIcon}>🔍</Text>
@@ -184,9 +184,9 @@ export default function MyWantedPostsScreen() {
         <TouchableOpacity onPress={() => router.back()}>
           <Text style={styles.backText}><Text style={styles.backArrow}>‹</Text> Back</Text>
         </TouchableOpacity>
-        <Text style={styles.heading}>My wanted posts</Text>
+        <Text style={styles.heading}>What I'm looking for</Text>
         <Text style={styles.subheading}>
-          {posts.length} post{posts.length !== 1 ? 's' : ''} — tap one to see responses
+          {posts.length} thing{posts.length !== 1 ? 's' : ''} — tap one to see who replied
         </Text>
       </View>
 
@@ -202,7 +202,7 @@ export default function MyWantedPostsScreen() {
             <Text style={styles.emptyText}>You haven't posted anything yet.</Text>
             <Text style={styles.emptySubtext}>Post what you're looking for and sellers will respond with a price.</Text>
             <TouchableOpacity style={styles.postBtn} onPress={() => router.push('/post-wanted')}>
-              <Text style={styles.postBtnText}>+ Post a want</Text>
+              <Text style={styles.postBtnText}>+ Post what you need</Text>
             </TouchableOpacity>
           </View>
         }

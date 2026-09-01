@@ -288,7 +288,7 @@ export default function MyResponsesScreen() {
           <TouchableOpacity onPress={() => router.back()}>
             <Text style={styles.backText}><Text style={styles.backArrow}>‹</Text> Back</Text>
           </TouchableOpacity>
-          <Text style={styles.heading}>My responses</Text>
+          <Text style={styles.heading}>Prices I've offered</Text>
         </View>
         <View style={styles.needsAccountCard}>
           <Text style={styles.needsAccountIcon}>🏷️</Text>
@@ -316,7 +316,7 @@ export default function MyResponsesScreen() {
         <TouchableOpacity onPress={() => router.back()}>
           <Text style={styles.backText}><Text style={styles.backArrow}>‹</Text> Back</Text>
         </TouchableOpacity>
-        <Text style={styles.heading}>My responses</Text>
+        <Text style={styles.heading}>Prices I've offered</Text>
         <Text style={styles.subheading}>
           {responses.length === 0
             ? 'Prices you have offered on other people’s wants'
