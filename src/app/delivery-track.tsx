@@ -14,6 +14,7 @@ import {
   ActivityIndicator, Platform, ScrollView, StyleSheet,
   Text, TouchableOpacity, View,
 } from 'react-native';
+import { formatPrice } from '../../lib/money';
 import { supabase } from '../../lib/supabase';
 
 const GOLD = '#B8860B';
@@ -252,7 +253,7 @@ export default function DeliveryTrackScreen() {
         {booking.item_price != null && (
           <View style={styles.paymentBox}>
             <Text style={styles.paymentBoxText}>
-              Item price: <Text style={{ color: GOLD, fontWeight: '800' }}>${booking.item_price}</Text> — arrange this directly with the seller, ImbizoHub does not collect or hold it.
+              Item price: <Text style={{ color: GOLD, fontWeight: '800' }}>${formatPrice(booking.item_price)}</Text> — arrange this directly with the seller, ImbizoHub does not collect or hold it.
             </Text>
             {booking.payment_status === 'seller_confirmed' && (
               <Text style={styles.paymentConfirmedText}>✅ The seller confirmed they received this payment.</Text>

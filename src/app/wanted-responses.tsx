@@ -54,6 +54,7 @@ import {
 } from 'react-native';
 import PhotoZoomViewer from '../../components/PhotoZoomViewer';
 import { extractFunctionError } from '../../lib/paymentError';
+import { formatPrice } from '../../lib/money';
 import { supabase } from '../../lib/supabase';
 
 const GOLD = '#B8860B';
@@ -327,7 +328,7 @@ export default function WantedResponsesScreen() {
             <View style={styles.card}>
               <Text style={styles.sellerName}>{item.responder_name}</Text>
               <Text style={styles.priceLabel}>Their price</Text>
-              <Text style={styles.priceValue}>${item.price}</Text>
+              <Text style={styles.priceValue}>${formatPrice(item.price)}</Text>
               {item.message ? <Text style={styles.messageText}>"{item.message}"</Text> : null}
 
               {/* FIX (reported 1 Sep 2026: "pictures attached did not go to

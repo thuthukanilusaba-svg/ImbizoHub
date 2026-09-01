@@ -22,6 +22,7 @@ import { useEffect, useState } from 'react';
 import { ActivityIndicator, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { buildListingHref } from '../../lib/listingNav';
+import { formatPrice } from '../../lib/money';
 import { supabase } from '../../lib/supabase';
 
 const GOLD = '#B8860B';
@@ -124,7 +125,7 @@ export default function MyListingsScreen() {
                   <Text style={[styles.title, isSold && styles.titleSold]} numberOfLines={1}>
                     {item.title}
                   </Text>
-                  <Text style={[styles.price, isSold && styles.priceSold]}>${item.price}</Text>
+                  <Text style={[styles.price, isSold && styles.priceSold]}>${formatPrice(item.price)}</Text>
                   <Text style={styles.location}>{item.location}</Text>
                 </View>
               </TouchableOpacity>

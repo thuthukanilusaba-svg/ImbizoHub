@@ -54,7 +54,7 @@ import {
   ActivityIndicator,
   FlatList,
   Image,
-  KeyboardAvoidingView,
+  Keyboard,
   Modal,
   Platform,
   RefreshControl,
@@ -67,6 +67,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { normalizeImageOrientation } from '../../lib/imageOrientation';
+import { formatPrice } from '../../lib/money';
 import { supabase } from '../../lib/supabase';
 import { prepareUpload } from '../../lib/uploadHelpers';
 
@@ -94,9 +95,9 @@ type ItemRequest = {
 
 function budgetLabel(min: number | null, max: number | null): string | null {
   if (min == null && max == null) return null;
-  if (min != null && max != null) return `$${min} – $${max}`;
-  if (min != null) return `$${min}+`;
-  return `Up to $${max}`;
+  if (min != null && max != null) return `$${formatPrice(min)} – $${formatPrice(max)}`;
+  if (min != null) return `$${formatPrice(min)}+`;
+  return `Up to $${formatPrice(max)}`;
 }
 
 export default function BrowseWantedScreen() {
@@ -125,6 +126,35 @@ export default function BrowseWantedScreen() {
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
+  // CHANGED (1 Sep 2026, reported: "the modal at the bottom that says I
+  // have this must be removed"). Nothing was rendering twice — that gold
+  // button belongs to the LIST BEHIND the sheet, showing through the
+  // translucent overlay because the sheet was not reaching the bottom of
+  // the screen.
+  //
+  // The cause was this modal's KeyboardAvoidingView, which used
+  // behavior="height" on Android. Inside a <Modal>, which lives in its own
+  // native view hierarchy, that measurement is unreliable and the wrapper
+  // ended up shorter than the screen — so modalOverlay's
+  // justifyContent:'flex-end' anchored the sheet to the WRAPPER's bottom
+  // rather than the screen's, leaving a strip of the list visible beneath
+  // it that looked like a leftover control.
+  //
+  // Measuring the keyboard directly instead, exactly as chat.tsx's Meet &
+  // Pay sheet and my-responses.tsx already do, for the same reason: it is
+  // the one approach that behaves identically on both platforms and does
+  // not depend on a Modal reporting its own frame correctly.
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
+  useEffect(() => {
+    if (Platform.OS === 'web') return;
+    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+    const showSub = Keyboard.addListener(showEvent, (e: any) =>
+      setKeyboardHeight(e?.endCoordinates?.height ?? 0)
+    );
+    const hideSub = Keyboard.addListener(hideEvent, () => setKeyboardHeight(0));
+    return () => { showSub.remove(); hideSub.remove(); };
+  }, []);
   const [submitError, setSubmitError] = useState('');
 
   useEffect(() => {
@@ -440,10 +470,7 @@ export default function BrowseWantedScreen() {
       />
 
       <Modal visible={modalVisible} animationType="slide" transparent onRequestClose={() => setModalVisible(false)}>
-        <KeyboardAvoidingView
-          style={styles.modalOverlay}
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        >
+        <View style={styles.modalOverlay}>
           {/* FIX (real bug, reported: "the page does not scroll down to
               see what i add on the top" — after picking a photo, the
               response form grew taller than the screen with no way to
@@ -457,7 +484,11 @@ export default function BrowseWantedScreen() {
               gives the sheet a bounded box to scroll within — without
               it, a ScrollView here would still just grow unbounded
               alongside its content instead of actually scrolling. */}
-          <View style={[styles.modalSheet, { paddingBottom: (Platform.OS === 'ios' ? 40 : 24) + insets.bottom }]}>
+          <View style={[
+            styles.modalSheet,
+            { paddingBottom: (Platform.OS === 'ios' ? 40 : 24) + insets.bottom },
+            keyboardHeight > 0 && { marginBottom: keyboardHeight },
+          ]}>
             {/* flexShrink:1 is what actually makes this scroll on web.
                 The sheet above caps its own height at 85%, but a
                 react-native-web ScrollView with no height constraint of
@@ -573,14 +604,18 @@ export default function BrowseWantedScreen() {
                     ? 'The buyer will review your price. If they pick you, you\'ll be notified and a chat will open right away — free, launch promotion through Jan 31, 2027.'
                     : 'The buyer will review your price. If they pick you, you\'ll be notified and a chat will open once they\'ve paid ImbizoHub\'s small commission.'}
                 </Text>
-                <TouchableOpacity style={styles.submitModalBtn} onPress={() => setModalVisible(false)}>
+                {/* Its own style, not submitModalBtn. That one carries
+                    flex: 2 because it sits beside Cancel in a row; dropped
+                    into this centred column it collapsed to its content
+                    and rendered as a squashed little pill. */}
+                <TouchableOpacity style={styles.successBtn} onPress={() => setModalVisible(false)}>
                   <Text style={styles.submitModalBtnText}>Done</Text>
                 </TouchableOpacity>
               </View>
             )}
             </ScrollView>
           </View>
-        </KeyboardAvoidingView>
+        </View>
       </Modal>
     </View>
   );
@@ -688,6 +723,7 @@ const styles = StyleSheet.create({
   submitModalBtnText: { color: BLACK, fontWeight: '800', fontSize: 15 },
 
   successBox: { alignItems: 'center', paddingVertical: 16 },
+  successBtn: { alignSelf: 'stretch', borderRadius: 12, paddingVertical: 16, alignItems: 'center', backgroundColor: GOLD },
   successEmoji: { fontSize: 48, marginBottom: 12 },
   successTitle: { fontSize: 20, fontWeight: '800', color: '#fff', marginBottom: 8 },
   successBody: { fontSize: 14, color: GREY, textAlign: 'center', lineHeight: 20, marginBottom: 24 },

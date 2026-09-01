@@ -47,6 +47,7 @@ import {
   StyleSheet, Text, TouchableOpacity, View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { formatPrice } from '../../lib/money';
 import { supabase } from '../../lib/supabase';
 
 const GOLD = '#B8860B';
@@ -69,9 +70,9 @@ type WantedPost = {
 
 function budgetLabel(min: number | null, max: number | null): string | null {
   if (min == null && max == null) return null;
-  if (min != null && max != null) return `$${min} – $${max}`;
-  if (min != null) return `$${min}+`;
-  return `Up to $${max}`;
+  if (min != null && max != null) return `$${formatPrice(min)} – $${formatPrice(max)}`;
+  if (min != null) return `$${formatPrice(min)}+`;
+  return `Up to $${formatPrice(max)}`;
 }
 
 export default function MyWantedPostsScreen() {

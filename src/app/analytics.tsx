@@ -32,6 +32,7 @@ import {
   ActivityIndicator, Platform, ScrollView, StyleSheet,
   Text, TouchableOpacity, View,
 } from 'react-native';
+import { formatPrice } from '../../lib/money';
 import { supabase } from '../../lib/supabase';
 
 const GOLD = '#B8860B';
@@ -220,7 +221,7 @@ export default function AnalyticsScreen() {
                         {l.category || 'Other'} · {new Date(l.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
                       </Text>
                     </View>
-                    <Text style={styles.listingPrice}>${l.price}</Text>
+                    <Text style={styles.listingPrice}>${formatPrice(l.price)}</Text>
                     <View style={[
                       styles.listingBadge,
                       cls === 'sold' ? styles.listingBadgeSold : cls === 'active' ? styles.listingBadgeActive : styles.listingBadgeOther,

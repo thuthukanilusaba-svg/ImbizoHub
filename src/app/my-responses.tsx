@@ -50,6 +50,7 @@ import {
   ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { formatPrice } from '../../lib/money';
 import { supabase } from '../../lib/supabase';
 
 const GOLD = '#B8860B';
@@ -362,7 +363,7 @@ export default function MyResponsesScreen() {
               <View style={styles.priceRow}>
                 <Text style={styles.priceLabel}>Your price</Text>
                 <Text style={[styles.priceValue, !isEditable && { color: GREY }]}>
-                  {item.price != null ? `$${item.price}` : '—'}
+                  {item.price != null ? `$${formatPrice(item.price)}` : '—'}
                 </Text>
               </View>
 

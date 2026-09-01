@@ -79,6 +79,7 @@ import { Directions, Gesture, GestureDetector, GestureHandlerRootView } from 're
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import PhotoZoomViewer from '../../components/PhotoZoomViewer';
 import { buildListingHref, parseListingContext } from '../../lib/listingNav';
+import { formatPrice } from '../../lib/money';
 import { supabase } from '../../lib/supabase';
 
 const GOLD = '#B8860B';
@@ -496,7 +497,7 @@ export default function ListingScreen() {
             ) : null}
           </View>
 
-          <Text style={[styles.price, isSold && { color: GREY }]}>${listing.price}</Text>
+          <Text style={[styles.price, isSold && { color: GREY }]}>${formatPrice(listing.price)}</Text>
           <Text style={styles.location}>📍 {listing.location}</Text>
 
           {listing.description ? (

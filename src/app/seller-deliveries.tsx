@@ -21,6 +21,7 @@ import {
   Text, TouchableOpacity, View,
 } from 'react-native';
 import { normalizeImageOrientation } from '../../lib/imageOrientation';
+import { formatPrice } from '../../lib/money';
 import { supabase } from '../../lib/supabase';
 import { prepareUpload } from '../../lib/uploadHelpers';
 
@@ -305,7 +306,7 @@ export default function SellerDeliveriesScreen() {
                 {booking.item_price != null && (
                   <View style={styles.paymentBox}>
                     <Text style={styles.paymentBoxText}>
-                      Item price: <Text style={{ color: GOLD, fontWeight: '800' }}>${booking.item_price}</Text> — arranged directly with the buyer, not through ImbizoHub.
+                      Item price: <Text style={{ color: GOLD, fontWeight: '800' }}>${formatPrice(booking.item_price)}</Text> — arranged directly with the buyer, not through ImbizoHub.
                     </Text>
                     {booking.payment_status === 'seller_confirmed' ? (
                       <Text style={styles.paymentConfirmedText}>✅ You confirmed you received this payment.</Text>

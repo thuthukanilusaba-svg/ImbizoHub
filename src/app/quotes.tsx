@@ -45,6 +45,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { extractFunctionError } from '../../lib/paymentError';
+import { formatPrice } from '../../lib/money';
 import { supabase } from '../../lib/supabase';
 
 const GOLD = '#B8860B';
@@ -512,7 +513,7 @@ export default function QuotesScreen() {
                     ) : null}
                   </View>
                   <View style={{ alignItems: 'flex-end' }}>
-                    <Text style={styles.priceText}>${item.price}</Text>
+                    <Text style={styles.priceText}>${formatPrice(item.price)}</Text>
                     {/* During the promo this sat directly above a button
                         reading "Accept — free (launch promo)", so the same
                         card both charged and did not charge for the same
@@ -567,7 +568,7 @@ export default function QuotesScreen() {
                 <View style={styles.summaryBox}>
                   <SummaryRow label="Operator" value={chosenQuote.operator_name ?? ''} />
                   <SummaryRow label="Vehicle" value={chosenQuote.vehicle} />
-                  <SummaryRow label="Total fare" value={`$${chosenQuote.price}`} />
+                  <SummaryRow label="Total fare" value={`$${formatPrice(chosenQuote.price)}`} />
                   <View style={styles.divider} />
                   {isPromoActive() ? (
                     <SummaryRow label="Platform fee" value="FREE (launch promo)" gold />

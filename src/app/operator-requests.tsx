@@ -17,6 +17,7 @@ import {
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { formatPrice } from '../../lib/money';
 import { supabase } from '../../lib/supabase';
 import { operatorCanSeeTrip } from '../../lib/cities';
 
@@ -560,7 +561,7 @@ export default function OperatorRequestsScreen() {
                     {t.pickup} → {t.destination}
                   </Text>
                   <Text style={styles.wonMeta}>
-                    {t.date} · ${t.price}
+                    {t.date} · ${formatPrice(t.price)}
                   </Text>
 
                   {t.fullyConfirmed ? (
@@ -601,7 +602,7 @@ export default function OperatorRequestsScreen() {
                     <Text style={styles.quoteRoute} numberOfLines={1}>
                       {q.pickup} → {q.destination}
                     </Text>
-                    <Text style={styles.quoteMeta}>{q.date} · ${q.price}</Text>
+                    <Text style={styles.quoteMeta}>{q.date} · ${formatPrice(q.price)}</Text>
                   </View>
                   {/* Named for what it means to the operator, not for the
                       database value. 'Declined' reads as a judgement on

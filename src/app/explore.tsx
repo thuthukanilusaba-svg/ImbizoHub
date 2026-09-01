@@ -6,6 +6,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import BottomNav from '../../components/BottomNav';
 import { buildListingHref } from '../../lib/listingNav';
 import { useIsDesktopWeb } from '../../lib/responsive';
+import { formatPrice } from '../../lib/money';
 import { supabase } from '../../lib/supabase';
 
 const GOLD = '#B8860B';
@@ -317,7 +318,7 @@ export default function ExploreScreen() {
               )}
               <View style={styles.listingBody}>
                 <Text style={styles.listingTitle}>{item.title}</Text>
-                <Text style={styles.listingPrice}>${item.price}</Text>
+                <Text style={styles.listingPrice}>${formatPrice(item.price)}</Text>
                 <View style={styles.listingMeta}>
                   <Text style={styles.listingLoc}>{item.location}</Text>
                   {item.badge ? (

@@ -18,6 +18,7 @@ import {
   Text, TouchableOpacity, View,
 } from 'react-native';
 import { extractFunctionError } from '../../lib/paymentError';
+import { formatPrice } from '../../lib/money';
 import { supabase } from '../../lib/supabase';
 
 const GOLD = '#B8860B';
@@ -208,7 +209,7 @@ export default function FeatureListingPayScreen() {
 
         <View style={styles.listingCard}>
           <Text style={styles.listingTitle}>{listing.title}</Text>
-          <Text style={styles.listingPrice}>${listing.price}</Text>
+          <Text style={styles.listingPrice}>${formatPrice(listing.price)}</Text>
         </View>
 
         <View style={styles.priceCard}>

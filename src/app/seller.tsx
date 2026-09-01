@@ -40,6 +40,7 @@ import {
     Text, TouchableOpacity, View,
 } from 'react-native';
 import { buildListingHref } from '../../lib/listingNav';
+import { formatPrice } from '../../lib/money';
 import { supabase } from '../../lib/supabase';
 
 const GOLD = '#B8860B';
@@ -334,7 +335,7 @@ export default function SellerProfileScreen() {
                     </View>
                   )}
                   <Text style={styles.listingTitle} numberOfLines={1}>{l.title}</Text>
-                  <Text style={styles.listingPrice}>${l.price}</Text>
+                  <Text style={styles.listingPrice}>${formatPrice(l.price)}</Text>
                 </TouchableOpacity>
               ))}
             </View>
