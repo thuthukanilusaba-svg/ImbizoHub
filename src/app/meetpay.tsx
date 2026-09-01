@@ -329,7 +329,19 @@ export default function MeetPayScreen() {
     if (thenRate && data) {
       const revieweeId = role === 'buyer' ? data.seller_id : data.buyer_id;
       if (revieweeId) {
-        router.replace(
+        // push, NOT replace (changed 1 Sep 2026). The trip is already
+        // confirmed by the time this runs — but with replace() this
+        // screen was destroyed on the way to the rating, so anyone who
+        // then skipped the rating was ejected to the home feed having
+        // never been told the trip completed. They tapped a button, saw
+        // a star picker, backed out, and landed somewhere unrelated.
+        //
+        // Keeping this screen on the stack means skipping the rating
+        // returns here — and `isFullyConfirmed` now renders the
+        // "Service delivered! Both you and your driver confirmed"
+        // receipt. The consequential action becomes visible whether or
+        // not they choose to rate.
+        router.push(
           `/rating?session_id=${data.id}&reviewee_id=${revieweeId}&role=${role}`
         );
       }
@@ -505,14 +517,37 @@ export default function MeetPayScreen() {
           - driver: confirms the trip, as before
           - passenger, driver already confirmed: rates (which confirms)
           - passenger, driver has not: a quieter fallback so they are
-            never blocked from rating by a driver who never confirms */}
+            never blocked from rating by a driver who never confirms
+
+          WORDING (fixed 1 Sep 2026, reported after the first real
+          van-hire run: "the trip does not complete until you rate the
+          driver — is this the correct way?").
+
+          It never did. handleConfirmMyself(true) calls
+          confirm_meetpay_trip() FIRST and only then opens the rating
+          screen, so the trip is complete the instant the button is
+          tapped, and skipping the rating changes nothing. The mechanism
+          was right; the labels were not. Each of these buttons was named
+          after the OPTIONAL half of what it does.
+
+          That is a trap, not untidy copy. A passenger who does not feel
+          like rating anyone has no reason to tap a button called "Rate
+          your driver" — so they don't, the trip never completes, and the
+          driver waits forever on "Waiting for your customer to confirm
+          too..." for a confirmation that was one tap away behind a label
+          that never mentioned confirming. The "Important" box below
+          already says the trip completes only when both sides confirm;
+          nothing connected that sentence to the gold button.
+
+          Every label now leads with the consequential action. Text-only:
+          no handler, no RPC, no rating eligibility touched. */}
       {role === 'buyer' && otherConfirmedAt ? (
         <TouchableOpacity
           style={[styles.confirmBtn, confirming && { opacity: 0.6 }]}
           onPress={() => handleConfirmMyself(true)}
           disabled={confirming}
         >
-          {confirming ? <ActivityIndicator color={BLACK} /> : <Text style={styles.confirmBtnText}>⭐ Rate your driver</Text>}
+          {confirming ? <ActivityIndicator color={BLACK} /> : <Text style={styles.confirmBtnText}>Confirm trip and rate driver</Text>}
         </TouchableOpacity>
       ) : role === 'buyer' ? (
         <TouchableOpacity
@@ -520,7 +555,7 @@ export default function MeetPayScreen() {
           onPress={() => handleConfirmMyself(true)}
           disabled={confirming}
         >
-          {confirming ? <ActivityIndicator color={BLACK} /> : <Text style={styles.confirmBtnText}>Trip is done — rate anyway</Text>}
+          {confirming ? <ActivityIndicator color={BLACK} /> : <Text style={styles.confirmBtnText}>Confirm trip and rate driver</Text>}
         </TouchableOpacity>
       ) : (
         <TouchableOpacity
@@ -528,7 +563,7 @@ export default function MeetPayScreen() {
           onPress={() => handleConfirmMyself()}
           disabled={confirming}
         >
-          {confirming ? <ActivityIndicator color={BLACK} /> : <Text style={styles.confirmBtnText}>{actionLabel}</Text>}
+          {confirming ? <ActivityIndicator color={BLACK} /> : <Text style={styles.confirmBtnText}>{`Confirm ${actionLabel.toLowerCase()}`}</Text>}
         </TouchableOpacity>
       )}
 

@@ -65,15 +65,14 @@ name: Van hire 3 of 3 — accept, confirm both sides, rate the driver
     timeout: 20000
 - tapOn: "Trip completed"
 
-# meetpay.tsx headings and buttons are the same interpolated string on the
-# operator side, so "Trip completed" appears twice here — as the heading
-# and as the button. index 1 is the button.
+# The heading is "Trip completed"; the button is "Confirm trip completed"
+# (relabelled 1 Sep 2026 so every button names the consequential action
+# rather than the optional one). The longer string only matches the button,
+# so no index juggling is needed here any more.
 - extendedWaitUntil:
     visible: "Only confirm once your trip has actually finished."
     timeout: 20000
-- tapOn:
-    text: "Trip completed"
-    index: 1
+- tapOn: "Confirm trip completed"
 
 - extendedWaitUntil:
     visible: "You confirmed"
@@ -102,12 +101,13 @@ name: Van hire 3 of 3 — accept, confirm both sides, rate the driver
     timeout: 20000
 - tapOn: "🔒 Proceed"
 
-# The operator confirmed first, so the customer is the last step and the
-# button is the rating one rather than a bare confirm.
+# The operator confirmed first, so the customer is the last step. This one
+# button both confirms the trip AND opens the rating screen — the trip is
+# complete the moment it is tapped, before any stars are chosen.
 - extendedWaitUntil:
     visible: "you're the last step"
     timeout: 20000
-- tapOn: "⭐ Rate your driver"
+- tapOn: "Confirm trip and rate driver"
 
 # rating.tsx renders five identical "★" glyphs with no testID — index 4 is
 # the fifth star, left to right. If the star row is ever reworked, this is

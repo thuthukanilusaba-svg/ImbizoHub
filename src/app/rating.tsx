@@ -402,7 +402,17 @@ export default function RatingScreen() {
         }
       </TouchableOpacity>
 
-      <TouchableOpacity style={styles.skipBtn} onPress={() => router.replace('/')}>
+      {/* CHANGED (1 Sep 2026): was always router.replace('/'), which threw
+          anyone who declined to rate out to the home feed regardless of
+          where they came from. Skipping a rating should put you back where
+          you were — most importantly on the van-hire confirmation screen,
+          which shows that the trip completed. Falls back to home only when
+          there is genuinely nothing to go back to (a deep link straight
+          into this screen). */}
+      <TouchableOpacity
+        style={styles.skipBtn}
+        onPress={() => (router.canGoBack() ? router.back() : router.replace('/'))}
+      >
         <Text style={styles.skipText}>Skip — rate later</Text>
       </TouchableOpacity>
     </ScrollView>
