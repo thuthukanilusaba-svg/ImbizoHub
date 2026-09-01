@@ -77,14 +77,21 @@ const UNLOCK_FEE_CAP = 15; // never charge more than this, regardless of listed 
 // same reasoning as the cap, just the opposite direction.
 const UNLOCK_FEE_MIN = 1.50;
 
-// NEW: launch promotion — the unlock fee is free until Jan 31, 2027,
-// same window as every other promo built today. Deliberately checked
-// BEFORE hasFreeUnlock below — during the promo, unlocking is free
-// for everyone regardless of the separate "5 free unlocks" allowance,
-// and importantly doesn't CONSUME that allowance either, so it's still
-// fully intact for buyers once February's real pricing begins.
-const FREE_PROMO_END = new Date('2027-01-31T23:59:59Z');
-const isPromoActive = () => new Date() < FREE_PROMO_END;
+// PERMANENT (product decision, 1 Sep 2026): buying on a listing is free
+// for good. Not a promotion with an end date — the app does not charge a
+// buyer to chat with a seller or to arrange a deal on a listing, full
+// stop. The launch-promo date check that used to live here is gone, and
+// so is every path that could charge for this.
+//
+// LISTINGS ONLY. The Wanted-post match commission (5%, see
+// wanted-responses.tsx) is untouched and still returns on 2027-02-01 —
+// that is the revenue line the business actually runs on. Two flows that
+// look alike now behave differently on purpose; do not unify them.
+//
+// The fee constants below are kept, unused by any charging path, because
+// they still describe what the fee WAS and the summary card no longer
+// quotes them. Deleting them is safe; leaving them costs nothing and
+// makes the history of this screen readable.
 
 // How long to poll payment_intents after the checkout browser closes,
 // waiting for the paynow-webhook to have marked it paid.
@@ -178,32 +185,15 @@ export default function DepositScreen() {
       return;
     }
 
-    // NEW: Dealer Pro benefit — buyers never pay the unlock fee on a
-    // listing owned by an active Pro subscriber. Same "paid boolean +
-    // expires_at checked against now()" pattern used everywhere else in
-    // the app. This is a client-side convenience redirect only — the
-    // real enforcement (so a buyer can't just skip this screen and
-    // share contact info in chat before ever reaching here) lives in
-    // enforce_contact_info_block(), widened separately to check the
-    // same condition server-side. See
-    // widen-enforce-contact-info-block-dealer-pro.sql.
-    const { data: sellerProfile } = await supabase
-      .from('profiles')
-      .select('dealer_pro_active, dealer_pro_expires_at')
-      .eq('id', seller_id)
-      .maybeSingle();
-
-    const sellerIsDealerPro = !!(
-      sellerProfile?.dealer_pro_active &&
-      sellerProfile?.dealer_pro_expires_at &&
-      new Date(sellerProfile.dealer_pro_expires_at).getTime() > Date.now()
-    );
-
-    if (sellerIsDealerPro) {
-      router.replace(`/chat?listing_id=${listing_id}&receiver_id=${seller_id}`);
-      return;
-    }
-
+    // REMOVED (1 Sep 2026): a lookup of the seller's Dealer Pro status,
+    // which used to skip the unlock fee for buyers on a Pro seller's
+    // listings. There is no unlock fee to skip any more — every buyer gets
+    // this free — so the query could no longer change the outcome, it just
+    // cost every visitor to this screen an extra round trip to profiles.
+    //
+    // chat.tsx's equivalent Dealer Pro branches are deliberately left in
+    // place: they also drive the contact-info censor, which is a separate
+    // rule that has not changed. Untangling that is not this change's job.
     const { data } = await supabase
       .from('listing_deposits')
       .select('*')
@@ -384,11 +374,10 @@ export default function DepositScreen() {
         <Text style={styles.backText}><Text style={styles.backArrow}>‹</Text> Back</Text>
       </TouchableOpacity>
 
-      <Text style={styles.heading}>Pay to arrange this deal</Text>
+      <Text style={styles.heading}>Arrange this deal</Text>
       <Text style={styles.subheading}>
-        Chatting with the seller is always free. A small fee applies when you're ready to arrange Meet & Pay
-        or book delivery — this fee is non-refundable and isn't held against your purchase, even if you and
-        the seller agree on a different price.
+        Buying on ImbizoHub is free. Chatting with the seller costs nothing, and so does arranging
+        Meet & Pay or a delivery — there is no fee to unlock, now or later.
       </Text>
 
       {/* REMOVED (real user feedback: "remove you have 5 unlocks, it's
@@ -415,29 +404,12 @@ export default function DepositScreen() {
         </View>
         <View style={styles.divider} />
         <View style={styles.summaryRow}>
-          <Text style={styles.summaryLabelBold}>
-            {/* RENAMED (product decision): "Arrange-deal fee" -> "App
-                fee", matching the same rename already applied to the
-                hire-a-van "Platform fee" — plain wording a buyer can
-                actually parse at checkout. */}
-            {isCapped ? 'App fee (capped)' : isMinimum ? 'App fee (minimum)' : 'App fee (5%)'}
-          </Text>
-          {isPromoActive() || hasFreeUnlock ? (
-            <Text style={styles.summaryValueFree}>FREE</Text>
-          ) : (
-            <Text style={styles.summaryValueGold}>${unlockFeeAmount}</Text>
-          )}
+          <Text style={styles.summaryLabelBold}>App fee</Text>
+          <Text style={styles.summaryValueFree}>FREE</Text>
         </View>
         <Text style={styles.summaryNote}>
-          {isPromoActive()
-            ? `Free for everyone through Jan 31, 2027 \u2014 launch promotion. Normally ${isCapped ? `capped at $${UNLOCK_FEE_CAP}` : isMinimum ? `a minimum of $${UNLOCK_FEE_MIN.toFixed(2)}` : `$${unlockFeeAmount}`}.`
-            : hasFreeUnlock
-            ? `Normally ${isCapped ? `capped at $${UNLOCK_FEE_CAP}` : isMinimum ? `a minimum of $${UNLOCK_FEE_MIN.toFixed(2)}` : `$${unlockFeeAmount}`} — this one's on us.`
-            : isCapped
-            ? `Capped at $${UNLOCK_FEE_CAP} regardless of listed price. Non-refundable and not credited toward the final price.`
-            : isMinimum
-            ? `Minimum fee of $${UNLOCK_FEE_MIN.toFixed(2)} applies regardless of listed price. Non-refundable and not credited toward the final price.`
-            : 'Non-refundable. This is not credited toward the final price.'}
+          ImbizoHub does not charge you to buy. You pay the seller directly for the item —
+          the app is not involved in that payment.
         </Text>
         {/* REMOVED (same reasoning as the free-unlock banner above):
             this referenced a "5 free unlocks" count the buyer is never
@@ -448,50 +420,30 @@ export default function DepositScreen() {
 
       <View style={styles.infoBox}>
         <InfoStep icon="💬" text="Chat with the seller — always free, no message limit" />
-        <InfoStep icon="🔓" text="This fee unlocks Meet & Pay and delivery booking" />
+        <InfoStep icon="🔓" text="Unlocks Meet & Pay and delivery booking — free" />
         <InfoStep icon="✅" text="Use Meet & Pay to confirm once you've inspected the item" />
       </View>
 
-      {isPromoActive() ? (
-        <TouchableOpacity
-          style={[styles.freeBtn, claimingFree && { opacity: 0.6 }]}
-          onPress={handleUnlockFreePromo}
-          disabled={claimingFree}
-        >
-          {claimingFree
-            ? <ActivityIndicator color={BLACK} />
-            : <Text style={styles.payBtnText}>Unlock free — launch promo</Text>
-          }
-        </TouchableOpacity>
-      ) : hasFreeUnlock ? (
-        <TouchableOpacity
-          style={[styles.freeBtn, claimingFree && { opacity: 0.6 }]}
-          onPress={handleClaimFreeUnlock}
-          disabled={claimingFree}
-        >
-          {claimingFree
-            ? <ActivityIndicator color={BLACK} />
-            : <Text style={styles.payBtnText}>Unlock for free</Text>
-          }
-        </TouchableOpacity>
-      ) : (
-        <TouchableOpacity
-          style={[styles.payBtn, (paying || verifying) && { opacity: 0.6 }]}
-          onPress={handlePayUnlockFee}
-          disabled={paying || verifying}
-        >
-          {paying ? (
-            <ActivityIndicator color="#fff" />
-          ) : verifying ? (
-            <>
-              <ActivityIndicator color="#fff" />
-              <Text style={styles.payBtnSubText}>Confirming your payment…</Text>
-            </>
-          ) : (
-            <Text style={styles.payBtnText}>Pay ${unlockFeeAmount} to arrange deal</Text>
-          )}
-        </TouchableOpacity>
-      )}
+      {/* One path, no branches. There used to be three — promo, the "5
+          free unlocks" allowance, and Paynow checkout — chosen by date
+          and by a per-buyer counter. None of that decides anything now:
+          it is free for everyone, every time.
+
+          handlePayUnlockFee() and handleClaimFreeUnlock() are left in the
+          file but are no longer reachable from anywhere. They are dead on
+          purpose rather than deleted in the same change that alters
+          pricing — if this decision is ever revisited, the working paid
+          path is still here to read. Nothing calls them. */}
+      <TouchableOpacity
+        style={[styles.freeBtn, claimingFree && { opacity: 0.6 }]}
+        onPress={handleUnlockFreePromo}
+        disabled={claimingFree}
+      >
+        {claimingFree
+          ? <ActivityIndicator color={BLACK} />
+          : <Text style={styles.payBtnText}>Unlock Meet &amp; Pay — free</Text>
+        }
+      </TouchableOpacity>
     </ScrollView>
   );
 }

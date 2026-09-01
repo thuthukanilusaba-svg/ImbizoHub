@@ -87,6 +87,19 @@ function parsePgTimestamp(value: string): number {
   return new Date(normalized).getTime();
 }
 
+// Postgres hands back "2026-09-01 14:16:18.47456+00", which Hermes will
+// not parse directly — parsePgTimestamp above already deals with that, so
+// this just formats what it returns.
+function formatTripDate(value: string): string {
+  try {
+    const ms = parsePgTimestamp(value);
+    if (Number.isNaN(ms)) return '';
+    return new Date(ms).toLocaleDateString(undefined, { day: 'numeric', month: 'long' });
+  } catch {
+    return '';
+  }
+}
+
 function getInitials(name: string): string {
   if (!name) return '👤';
   const parts = name.trim().split(/\s+/);
@@ -211,6 +224,12 @@ export default function ChatScreen() {
   // the header is waiting for them.
   const [operatorConfirmed, setOperatorConfirmed] = useState(false);
   const [tripFullyConfirmed, setTripFullyConfirmed] = useState(false);
+  // NEW (1 Sep 2026): the completed banner names the date and the amount.
+  // "This trip is done" is worth saying; "completed on 1 September for $60"
+  // is what someone actually needs when they come back a week later
+  // wondering what was agreed.
+  const [tripConfirmedAt, setTripConfirmedAt] = useState<string | null>(null);
+  const [tripAmount, setTripAmount] = useState<string | number | null>(null);
 
   const [itemIsPhysical, setItemIsPhysical] = useState(true);
 
@@ -568,13 +587,15 @@ export default function ChatScreen() {
           // reference_id on a van_hire session is the quote id, stored as text.
           const { data: sess } = await supabase
             .from('meetpay_sessions')
-            .select('operator_confirmed_at, status')
+            .select('operator_confirmed_at, status, confirmed_at, amount')
             .eq('reference_id', String(data.id))
             .eq('type', 'van_hire')
             .maybeSingle();
           if (!cancelled) {
             setOperatorConfirmed(!!sess?.operator_confirmed_at);
             setTripFullyConfirmed(sess?.status === 'confirmed');
+            setTripConfirmedAt(sess?.confirmed_at ?? null);
+            setTripAmount(sess?.amount ?? null);
           }
         }
       })();
@@ -1412,14 +1433,26 @@ export default function ChatScreen() {
               Only appears once a quote has actually been accepted —
               before that there is no trip to confirm. Shown to BOTH
               sides; meetpay.tsx decides which half you are confirming. */}
+          {/* CHANGED (1 Sep 2026): this pill never looked at whether the
+              trip was finished, so it kept reading "Trip completed" /
+              "Service delivered" — a live-looking action — long after both
+              sides had confirmed. Same fault the Meet & Pay pill had until
+              31 Aug; this is the van-hire half of it.
+
+              Greyed rather than removed, and still tappable. Someone who
+              skipped the rating needs a way back to the receipt, and a
+              control that vanishes is more confusing than one that plainly
+              says the work is done. */}
           {isRequestChat && acceptedQuoteId && (
             <TouchableOpacity
-              style={styles.meetPayHeaderBtn}
+              style={[styles.meetPayHeaderBtn, tripFullyConfirmed && styles.meetPayHeaderBtnDone]}
               onPress={() => router.push(`/meetpay?type=van_hire&reference_id=${acceptedQuoteId}`)}
             >
-              <Text style={styles.meetPayHeaderIcon}>🔒</Text>
-              <Text style={styles.meetPayHeaderText}>
-                {iAmTheOperator ? 'Trip completed' : 'Service delivered'}
+              <Text style={styles.meetPayHeaderIcon}>{tripFullyConfirmed ? '✅' : '🔒'}</Text>
+              <Text style={[styles.meetPayHeaderText, tripFullyConfirmed && styles.meetPayHeaderTextDone]}>
+                {tripFullyConfirmed
+                  ? 'Trip complete'
+                  : iAmTheOperator ? 'Trip completed' : 'Service delivered'}
               </Text>
             </TouchableOpacity>
           )}
@@ -1493,9 +1526,13 @@ export default function ChatScreen() {
         <View style={styles.warningBar}>
           <Text style={styles.warningIcon}>💬</Text>
           <Text style={styles.warningText}>
+            {/* CHANGED (1 Sep 2026): the listing branch promised a fee
+                that no longer exists — buying on a listing is free
+                permanently now. The Wanted branch is deliberately
+                UNCHANGED: that commission is real and still charged. */}
             {isItemRequestChat
               ? 'Chat is free — accept this response (and pay the small commission) when you\'re ready to unlock contact info and arrange collection or delivery.'
-              : 'Chat is free — you\'ll only pay a small fee when you\'re ready to arrange Meet & Pay or delivery.'}
+              : 'Chat is free, and so is arranging the deal — tap Arrange deal when you\'re ready to use Meet & Pay or book delivery.'}
           </Text>
         </View>
       )}
@@ -1527,6 +1564,34 @@ export default function ChatScreen() {
           </View>
           <Text style={styles.tripPromptChevron}>›</Text>
         </TouchableOpacity>
+      )}
+
+      {/* NEW (1 Sep 2026, direct product decision). The chat deliberately
+          stays OPEN after a trip completes — bags get left in vans, people
+          get dropped at the wrong end of a street, and a disagreement can
+          turn into a report days later. Closing the chat does not stop
+          those conversations, it just moves them to WhatsApp, and the chat
+          record is exactly what protects both sides when someone reports
+          the other. So the ACTION is what closes here, not the talking.
+
+          What was missing was any way to tell the deal was over. This says
+          so plainly, with the date and the amount — which is what someone
+          coming back a week later actually needs. */}
+      {isRequestChat && tripFullyConfirmed && (
+        <View style={styles.tripDoneBar}>
+          <Text style={styles.tripDoneIcon}>✅</Text>
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <Text style={styles.tripDoneTitle}>
+              This trip is complete
+              {tripConfirmedAt ? ` · ${formatTripDate(tripConfirmedAt)}` : ''}
+              {tripAmount != null ? ` · $${tripAmount}` : ''}
+            </Text>
+            <Text style={styles.tripDoneBody}>
+              Both of you confirmed. You can still message each other about anything
+              left over.
+            </Text>
+          </View>
+        </View>
       )}
 
       {contactWarning && (
@@ -1914,6 +1979,15 @@ const styles = StyleSheet.create({
   warningBar: { backgroundColor: '#1a1a2e', padding: 8, paddingHorizontal: 16, flexDirection: 'row', alignItems: 'center', gap: 8, borderBottomWidth: 0.5, borderBottomColor: '#333' },
   warningIcon: { fontSize: 14 },
   warningText: { color: '#8888ff', fontSize: 11, flex: 1 },
+  // Muted twin of meetPayHeaderBtn: same shape, all the urgency removed.
+  meetPayHeaderBtnDone: { borderColor: '#4a4a4a', backgroundColor: '#1e1e1e' },
+  meetPayHeaderTextDone: { color: '#8a8a8a' },
+
+  tripDoneBar: { backgroundColor: '#161d18', borderBottomWidth: 0.5, borderBottomColor: '#2f3d34', paddingVertical: 11, paddingHorizontal: 16, flexDirection: 'row', alignItems: 'center', gap: 12 },
+  tripDoneIcon: { fontSize: 16 },
+  tripDoneTitle: { color: '#9dc4ab', fontSize: 12.5, fontWeight: '800' },
+  tripDoneBody: { color: '#7f9587', fontSize: 11, marginTop: 2, lineHeight: 15 },
+
   tripPromptBar: { backgroundColor: '#12301a', borderBottomWidth: 0.5, borderBottomColor: '#2c6b3f', paddingVertical: 12, paddingHorizontal: 16, flexDirection: 'row', alignItems: 'center', gap: 12 },
   tripPromptIcon: { fontSize: 18 },
   tripPromptTitle: { color: '#7ee2a0', fontSize: 13, fontWeight: '800' },

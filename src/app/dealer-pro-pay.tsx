@@ -245,9 +245,29 @@ export default function DealerProPayScreen() {
         <Text style={styles.heading}>Dealer Pro</Text>
         <Text style={styles.subheading}>Everything you need to run a serious selling operation.</Text>
 
+        {/* CHANGED (1 Sep 2026). "Buyers message you for free — no unlock
+            fee for them" was removed because it stopped being true the day
+            buying on listings became free for everyone. It was Pro's
+            headline benefit; now every seller has it, so charging $30 for
+            it would be selling something the buyer already gets.
+
+            Deliberately NOT replaced with free featured-listing slots,
+            which is the obvious substitute and the wrong one. Pro works out
+            at $5/month and featuring costs $5 for 7 days — one free slot a
+            month makes Pro exactly break even while cannibalising the
+            featuring revenue from the sellers most likely to buy it, and
+            unlimited slots would let one dealer with sixty listings own the
+            whole Home strip, which destroys what the $5 slot is worth to
+            everyone else. When Pro relaunches it should carry a featuring
+            DISCOUNT, not free featuring.
+
+            What is left is what genuinely costs nothing to give and only
+            matters to someone selling at volume. Pro is still paused
+            (DEALER_PRO_PAUSED), so this is honesty in the shop window
+            rather than a live pricing change. */}
         <View style={styles.card}>
           <Feature text="Dealer badge on all your listings" />
-          <Feature text="Buyers message you for free — no unlock fee for them" />
+          <Feature text="Bulk-import your whole catalogue at once" onPress={() => router.push('/whatsapp-import')} />
           {/* FIX: now genuinely tappable, matching what the top-of-file
               comment already claimed. Routes straight to the real,
               correctly-gated analytics.tsx screen. */}

@@ -59,7 +59,18 @@ const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 
 const EXPO_PUSH_URL = 'https://exp.host/--/api/v2/push/send';
-const PROMO_END = new Date('2027-01-31T23:59:59Z');
+// PERMANENT (product decision, 1 Sep 2026): buying on a LISTING is free
+// for good — chatting and arranging a deal cost the buyer nothing, and
+// that does not expire. The date guard below is therefore gone.
+//
+// This function keeps its name so no deploy, config.toml entry or client
+// call site has to change; only its meaning has. It is no longer a
+// promotion, it is the only unlock path there is.
+//
+// NOTE this is LISTINGS ONLY. The Wanted-post match commission
+// (accept-response-free-promo) is unchanged and still ends on
+// 2027-01-31 — that one is the business's main revenue line. Do not
+// "tidy" the two into one rule; they are deliberately different now.
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
@@ -148,10 +159,6 @@ Deno.serve(withCors(async (req) => {
     return new Response('Unauthorized', { status: 401 });
   }
   const callerId = callerData.user.id;
-
-  if (new Date() > PROMO_END) {
-    return new Response(JSON.stringify({ error: 'The free launch promotion has ended. Please use the normal payment flow.' }), { status: 400 });
-  }
 
   try {
     const { listing_id, buyer_id, seller_id } = await req.json();
