@@ -124,6 +124,10 @@ export default function ProfileScreen() {
   const [recentReviews, setRecentReviews] = useState<any[]>([]);
   const [isActiveOperator, setIsActiveOperator] = useState(false);
   const [wantedResponseCount, setWantedResponseCount] = useState(0);
+  // NEW (1 Sep 2026): how many offers THIS person has made on other
+  // people's wants — the mirror of wantedResponseCount, which counts
+  // offers made TO them. Feeds the new "My responses" row.
+  const [myResponseCount, setMyResponseCount] = useState(0);
   // NEW: per-row counts for the "My activity" card — used to grey out
   // rows with nothing in them yet (see MenuRow's new `dimmed` prop).
   // Purely visual: every row stays tappable regardless of count, since
@@ -258,18 +262,21 @@ export default function ProfileScreen() {
       { count: tripRequests },
       { count: wantedPosts },
       { count: messages },
+      { count: myResponses },
     ] = await Promise.all([
       supabase.from('delivery_bookings').select('*', { count: 'exact', head: true }).eq('buyer_id', user.id),
       supabase.from('delivery_bookings').select('*', { count: 'exact', head: true }).eq('seller_id', user.id),
       supabase.from('requests').select('*', { count: 'exact', head: true }).eq('user_id', user.id),
       supabase.from('item_requests').select('*', { count: 'exact', head: true }).eq('user_id', user.id),
       supabase.from('messages').select('*', { count: 'exact', head: true }).or(`sender_id.eq.${user.id},receiver_id.eq.${user.id}`),
+      supabase.from('item_responses').select('*', { count: 'exact', head: true }).eq('responder_id', user.id),
     ]);
     setDeliveriesToMeCount(deliveriesToMe ?? 0);
     setDeliveriesFromMeCount(deliveriesFromMe ?? 0);
     setTripRequestCount(tripRequests ?? 0);
     setWantedPostCount(wantedPosts ?? 0);
     setMessageCount(messages ?? 0);
+    setMyResponseCount(myResponses ?? 0);
 
     setLoading(false);
   }
@@ -602,6 +609,18 @@ export default function ProfileScreen() {
               dimmed={wantedPostCount === 0}
               badge={wantedResponseCount > 0 ? wantedResponseCount : undefined}
               onPress={() => router.push('/my-wanted-posts')}
+            />
+            {/* NEW (1 Sep 2026, reported: "after posting I want to go back
+                and see or edit what I posted"). Listings and wanted posts
+                both had a "mine" screen; responses to OTHER people's wants
+                had none at all. You responded with a price and the only
+                record was a "✓ You've responded" tick on the browse list —
+                no way to see what you offered, no way to change it. */}
+            <MenuRow
+              icon="🏷️"
+              label="My responses"
+              dimmed={myResponseCount === 0}
+              onPress={() => router.push('/my-responses')}
             />
             <MenuRow icon="💬" label="Messages" dimmed={messageCount === 0} onPress={() => router.push('/messages')} />
             {accountType === 'transport_operator' && (
