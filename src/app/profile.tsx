@@ -87,6 +87,7 @@ import { normalizeImageOrientation } from '../../lib/imageOrientation';
 import { supabase } from '../../lib/supabase';
 import CityPicker from '../../components/CityPicker';
 import { prepareUpload } from '../../lib/uploadHelpers';
+import { checkName } from '../../lib/nameValidation';
 
 const GOLD = '#B8860B';
 const BLACK = '#1A1A18';
@@ -369,7 +370,18 @@ export default function ProfileScreen() {
   }
 
   async function saveProfile() {
-    setError(''); setSaving(true);
+    setError('');
+
+    // Editing a name went through no validation at all, so anything
+    // registration would now reject could still be set here afterwards.
+    // Same rule, same helper, both doors.
+    const nameCheck = checkName(draftName);
+    if (!nameCheck.ok) {
+      setError(nameCheck.error);
+      return;
+    }
+
+    setSaving(true);
     // .select() so we can see WHICH rows changed. Without it a Supabase
     // update that matches nothing returns success, and the screen happily
     // reports a save that never happened.
@@ -383,7 +395,7 @@ export default function ProfileScreen() {
     const { data: updatedRows, error: updateError } = await supabase
       .from('profiles')
       .update({
-        full_name: draftName.trim(),
+        full_name: nameCheck.value,
         phone: draftPhone.trim(),
         location: draftLocation.trim(),
         // Only written for transport operators. Sending base_city for

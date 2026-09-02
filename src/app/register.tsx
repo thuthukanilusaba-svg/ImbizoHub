@@ -4,6 +4,7 @@ import { ActivityIndicator, KeyboardAvoidingView, Linking, Platform, ScrollView,
 import { supabase } from '../../lib/supabase';
 import { OAuthProvider, signInWithProvider } from '../../lib/oauth';
 import { DELIVERY_BOOKING_ENABLED } from '../../lib/featureFlags';
+import { checkName } from '../../lib/nameValidation';
 
 const GOLD = '#B8860B';
 const BLACK = '#1A1A18';
@@ -133,6 +134,19 @@ export default function RegisterScreen() {
       return;
     }
 
+    // The name was previously stored exactly as typed — never trimmed,
+    // never checked. That is how profiles came to hold a row whose
+    // full_name is  '  or  "  — a SQL injection probe someone typed into
+    // this very form — plus two rows with trailing spaces. `cleanName`
+    // replaces `name` everywhere below.
+    const nameCheck = checkName(name);
+    if (!nameCheck.ok) {
+      setErrorMsg(nameCheck.error);
+      isSubmittingRef.current = false;
+      return;
+    }
+    const cleanName = nameCheck.value;
+
     setLoading(true);
     setErrorMsg('');
 
@@ -152,12 +166,12 @@ export default function RegisterScreen() {
       ? await supabase.auth.updateUser({
           email,
           password,
-          data: { full_name: name },
+          data: { full_name: cleanName },
         })
       : await supabase.auth.signUp({
           email,
           password,
-          options: { data: { full_name: name } }
+          options: { data: { full_name: cleanName } }
         });
 
     if (error) {
@@ -171,7 +185,7 @@ export default function RegisterScreen() {
       const { error: profileError } = await supabase
         .from('profiles')
         .update({
-          full_name: name,
+          full_name: cleanName,
           phone,
           account_type: toStoredAccountType(effectiveAccountType),
           // FIX: was accountType === 'operator' ? vehicleType : ...,
@@ -197,7 +211,7 @@ export default function RegisterScreen() {
       if (effectiveAccountType === 'delivery') {
         const { error: deliveryError } = await supabase.from('delivery_operators').upsert({
           user_id: data.user.id,
-          full_name: name,
+          full_name: cleanName,
           phone,
           // FIX: was deliveryVehicleType — same reasoning as the
           // profiles update above.
