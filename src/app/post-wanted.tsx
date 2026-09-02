@@ -276,8 +276,10 @@ export default function PostWantedScreen() {
           {/* FIX: see top-of-file comment. Previous text described a
               chat model that no longer exists. */}
           <Text style={styles.infoText}>
-            💬 You can chat with anyone who responds, right away — ask questions, discuss details.
-            Contact details stay hidden until you accept a response and pay the small 5% commission (capped at $15).
+            💬 Posting is free and chatting is free — talk to everyone who responds, ask
+            questions, compare prices. You only pay once we've found you what you asked
+            for: accept a price and it's 5% of it, never more than $15. The seller keeps
+            100% of theirs.
           </Text>
         </View>
 

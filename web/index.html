@@ -118,6 +118,14 @@
     font-size:clamp(17px,2.2vw,20px);color:var(--muted);
     max-width:620px;margin:0 auto 30px;
   }
+  /* The fee promise, answering a competitor whose homepage leads with
+     "no fees, no middlemen". Slightly smaller than .sub and set apart so
+     it reads as a commitment rather than more description — the bold
+     clause is the sentence people should carry away. */
+  .sub-promise{
+    font-size:clamp(15px,1.9vw,17px);margin-bottom:30px;
+  }
+  .sub-promise strong{color:var(--green);display:block}
   .cta-row{display:flex;gap:12px;justify-content:center;flex-wrap:wrap}
   .note{margin-top:16px;font-size:14.5px;color:#9E9E97}
 
@@ -248,11 +256,15 @@
 
   <!-- HERO -->
   <div class="wrap hero">
-    <span class="pill">Free to use through 31 January 2027</span>
+    <span class="pill">Free to list · Free to chat · Free to deal</span>
     <h1>Stop scrolling for it.<br><em>Let sellers come to you.</em></h1>
     <p class="sub">
       Post what you're looking for and sellers reply with their price. Need a van?
-      Post the trip and operators bid for the job. Chatting is always free.
+      Post the trip and operators bid for the job.
+    </p>
+    <p class="sub sub-promise">
+      <strong>We only earn when we find you what you asked for.</strong>
+      Never for listing, never for chatting, never for doing a deal.
     </p>
     <div class="cta-row">
       <a class="btn" href="/app">Open ImbizoHub</a>
@@ -359,9 +371,14 @@
       </p>
 
       <div class="promo">
-        <strong>🎁 Launch promotion — every remaining fee below is free for everyone until 31 January 2027.</strong>
-        <p>The prices shown are what applies once the promotion ends. Buying on a listing
-          stays free after that.</p>
+        <strong>We only earn when we find you what you asked for.</strong>
+        <p>Listing is free. Chatting is free. Doing a deal on a listing is free — now and
+          permanently. The only fees on this page are on a match we made for you: a seller
+          who answered your Wanted post, or an operator who bid for your trip. Sellers and
+          operators keep 100% of their price, and there are no ads to watch to post
+          anything.</p>
+        <p>🎁 <strong>Launch promotion:</strong> every fee below is free for everyone until
+          31 January 2027. The prices shown are what applies once it ends.</p>
       </div>
 
       <table>

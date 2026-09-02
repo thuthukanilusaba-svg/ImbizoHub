@@ -601,8 +601,8 @@ export default function BrowseWantedScreen() {
                 <Text style={styles.successTitle}>Response sent!</Text>
                 <Text style={styles.successBody}>
                   {isPromoActive()
-                    ? 'The buyer will review your price. If they pick you, you\'ll be notified and a chat will open right away — free, launch promotion through Jan 31, 2027.'
-                    : 'The buyer will review your price. If they pick you, you\'ll be notified and a chat will open once they\'ve paid ImbizoHub\'s small commission.'}
+                    ? 'The buyer will review your price. If they pick you, you\'ll be notified and a chat will open right away — free, launch promotion through Jan 31, 2027. Responding costs you nothing and you keep 100% of your price.'
+                    : 'The buyer will review your price. If they pick you, you\'ll be notified and a chat will open once they\'ve paid ImbizoHub\'s small commission. Responding costs you nothing and you keep 100% of your price — the fee is the buyer\'s.'}
                 </Text>
                 {/* Its own style, not submitModalBtn. That one carries
                     flex: 2 because it sits beside Cancel in a row; dropped
