@@ -253,8 +253,13 @@ export default function HomeScreen() {
           <View style={styles.vanBannerLeft}>
             <Text style={styles.vanBannerEmoji}>🔍</Text>
             <View style={styles.vanBannerTextCol}>
-              <Text style={styles.vanBannerTitle}>Looking for something specific?</Text>
-              <Text style={styles.vanBannerSub}>Post it — sellers respond with a price</Text>
+              {/* The line (chosen 2 Sep 2026). This banner is the app's
+                  first statement of what ImbizoHub is for, so it carries
+                  the same words as the website h1 and the store listing —
+                  a person who installs from the store must meet the
+                  identical sentence here, not a paraphrase of it. */}
+              <Text style={styles.vanBannerTitle}>Ask for it. Sellers come to you.</Text>
+              <Text style={styles.vanBannerSub}>Post what you need — get prices back</Text>
             </View>
           </View>
           <Text style={styles.vanBannerArrow}>›</Text>
