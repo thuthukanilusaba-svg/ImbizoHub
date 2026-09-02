@@ -240,8 +240,16 @@
     height:820px;
     z-index:-1;
     pointer-events:none;
-    background-image:url('/theme-hub.png');
-    opacity:.06;
+    /* theme-hub-light.png, not theme-hub.png. The original is a
+       dark-on-dark texture with a luminance range of 17-26 out of
+       255 — invisible on cream at any opacity, because there is
+       almost nothing there to reveal. This is the same artwork
+       rebuilt for a light ground: the pattern restored to full
+       contrast and used as an alpha channel over a warm ink, so
+       the nodes and lines print and the flat ground drops out.
+       Keep theme-hub.png for the app, which is still dark. */
+    background-image:url('/theme-hub-light.png');
+    opacity:.30;
     background-size:cover;
     background-position:top center;
     background-repeat:no-repeat;
