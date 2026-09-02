@@ -39,6 +39,7 @@ import {
 import { normalizeImageOrientation } from '../../lib/imageOrientation';
 import { supabase } from '../../lib/supabase';
 import { prepareUpload } from '../../lib/uploadHelpers';
+import { reportHandledError } from '../../lib/crashReporter';
 
 const GOLD = '#B8860B';
 const BLACK = '#1A1A18';
@@ -284,6 +285,7 @@ export default function PostScreen() {
     setPosting(false);
 
     if (insertError) {
+      reportHandledError('post-listing', insertError);
       setError(insertError.message);
       return;
     }

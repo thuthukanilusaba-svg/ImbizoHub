@@ -5,6 +5,7 @@ import { supabase } from '../../lib/supabase';
 import { OAuthProvider, signInWithProvider } from '../../lib/oauth';
 import { DELIVERY_BOOKING_ENABLED } from '../../lib/featureFlags';
 import { checkName } from '../../lib/nameValidation';
+import { reportHandledError } from '../../lib/crashReporter';
 
 const GOLD = '#B8860B';
 const BLACK = '#1A1A18';
@@ -175,6 +176,7 @@ export default function RegisterScreen() {
         });
 
     if (error) {
+      reportHandledError('register', error);
       setErrorMsg(error.message);
       setLoading(false);
       isSubmittingRef.current = false;

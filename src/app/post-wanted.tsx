@@ -56,6 +56,7 @@ import {
   View,
 } from 'react-native';
 import { supabase } from '../../lib/supabase';
+import { reportHandledError } from '../../lib/crashReporter';
 
 const GOLD = '#B8860B';
 const BLACK = '#1A1A18';
@@ -134,6 +135,7 @@ export default function PostWantedScreen() {
     setLoading(false);
 
     if (insertError) {
+      reportHandledError('post-wanted', insertError);
       setError(insertError.message);
       return;
     }

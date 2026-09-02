@@ -39,6 +39,7 @@ import {
 } from 'react-native';
 import { supabase } from '../../lib/supabase';
 import CityPicker from '../../components/CityPicker';
+import { reportHandledError } from '../../lib/crashReporter';
 
 const GOLD = '#B8860B';
 const BLACK = '#1A1A18';
@@ -275,6 +276,7 @@ export default function HireVanScreen() {
       // messages (check_violation / P0001) are written for a person and
       // are worth showing; everything else is not.
       if (insertError.code === '23514' || insertError.code === 'P0001') {
+        reportHandledError('post-trip', insertError, { loadType });
         setError(insertError.message);
       } else {
         console.error('request insert failed', insertError.code, insertError.message);

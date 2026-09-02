@@ -74,6 +74,77 @@ async function send(message: string, stack: string | null, isFatal: boolean) {
   }
 }
 
+/**
+ * Report a failure the app CAUGHT and showed to the person.
+ *
+ * WHY THIS EXISTS. installCrashReporter() below hooks ErrorUtils, which
+ * only ever fires on an UNHANDLED error — and this app handles almost
+ * everything. Nearly every Supabase call ends in some version of
+ *
+ *     if (error) setError('Something went wrong. Please try again.');
+ *
+ * which is correct defensive code and also completely invisible. As of
+ * 2 September 2026 there were four crash reports in this project's entire
+ * history: all from the web build, none newer than 31 August — while
+ * seven real people used the app on 1 and 2 September and not one of them
+ * came back. Any of them could have hit a wall, read a red banner and
+ * closed the app, and these instruments would look exactly as clean as
+ * they do now. The failures most likely to lose someone are precisely the
+ * ones the crash handler is designed not to see.
+ *
+ * WHERE TO CALL IT. Anywhere the app tells a person something failed —
+ * especially where losing them is expensive: signing up, posting, paying,
+ * confirming a handover, uploading a photo. NOT on validation they can
+ * simply fix ("passwords don't match" is not an incident), and not when
+ * someone cancels.
+ *
+ *     const { error } = await supabase.from('listings').insert(row);
+ *     if (error) {
+ *       reportHandledError('post-listing', error);
+ *       setError('Could not post your listing. Please try again.');
+ *     }
+ *
+ * Stored as an ordinary non-fatal crash_reports row, message prefixed
+ * "[handled]" so these are distinguishable at a glance:
+ *
+ *     select * from crash_reports where message like '[handled]%';
+ *
+ * Fire-and-forget by design — never awaited, never throws, and never
+ * delays the message the person is waiting to read.
+ */
+export function reportHandledError(
+  where: string,
+  error: unknown,
+  context?: Record<string, string | number | boolean | null | undefined>
+) {
+  try {
+    const message =
+      (error as any)?.message ??
+      (typeof error === 'string' ? error : null) ??
+      String(error ?? 'Unknown error');
+
+    // Supabase errors carry code/details/hint, which are usually the whole
+    // diagnosis — a constraint name says more than the message ever does.
+    const e = error as any;
+    const parts = [
+      e?.code ? `code=${e.code}` : null,
+      e?.details ? `details=${e.details}` : null,
+      e?.hint ? `hint=${e.hint}` : null,
+      ...Object.entries(context ?? {})
+        .filter(([, v]) => v !== undefined && v !== null)
+        .map(([k, v]) => `${k}=${v}`),
+    ].filter(Boolean);
+
+    void send(
+      `[handled] ${where}: ${message}`,
+      parts.length ? parts.join('\n') : ((error as any)?.stack ?? null),
+      false
+    );
+  } catch {
+    // Same rule as send(): reporting must never become the failure.
+  }
+}
+
 export function installCrashReporter() {
   if (installed) return;
   installed = true;
