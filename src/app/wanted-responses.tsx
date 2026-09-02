@@ -317,6 +317,7 @@ export default function WantedResponsesScreen() {
       <FlatList
         data={responses}
         keyExtractor={(item) => item.id}
+        style={styles.listContainer}
         contentContainerStyle={styles.list}
         ListEmptyComponent={
           <Text style={styles.emptyText}>No responses yet — sellers will see your want and respond with a price.</Text>
@@ -414,6 +415,20 @@ const styles = StyleSheet.create({
   errorBox: { backgroundColor: '#3a1a1a', borderRadius: 10, padding: 12, marginBottom: 16 },
   errorText: { color: '#ff8a8a', fontSize: 13 },
 
+  // FIX (reported 1 Sep 2026: "a person should scroll up and down for
+  // message in both instances"). The FlatList had no `style`, only
+  // `contentContainerStyle`, so React Native sized it to its full
+  // content height instead of the screen space left below the heading.
+  // With two responses on the screenshot that is invisible; with enough
+  // responses to overflow one screen the lower cards — and the Accept
+  // button on them — cannot be reached at all, because the list does not
+  // believe it is overflowing.
+  //
+  // Identical fix to operator-requests.tsx and my-wanted-posts.tsx.
+  // Worth noting the pattern: every list in this app written without a
+  // `style` prop has eventually turned out to have this bug, and it only
+  // ever shows up once there is real data.
+  listContainer: { flex: 1 },
   list: { paddingBottom: 40 },
   emptyText: { color: GREY, fontSize: 13, textAlign: 'center', marginTop: 40 },
 

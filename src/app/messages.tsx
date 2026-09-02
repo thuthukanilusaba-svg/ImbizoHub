@@ -321,7 +321,7 @@ export default function MessagesScreen() {
           </Text>
         </View>
       ) : (
-        <ScrollView contentContainerStyle={styles.list}>
+        <ScrollView style={styles.listContainer} contentContainerStyle={styles.list}>
           {visibleConversations.map((c) => (
             <TouchableOpacity
               key={c.key}
@@ -392,6 +392,22 @@ const styles = StyleSheet.create({
   emptyTitle: { color: '#fff', fontSize: 16, fontWeight: '700', marginBottom: 8 },
   emptyBody: { color: GREY, fontSize: 13, textAlign: 'center', lineHeight: 19 },
 
+  // FIX (reported 1 Sep 2026: "a person should scroll up and down for
+  // message in both instances"). The ScrollView had only
+  // `contentContainerStyle` and no `style` of its own. A ScrollView
+  // carries no flex by default, so inside this column — header, optional
+  // filter banner, list, BottomNav — it took its height from its content
+  // rather than from the space left between the header and the nav. Up
+  // to one screenful that looks right; past it the list just extends
+  // beyond the viewport, the bottom rows and BottomNav go off-screen,
+  // and nothing scrolls, because as far as the ScrollView is concerned
+  // its content already fits inside it.
+  //
+  // `flex: 1` bounds it to the remaining space, and it is that bound —
+  // content taller than container — that makes a list scrollable at all.
+  // Same fix and same cause as operator-requests.tsx and
+  // my-wanted-posts.tsx, which had it on their FlatLists.
+  listContainer: { flex: 1 },
   list: { padding: 16, paddingBottom: 100 },
   convoRow: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: BLACK, borderRadius: 14, padding: 14, marginBottom: 10, borderWidth: 0.5, borderColor: '#333' },
   avatar: { width: 46, height: 46, borderRadius: 23, backgroundColor: GOLD, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
