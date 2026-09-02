@@ -266,8 +266,8 @@ export default function HireVanScreen() {
         <Text style={styles.successEmoji}>🚐</Text>
         <Text style={styles.successTitle}>Coming soon</Text>
         <Text style={styles.successSub}>
-          Van-hire is on its way — post a trip and let operators bid
-          for your fare. Check back soon.
+          Transport is on its way — post a trip and let operators bid
+          for the job. Check back soon.
         </Text>
         <TouchableOpacity
           style={styles.successBtnOutline}

@@ -34,11 +34,17 @@ import { ScrollViewStyleReset } from 'expo-router/html';
 import type { PropsWithChildren } from 'react';
 
 const SITE_URL = 'https://imbizohub.com';
-const TITLE = 'ImbizoHub — Buy, sell and move things in Zimbabwe';
+// Keep these two in step with web/index.html's <title> and meta
+// description. They are the same product said twice — this file supplies
+// the tags for every /app/* route, index.html supplies the marketing
+// site's, and a person who meets both should read the identical sentence.
+// They drifted once already: this file kept the old tagline and the
+// retired "small app fee" promise after the site had moved on.
+const TITLE = 'ImbizoHub — Ask for it. Sellers come to you.';
 const DESCRIPTION =
-  "Post what you're looking for and let sellers come to you with a price. " +
-  'Hire a van with operators bidding for the job. Chat is always free — you ' +
-  "only pay a small app fee when you're ready to do a deal.";
+  'Post what you need — a fridge, a van, a builder — and sellers come to you ' +
+  'with their price. Or post a trip and transport operators bid for the job. ' +
+  'Free to ask, free to chat, free to do a deal.';
 const OG_IMAGE = `${SITE_URL}/og-image.png`;
 
 export default function Root({ children }: PropsWithChildren) {

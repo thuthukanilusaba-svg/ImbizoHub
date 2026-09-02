@@ -64,11 +64,14 @@ You can also browse listings the normal way, or post your own things for
 sale. Both directions work.
 
 
-HIRE A VAN OR A TRUCK
+HIRE A VAN
 
 Moving something across town or across the country? Post the trip — where
-from, where to, what you're moving — and transport operators bid for the
-job. Compare their quotes, pick your driver, confirm when the trip is done.
+from, where to, what you're moving — and van operators bid for the job.
+Compare their quotes, pick your driver, confirm when the trip is done.
+
+Boxes and stock, one big item, something fragile, or a group of people.
+Our operators drive vans rather than trucks, so anything up to a van load.
 
 Bulawayo to Harare, or one suburb to the next.
 

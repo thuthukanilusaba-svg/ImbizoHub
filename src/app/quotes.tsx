@@ -108,6 +108,10 @@ type Request = {
   date: string;
   passengers: number;
   status: string;
+  // Added with goods support, 2 Sep 2026. The query here is select('*'),
+  // so these already arrive — they were simply being discarded.
+  load_type?: 'people' | 'goods' | 'large_item' | null;
+  load_size?: 'boot' | 'van' | null;
 };
 
 export default function QuotesScreen() {
@@ -568,7 +572,13 @@ export default function QuotesScreen() {
                 <View style={styles.summaryBox}>
                   <SummaryRow label="Operator" value={chosenQuote.operator_name ?? ''} />
                   <SummaryRow label="Vehicle" value={chosenQuote.vehicle} />
-                  <SummaryRow label="Total fare" value={`$${formatPrice(chosenQuote.price)}`} />
+                  {/* "Fare" is a passenger word. Since 2 Sep 2026 a trip can
+                      be a load of boxes, and calling that a fare reads as the
+                      wrong product at the exact moment money is agreed. */}
+                  <SummaryRow
+                    label={request?.load_type && request.load_type !== 'people' ? 'Total price' : 'Total fare'}
+                    value={`$${formatPrice(chosenQuote.price)}`}
+                  />
                   <View style={styles.divider} />
                   {isPromoActive() ? (
                     <SummaryRow label="Platform fee" value="FREE (launch promo)" gold />

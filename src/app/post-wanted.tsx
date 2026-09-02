@@ -278,8 +278,8 @@ export default function PostWantedScreen() {
           <Text style={styles.infoText}>
             💬 Posting is free and chatting is free — talk to everyone who responds, ask
             questions, compare prices. You only pay once we've found you what you asked
-            for: accept a price and it's 5% of it, never more than $15. The seller keeps
-            100% of theirs.
+            for: accept a price and it's 5% of it — at least $1.50, never more than $15.
+            The seller keeps 100% of theirs.
           </Text>
         </View>
 
