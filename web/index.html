@@ -7,7 +7,7 @@
 <title>ImbizoHub — Ask for it. Sellers come to you.</title>
 <meta name="description" content="Ask for it and sellers come to you. Post what you need — a fridge, a van, a builder — and get prices back. Free to ask, free to chat, free to do a deal.">
 <link rel="canonical" href="https://imbizohub.com/">
-<meta name="theme-color" content="#111111">
+<meta name="theme-color" content="#FCF9F2">
 
 <!-- Open Graph — this is what WhatsApp, Facebook and Twitter read when
      someone shares the link. Without these the preview comes up blank. -->
@@ -45,15 +45,15 @@
 
 <style>
   :root{
-    --bg:#111111;
-    --panel:#1A1A18;
-    --panel-2:#222220;
-    --line:#2E2E2A;
-    --gold:#B8860B;
-    --gold-bright:#E8B44A;
-    --text:#FFFFFF;
-    --muted:#D6D6CF;
-    --green:#4FC96E;
+    --bg:#FCF9F2;
+    --panel:#FFFFFF;
+    --panel-2:#F4EFE3;
+    --line:#E4DCCB;
+    --gold:#8A6608;
+    --gold-bright:#7A5A07;
+    --text:#1A1A18;
+    --muted:#5C574B;
+    --green:#1F7A46;
     --maxw:1080px;
   }
 
@@ -76,7 +76,7 @@
   /* ---------- header ---------- */
   header{
     position:sticky;top:0;z-index:20;
-    background:rgba(17,17,17,.92);
+    background:rgba(252,249,242,.92);
     backdrop-filter:saturate(140%) blur(10px);
     border-bottom:1px solid var(--line);
   }
@@ -84,29 +84,30 @@
   /* ImbizoHub is ONE word — deliberately a single colour so it cannot
      read as "Imbizo Hub". The logo supplies the gold. */
   .brand{display:flex;align-items:center;gap:11px;font-weight:800;font-size:20px;
-         color:#fff;letter-spacing:-.01em}
+         color:var(--text);letter-spacing:-.01em}
   .brand:hover{text-decoration:none}
   .mark{width:34px;height:34px;border-radius:9px;display:block}
   .nav-links{display:flex;align-items:center;gap:24px;font-size:15px}
   .nav-links a{color:var(--muted)}
-  .nav-links a:hover{color:#fff;text-decoration:none}
+  .nav-links a:hover{color:var(--text);text-decoration:none}
+  .nav-links a.btn{color:#fff}
   .btn{
-    display:inline-block;background:var(--gold);color:#1A1A18;
+    display:inline-block;background:var(--gold);color:#fff;
     font-weight:800;border-radius:10px;padding:11px 20px;font-size:15px;
     border:0;cursor:pointer;
   }
-  .btn:hover{background:#cf9a12;text-decoration:none}
+  .btn:hover{background:#6E5106;text-decoration:none}
   .btn-ghost{
-    background:transparent;color:#fff;border:1px solid var(--line);
+    background:transparent;color:var(--text);border:1px solid var(--line);
   }
-  .btn-ghost:hover{background:var(--panel-2);border-color:#3d3d38}
+  .btn-ghost:hover{background:var(--panel-2);border-color:#CFC4AE}
   @media(max-width:700px){ .nav-links a:not(.btn){display:none} }
 
   /* ---------- hero ---------- */
   .hero{padding:72px 0 56px;text-align:center}
   .pill{
     display:inline-block;font-size:12.5px;font-weight:700;letter-spacing:.02em;
-    color:var(--green);background:#122A17;border:1px solid #23492C;
+    color:var(--green);background:#E4F1E8;border:1px solid #B9DCC6;
     padding:6px 13px;border-radius:999px;margin-bottom:22px;
   }
   h1{
@@ -127,7 +128,7 @@
   }
   .sub-promise strong{color:var(--green);display:block}
   .cta-row{display:flex;gap:12px;justify-content:center;flex-wrap:wrap}
-  .note{margin-top:16px;font-size:14.5px;color:#9E9E97}
+  .note{margin-top:16px;font-size:14.5px;color:#7C7566}
 
   /* ---------- sections ---------- */
   section{padding:56px 0;border-top:1px solid var(--line)}
@@ -144,10 +145,10 @@
   .card .ico{font-size:26px;line-height:1;flex:0 0 auto;margin-top:2px}
   .card h3{margin:0 0 7px;font-size:18.5px;font-weight:800}
   .card p{margin:0;color:var(--muted);font-size:16px;line-height:1.65;font-weight:400}
-  .card.a{border-color:#25452A}
-  .card.b{border-color:#4A3A12}
-  .card.c{border-color:#20304F}
-  .card.d{border-color:#1F4430}
+  .card.a{border-color:#BEDCC6}
+  .card.b{border-color:#E2CE9A}
+  .card.c{border-color:#BDC9DE}
+  .card.d{border-color:#BAD9C6}
 
   /* ---------- steps ---------- */
   .steps{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;counter-reset:s}
@@ -157,7 +158,7 @@
     border-radius:14px;padding:22px;
   }
   .step .n{
-    width:28px;height:28px;border-radius:50%;background:var(--gold);color:#1A1A18;
+    width:28px;height:28px;border-radius:50%;background:var(--gold);color:#fff;
     display:grid;place-items:center;font-weight:900;font-size:14px;margin-bottom:12px;
   }
   .step h3{margin:0 0 7px;font-size:17px;font-weight:800}
@@ -165,7 +166,7 @@
 
   /* ---------- pricing ---------- */
   .promo{
-    background:#122A17;border:1px solid #23492C;border-radius:14px;
+    background:#E4F1E8;border:1px solid #B9DCC6;border-radius:14px;
     padding:18px 20px;margin-bottom:24px;
   }
   .promo strong{color:var(--green)}
@@ -212,7 +213,7 @@
   .close p{color:var(--muted);margin:0 0 26px}
 
   /* ---------- footer ---------- */
-  footer{border-top:1px solid var(--line);padding:34px 0;color:#9E9E97;font-size:15px}
+  footer{border-top:1px solid var(--line);padding:34px 0;color:#7C7566;font-size:15px}
   .fnav{display:flex;gap:22px;flex-wrap:wrap;margin-bottom:16px}
   .fnav a{color:var(--muted)}
 
@@ -241,6 +242,7 @@
     z-index:-1;
     pointer-events:none;
     background-image:url('/theme-hub.png');
+    opacity:.06;
     background-size:cover;
     background-position:top center;
     background-repeat:no-repeat;
@@ -250,11 +252,10 @@
   /* Panels keep a near-opaque backing. Most now sit below the pattern
      entirely, but the hero box can overlap the first section on a tall
      phone where the headline wraps — this is the insurance for that. */
-  .card,.step,.t,.close{background:rgba(22,22,20,.93)}
-  header{background:rgba(15,15,15,.94)}
-  .promo{background:rgba(18,42,23,.94)}
+  .card,.step,.t,.close{background:rgba(255,255,255,.93)}
+  header{background:rgba(252,249,242,.94)}
+  .promo{background:rgba(228,241,232,.94)}
   /* Hero text gets a soft shadow purely for separation from the glow. */
-  .hero h1,.hero .sub{text-shadow:0 2px 18px rgba(0,0,0,.65)}
   /* Reading measure — long lines are tiring regardless of contrast. */
   .lede,.card p,.step p,.t p{max-width:62ch}
 </style>
