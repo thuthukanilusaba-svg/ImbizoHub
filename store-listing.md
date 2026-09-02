@@ -160,6 +160,36 @@ indexes those separately, so spending keyword characters on them is waste.
 
 ---
 
+## Transport keywords
+
+The transport front door lives at **imbizohub.com/transport**. Its search
+intent is completely separate from the marketplace's — somebody typing "van
+hire Harare" is not browsing for a second-hand fridge — and as of September
+2026 nobody in the Zimbabwean market is competing for these terms in an app
+listing at all.
+
+Both stores rank on the full description, so the transport paragraph in the
+listing above is what earns this traffic. Keep these phrases in it verbatim:
+
+```
+van hire Harare · van hire Bulawayo · truck hire Zimbabwe
+moving and removals Zimbabwe · transport Harare to Bulawayo
+hire a van Zimbabwe · goods transport Zimbabwe · courier Zimbabwe
+airport transfer Harare · group transport Zimbabwe
+```
+
+**Honesty constraint, and it matters more than the ranking.** Every operator
+registered today drives a van (`profiles.vehicle_capacity = 8` across the
+board). So "truck hire Zimbabwe" is worth including only for the searches it
+catches — the listing text itself must keep saying *vans, up to a van load*.
+If somebody arrives from a truck search and posts a house move, that request
+sits unquoted, which is exactly what happened to the Kwekwe → Plumtree job on
+1 September. An unanswered request costs more than a missed install.
+
+Revisit this whole section the day an operator with a truck registers.
+
+---
+
 ## Before you can submit
 
 Both stores check these, and both will reject on them:

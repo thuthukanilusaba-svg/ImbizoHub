@@ -117,6 +117,24 @@ export default function HireVanScreen() {
       if (selected) setDateObj(selected);
     }
   }
+  // GOODS SUPPORT (2 Sep 2026). This screen could only describe a
+  // passenger trip: "Number of passengers" was required and there was no
+  // way to say what you were moving. Real demand ignored that — the trip
+  // posted 1 Sep (Kwekwe -> Plumtree) put "2 passengers" in the required
+  // field and the actual job in the notes: "Fragile glass to be wrapped in
+  // bubble wrap". It went unquoted, because no operator could see it.
+  //
+  // loadType now decides which follow-up question is asked. 'people' keeps
+  // the passenger count exactly as it always was, so every existing trip
+  // flow is untouched; goods trips ask for a rough size instead.
+  //
+  // The options are deliberately small. Every registered operator drives
+  // an 8-seater, so there is no truck supply behind "farm load" or
+  // "truck load" — offering them would just produce more unquoted
+  // requests, which is the exact problem this is fixing. Widen this list
+  // when the operators exist, not before.
+  const [loadType, setLoadType] = useState<'people' | 'goods' | 'large_item'>('people');
+  const [loadSize, setLoadSize] = useState<'boot' | 'van' | ''>('');
   const [passengers, setPassengers] = useState('');
   const [description, setDescription] = useState('');
   const [loading, setLoading] = useState(false);
@@ -135,8 +153,19 @@ export default function HireVanScreen() {
     const pickupText = pickup.trim();
     const destinationText = destination.trim();
 
-    if (!pickupText || !destinationText || !date || !passengers) {
+    // The passenger count is only required for a passenger trip now — a
+    // goods trip needs a size instead. Checked separately so each gives
+    // the message that names the field actually missing.
+    if (!pickupText || !destinationText || !date) {
       setError('Please fill in all required fields.');
+      return;
+    }
+    if (loadType === 'people' && !passengers) {
+      setError('Enter how many passengers are travelling.');
+      return;
+    }
+    if (loadType !== 'people' && !loadSize) {
+      setError('Choose roughly how much you\'re moving.');
       return;
     }
 
@@ -159,10 +188,17 @@ export default function HireVanScreen() {
       return;
     }
 
-    const passengerCount = parseInt(passengers, 10);
-    if (isNaN(passengerCount) || passengerCount < 1) {
-      setError('Enter a valid number of passengers.');
-      return;
+    // A goods trip still writes a passenger count of 1: `requests.passengers`
+    // is NOT NULL and several older screens read it directly. 1 is the
+    // honest value — the person accompanying their own load — and it keeps
+    // every existing query working without a migration on those screens.
+    let passengerCount = 1;
+    if (loadType === 'people') {
+      passengerCount = parseInt(passengers, 10);
+      if (isNaN(passengerCount) || passengerCount < 1) {
+        setError('Enter a valid number of passengers.');
+        return;
+      }
     }
 
     setLoading(true);
@@ -200,6 +236,8 @@ export default function HireVanScreen() {
       destination_city: destinationCity || null,
       date: date.trim(),
       passengers: passengerCount,
+      load_type: loadType,
+      load_size: loadType === 'people' ? null : loadSize,
       description: description.trim(),
       status: 'open',
     });
@@ -287,9 +325,12 @@ export default function HireVanScreen() {
         <Text style={styles.backText}><Text style={styles.backArrow}>‹</Text> Back</Text>
       </TouchableOpacity>
 
-      <Text style={styles.heading}>Hire a Van</Text>
+      {/* "Hire a Van" and "your fare" both said passengers-only. The
+          screen now carries goods too, so the wording has to stop
+          promising one of the two things it does. */}
+      <Text style={styles.heading}>Post a trip</Text>
       <Text style={styles.subheading}>
-        Post your trip and let operators compete for your fare.
+        Say what you're moving and where. Operators bid for the job.
       </Text>
 
       {error ? (
@@ -412,15 +453,65 @@ export default function HireVanScreen() {
           </Modal>
         )}
 
-        <Text style={styles.label}>Number of passengers *</Text>
-        <TextInput
-          style={styles.input}
-          placeholder="e.g. 4"
-          placeholderTextColor="#666"
-          value={passengers}
-          onChangeText={setPassengers}
-          keyboardType="number-pad"
-        />
+        <Text style={styles.label}>What are you moving? *</Text>
+        <View style={styles.chipRow}>
+          {([
+            ['people', 'People'],
+            ['goods', 'Boxes or goods'],
+            ['large_item', 'One big item'],
+          ] as const).map(([value, label]) => (
+            <TouchableOpacity
+              key={value}
+              style={[styles.chip, loadType === value && styles.chipOn]}
+              onPress={() => setLoadType(value)}
+              activeOpacity={0.85}
+            >
+              <Text style={[styles.chipText, loadType === value && styles.chipTextOn]}>
+                {label}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+
+        {loadType === 'people' ? (
+          <>
+            <Text style={styles.label}>Number of passengers *</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="e.g. 4"
+              placeholderTextColor="#666"
+              value={passengers}
+              onChangeText={setPassengers}
+              keyboardType="number-pad"
+            />
+          </>
+        ) : (
+          <>
+            <Text style={styles.label}>Roughly how much? *</Text>
+            <View style={styles.chipRow}>
+              {([
+                ['boot', 'Fits in a car boot'],
+                ['van', 'A van load'],
+              ] as const).map(([value, label]) => (
+                <TouchableOpacity
+                  key={value}
+                  style={[styles.chip, loadSize === value && styles.chipOn]}
+                  onPress={() => setLoadSize(value)}
+                  activeOpacity={0.85}
+                >
+                  <Text style={[styles.chipText, loadSize === value && styles.chipTextOn]}>
+                    {label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+            {/* Says plainly what the vans on this app can take, so nobody
+                posts a house move that will never be quoted. */}
+            <Text style={styles.cityHint}>
+              Operators here drive vans, not trucks — anything up to a van load.
+            </Text>
+          </>
+        )}
 
         <Text style={styles.label}>Extra notes (optional)</Text>
         <TextInput
@@ -498,6 +589,24 @@ const styles = StyleSheet.create({
   },
   label: { fontSize: 13, fontWeight: '700', color: '#fff', marginBottom: 8, marginTop: 14 },
   cityHint: { color: '#888', fontSize: 12, marginTop: 6 },
+
+  // Chips rather than a picker: there are three options and two options,
+  // both sets fit on one screen, and a tap is faster than opening a modal
+  // and choosing. `flexWrap` matters — "Boxes or goods" and "One big item"
+  // do not fit on one line on a small phone.
+  chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  chip: {
+    backgroundColor: '#222220',
+    borderWidth: 1,
+    borderColor: '#333',
+    borderRadius: 999,
+    paddingVertical: 9,
+    paddingHorizontal: 14,
+  },
+  chipOn: { backgroundColor: '#2A2416', borderColor: '#5a4a1c' },
+  chipText: { color: '#AAAAAA', fontSize: 13 },
+  chipTextOn: { color: GOLD, fontWeight: '700' },
+
   input: {
     backgroundColor: DARK,
     borderRadius: 10,

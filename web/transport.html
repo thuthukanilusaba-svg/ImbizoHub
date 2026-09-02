@@ -1,0 +1,436 @@
+<!doctype html>
+<html lang="en-ZW">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+
+<!-- SCOPE OF THIS PAGE — read before editing.
+     Everything here is limited to what the operators actually registered
+     on ImbizoHub can carry. Today that is vans: every operator with a
+     vehicle recorded has profiles.vehicle_capacity = 8. There are no
+     trucks, so this page must not sell house moves, farm loads or
+     haulage, however tempting the search traffic is. A promise the app
+     cannot keep produces trip requests nobody quotes — which is exactly
+     what happened to the Kwekwe -> Plumtree glass job on 1 Sep 2026.
+     Widen the copy when the supply exists, not before. -->
+
+<title>ImbizoHub Transport — Post your trip. Operators bid for the job.</title>
+<meta name="description" content="Van hire across Zimbabwe. Post your trip — boxes, one big item, or a group of people — and operators come back with their price. Free to post, free to compare, you pay the driver directly.">
+<link rel="canonical" href="https://imbizohub.com/transport">
+<meta name="theme-color" content="#111111">
+
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="ImbizoHub">
+<meta property="og:url" content="https://imbizohub.com/transport">
+<meta property="og:title" content="ImbizoHub Transport — Post your trip. Operators bid for the job.">
+<meta property="og:description" content="Van hire across Zimbabwe. Post the trip, operators bid, you pick your driver. Free to post.">
+<meta property="og:image" content="https://imbizohub.com/og-image.png">
+<meta property="og:locale" content="en_ZW">
+
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="ImbizoHub Transport — Post your trip. Operators bid for the job.">
+<meta name="twitter:description" content="Van hire across Zimbabwe. Post the trip, operators bid, you pick your driver.">
+<meta name="twitter:image" content="https://imbizohub.com/og-image.png">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;800&display=swap" rel="stylesheet">
+<link rel="icon" href="/favicon.png">
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "Service",
+  "serviceType": "Van hire and local transport",
+  "provider": { "@type": "Organization", "name": "ImbizoHub", "url": "https://imbizohub.com/" },
+  "areaServed": { "@type": "Country", "name": "Zimbabwe" },
+  "description": "Post a transport job and registered van operators bid for it. Customers compare quotes and pick their driver."
+}
+</script>
+
+<style>
+  :root{
+    --bg:#111111; --panel:#1A1A18; --panel-2:#222220; --line:#2E2E2A;
+    --gold:#B8860B; --gold-bright:#E8B44A;
+    --text:#FFFFFF; --muted:#D6D6CF; --green:#4FC96E;
+    --maxw:1080px;
+  }
+  *{box-sizing:border-box}
+  html{-webkit-text-size-adjust:100%}
+  body{
+    margin:0;background:var(--bg);color:var(--text);
+    font-family:"Inter",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    font-size:18px;line-height:1.7;letter-spacing:.005em;-webkit-font-smoothing:antialiased;
+  }
+  a{color:var(--gold-bright);text-decoration:none}
+  a:hover{text-decoration:underline}
+  .wrap{max-width:var(--maxw);margin:0 auto;padding:0 20px}
+
+  header{position:sticky;top:0;z-index:20;background:rgba(17,17,17,.92);
+    backdrop-filter:saturate(140%) blur(10px);border-bottom:1px solid var(--line)}
+  .nav{display:flex;align-items:center;justify-content:space-between;height:68px}
+  .brand{display:flex;align-items:center;gap:11px;font-weight:800;font-size:20px;color:#fff;letter-spacing:-.01em}
+  .brand:hover{text-decoration:none}
+  .mark{width:34px;height:34px;border-radius:9px;display:grid;place-items:center;
+    background:var(--gold);color:#1A1A18;font-size:19px}
+  .sub-brand{font-weight:500;color:var(--muted);font-size:15px;
+    border-left:1px solid var(--line);padding-left:11px;margin-left:2px}
+  .nav-links{display:flex;align-items:center;gap:24px;font-size:15px}
+  .nav-links a{color:var(--muted)}
+  .nav-links a:hover{color:#fff;text-decoration:none}
+  .btn{display:inline-block;background:var(--gold);color:#1A1A18;font-weight:800;
+    border-radius:10px;padding:11px 20px;font-size:15px;border:0;cursor:pointer}
+  .btn:hover{background:#cf9a12;text-decoration:none}
+  .btn-ghost{background:transparent;color:#fff;border:1px solid var(--line)}
+  .btn-ghost:hover{background:var(--panel-2);border-color:#3d3d38}
+  @media(max-width:820px){ .nav-links a:not(.btn){display:none} .sub-brand{display:none} }
+
+  .hero{padding:72px 0 56px;text-align:center}
+  .pill{display:inline-block;font-size:12.5px;font-weight:700;letter-spacing:.02em;
+    color:var(--green);background:#122A17;border:1px solid #23492C;
+    padding:6px 13px;border-radius:999px;margin-bottom:22px}
+  h1{font-size:clamp(34px,5.6vw,56px);line-height:1.12;margin:0 0 20px;font-weight:800;letter-spacing:-.025em}
+  h1 em{font-style:normal;color:var(--gold)}
+  .sub{font-size:clamp(17px,2.2vw,20px);color:var(--muted);max-width:620px;margin:0 auto 30px}
+  .sub-promise{font-size:clamp(15px,1.9vw,17px);margin-bottom:30px}
+  .sub-promise strong{color:var(--green);display:block}
+  .cta-row{display:flex;gap:12px;justify-content:center;flex-wrap:wrap}
+  .note{margin-top:16px;font-size:14.5px;color:#9E9E97}
+
+  section{padding:56px 0;border-top:1px solid var(--line)}
+  h2{font-size:clamp(23px,3.2vw,31px);margin:0 0 10px;font-weight:800;letter-spacing:-.01em}
+  .lede{color:var(--muted);margin:0 0 34px;max-width:660px;font-size:18px;line-height:1.7}
+
+  .cards{display:grid;grid-template-columns:repeat(2,1fr);gap:16px}
+  @media(max-width:760px){ .cards{grid-template-columns:1fr} }
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:16px;
+    padding:24px;display:flex;gap:16px;align-items:flex-start}
+  .card .ico{font-size:26px;line-height:1;flex:0 0 auto;margin-top:2px}
+  .card h3{margin:0 0 7px;font-size:18.5px;font-weight:800}
+  .card p{margin:0;color:var(--muted);font-size:16px;line-height:1.65;max-width:62ch}
+  .card.a{border-color:#25452A} .card.b{border-color:#4A3A12}
+  .card.c{border-color:#20304F} .card.d{border-color:#1F4430}
+
+  .steps{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+  @media(max-width:760px){ .steps{grid-template-columns:1fr} }
+  .step{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:22px}
+  .step .n{width:28px;height:28px;border-radius:50%;background:var(--gold);color:#1A1A18;
+    display:grid;place-items:center;font-weight:900;font-size:14px;margin-bottom:12px}
+  .step h3{margin:0 0 7px;font-size:17px;font-weight:800}
+  .step p{margin:0;color:var(--muted);font-size:16px;line-height:1.65}
+
+  .fits{background:var(--panel);border:1px solid var(--line);border-radius:16px;
+    padding:22px 24px;margin-top:20px}
+  .fits h3{margin:0 0 10px;font-size:16px;font-weight:800}
+  .fits p{margin:0;color:var(--muted);font-size:15.5px;line-height:1.6;max-width:66ch}
+  .fits b{color:#fff}
+
+  .promo{background:#122A17;border:1px solid #23492C;border-radius:14px;padding:18px 20px;margin-bottom:24px}
+  .promo strong{color:var(--green)}
+  .promo p{margin:7px 0 0;color:var(--muted);font-size:15.5px}
+
+  .tablewrap{overflow-x:auto;border:1px solid var(--line);border-radius:14px;background:var(--panel)}
+  table{border-collapse:collapse;width:100%;min-width:520px;font-size:16px}
+  th,td{padding:15px 18px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}
+  thead th{font-size:13px;letter-spacing:.06em;text-transform:uppercase;color:#9E9E97;font-weight:700}
+  thead th:last-child,tbody td:last-child{text-align:right;white-space:nowrap;font-weight:800}
+  tbody tr:last-child td{border-bottom:none}
+  td .d{display:block;color:#9E9E97;font-size:14.5px;line-height:1.55;font-weight:400;margin-top:3px}
+
+  .split{display:grid;grid-template-columns:1.15fr .85fr;gap:20px;align-items:start}
+  @media(max-width:860px){ .split{grid-template-columns:1fr} }
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:26px}
+  .panel h3{margin:0 0 10px;font-size:20px;font-weight:800}
+  .panel p{color:var(--muted);font-size:16px;line-height:1.65;margin:0 0 14px}
+  .panel p:last-child{margin-bottom:0}
+  .tick{list-style:none;padding:0;margin:0 0 18px;display:flex;flex-direction:column;gap:10px}
+  .tick li{color:var(--muted);font-size:16px;padding-left:26px;position:relative;line-height:1.55}
+  .tick li::before{content:"✓";position:absolute;left:0;top:0;color:var(--green);font-weight:800}
+
+  .routes{display:flex;flex-wrap:wrap;gap:9px;margin-top:20px}
+  .route{background:var(--panel-2);border:1px solid var(--line);border-radius:999px;
+    padding:7px 14px;font-size:14.5px;color:var(--muted)}
+
+  .backlink{background:var(--panel);border:1px solid var(--line);border-radius:16px;
+    padding:22px 24px;display:flex;justify-content:space-between;align-items:center;gap:18px;flex-wrap:wrap}
+  .backlink p{margin:0;color:var(--muted);font-size:16px;max-width:60ch}
+  .backlink b{color:#fff}
+
+  footer{border-top:1px solid var(--line);padding:34px 0;color:#9E9E97;font-size:15px}
+  .foot{display:flex;justify-content:space-between;gap:18px;flex-wrap:wrap}
+  .foot a{color:#9E9E97}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap nav">
+    <a class="brand" href="/">
+      <span class="mark">🚐</span>ImbizoHub<span class="sub-brand">Transport</span>
+    </a>
+    <nav class="nav-links">
+      <a href="#how">How it works</a>
+      <a href="#operators">For operators</a>
+      <a href="#pricing">Pricing</a>
+      <a href="/">Marketplace</a>
+      <a class="btn" href="/app/hirevan">Post your trip</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+
+  <div class="wrap hero">
+    <span class="pill">Free to post · Free to compare · Pay the driver directly</span>
+    <h1>Post your trip.<br><em>Operators bid for the job.</em></h1>
+    <p class="sub">
+      Say what you're moving and where it's going — a load or a group of people.
+      Van operators come back with their price, and you pick the one you want.
+    </p>
+    <p class="sub sub-promise">
+      <strong>You never chase a driver again.</strong>
+      Post once, compare the quotes that come in, choose.
+    </p>
+    <div class="cta-row">
+      <a class="btn" href="/app/hirevan">Post your trip — free</a>
+      <a class="btn btn-ghost" href="#operators">I drive a van</a>
+    </div>
+    <p class="note">Built for Zimbabwe · Platform fee paid with EcoCash and more via Paynow</p>
+  </div>
+
+  <section id="what">
+    <div class="wrap">
+      <h2>What people move</h2>
+      <p class="lede">
+        If it fits in a van and needs a driver, post it. Operators tell you what
+        they'd charge, so you're never guessing at a fair price.
+      </p>
+      <div class="cards">
+        <div class="card b">
+          <div class="ico">📦</div>
+          <div>
+            <h3>Boxes and stock</h3>
+            <p>A shop restocking, a market trader collecting, boxes going to a
+              relative in another town. If you move goods regularly, the same
+              operators start bidding for your work and you build a short list
+              you trust.</p>
+          </div>
+        </div>
+        <div class="card c">
+          <div class="ico">🛋️</div>
+          <div>
+            <h3>One big item</h3>
+            <p>A fridge, a sofa, a bed, a generator. The thing that won't fit in a
+              car and doesn't justify hiring a whole removal company.</p>
+          </div>
+        </div>
+        <div class="card a">
+          <div class="ico">🫙</div>
+          <div>
+            <h3>Things that need care</h3>
+            <p>Glass, screens, a mirror, anything you don't want thrown in the back
+              of a lift. Say so in the notes and operators can price the extra care
+              before they bid.</p>
+          </div>
+        </div>
+        <div class="card d">
+          <div class="ico">👥</div>
+          <div>
+            <h3>A group of people</h3>
+            <p>A family trip, a funeral, a church group, an airport run. Post the
+              date and the number travelling, and drivers bid for the fare.</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="fits">
+        <h3>What fits</h3>
+        <p>
+          The operators on ImbizoHub drive <b>vans, not trucks</b> — so anything up to
+          a van load, or up to eight people. We'd rather tell you that now than take
+          your post for a full house move and leave it sitting without a single quote.
+          <b>Bigger loads are coming</b> as more operators join.
+        </p>
+      </div>
+
+      <div class="routes">
+        <span class="route">Harare ↔ Bulawayo</span>
+        <span class="route">Harare ↔ Mutare</span>
+        <span class="route">Bulawayo ↔ Gweru</span>
+        <span class="route">Kwekwe ↔ Plumtree</span>
+        <span class="route">Suburb to suburb</span>
+        <span class="route">Anywhere in Zimbabwe</span>
+      </div>
+    </div>
+  </section>
+
+  <section id="how">
+    <div class="wrap">
+      <h2>How it works</h2>
+      <p class="lede">Three steps, and finding out what a trip costs is free.</p>
+      <div class="steps">
+        <div class="step">
+          <div class="n">1</div>
+          <h3>Post the trip</h3>
+          <p>Where from, where to, what you're moving and when. About a minute, and
+            it costs nothing.</p>
+        </div>
+        <div class="step">
+          <div class="n">2</div>
+          <h3>Operators bid</h3>
+          <p>Registered operators send their price for your job. Compare them side by
+            side and chat to anyone before you decide.</p>
+        </div>
+        <div class="step">
+          <div class="n">3</div>
+          <h3>Pick your driver</h3>
+          <p>Accept the quote you want and their contact details open up. Both of you
+            confirm when the trip is done, then you rate them.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="operators">
+    <div class="wrap">
+      <h2>Drive a van?</h2>
+      <p class="lede">
+        Stop waiting for the phone to ring. Jobs are posted with the route, the load
+        and the date already written down.
+      </p>
+      <div class="split">
+        <div class="panel">
+          <h3>Bid for work that's already looking for you</h3>
+          <ul class="tick">
+            <li>See open trips in your city, with the load spelled out</li>
+            <li>Send your own price — you set it, not us</li>
+            <li>Keep <b>100%</b> of what you quote. The platform fee is the customer's</li>
+            <li>Build a rating that wins you the next job</li>
+            <li>Verify your ID to earn a badge customers can see</li>
+          </ul>
+          <a class="btn" href="/app/hirevan">Register as an operator</a>
+        </div>
+        <div class="panel">
+          <h3>What it costs you</h3>
+          <p><b>$10 a year</b> to register and start bidding. Nothing per job, no
+            commission out of your price, no adverts to sit through.</p>
+          <p>Free for everyone during the launch promotion, until 31 January 2027.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="pricing">
+    <div class="wrap">
+      <h2>Pricing</h2>
+      <p class="lede">
+        Posting a trip and collecting quotes is free. We only earn when an operator
+        we found actually gets your job.
+      </p>
+
+      <div class="promo">
+        <strong>🎁 Launch promotion — every fee below is free for everyone until 31 January 2027.</strong>
+        <p>The prices shown are what applies once the promotion ends.</p>
+      </div>
+
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>What</th><th>Cost</th></tr></thead>
+          <tbody>
+            <tr>
+              <td>Posting a trip and receiving quotes
+                <span class="d">No limits, and no account needed to look around</span></td>
+              <td>Free</td>
+            </tr>
+            <tr>
+              <td>Chatting with an operator
+                <span class="d">Ask about the vehicle, the timing, the load — before you commit</span></td>
+              <td>Free</td>
+            </tr>
+            <tr>
+              <td>Accepting a quote
+                <span class="d">Paid by the customer — 7% of the quote, never more than $15.
+                  The operator keeps 100% of their price, and you pay them directly for the trip</span></td>
+              <td>7%</td>
+            </tr>
+            <tr>
+              <td>Operator registration
+                <span class="d">Register once to start bidding on trips</span></td>
+              <td>$10 / year</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <section id="safety">
+    <div class="wrap">
+      <h2>Both sides confirm. Then it's done.</h2>
+      <p class="lede">
+        A trip isn't finished because one person says so. The customer and the operator
+        each confirm the job is complete, and only then does it close and the rating open.
+      </p>
+      <div class="cards">
+        <div class="card a">
+          <div class="ico">🤝</div>
+          <div>
+            <h3>Two-sided confirmation</h3>
+            <p>Neither side can quietly mark a trip complete alone. If there's a
+              disagreement it stays open rather than disappearing.</p>
+          </div>
+        </div>
+        <div class="card b">
+          <div class="ico">⭐</div>
+          <div>
+            <h3>Ratings that count once</h3>
+            <p>Each finished trip earns exactly one rating from each side. Nobody can
+              pad their own average, so the stars mean something.</p>
+          </div>
+        </div>
+        <div class="card c">
+          <div class="ico">🪪</div>
+          <div>
+            <h3>Verified operators</h3>
+            <p>Operators can submit a national ID to be verified. You can see who has
+              before you accept a quote.</p>
+          </div>
+        </div>
+        <div class="card d">
+          <div class="ico">💵</div>
+          <div>
+            <h3>You pay the driver directly</h3>
+            <p>Your money for the trip goes to the operator, not through us. We take a
+              capped platform fee on the match and nothing else.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="marketplace">
+    <div class="wrap">
+      <div class="backlink">
+        <p><b>Looking for something to buy, not somewhere to move it?</b><br>
+          ImbizoHub is also a marketplace — post what you need and sellers come to you
+          with their price. Same app, same account.</p>
+        <a class="btn btn-ghost" href="/">Visit the marketplace</a>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<footer>
+  <div class="wrap foot">
+    <div>© 2026 ImbizoHub · Built for Zimbabwe</div>
+    <div>
+      <a href="/">Marketplace</a> ·
+      <a href="/contact">Contact</a> ·
+      <a href="/app/hirevan">Open the app</a>
+    </div>
+  </div>
+</footer>
+
+</body>
+</html>

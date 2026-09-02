@@ -34,6 +34,29 @@ const RED = '#ff8a8a';
 // comment said $30, the pre-launch figure, long after the cap was
 // lowered).
 
+/**
+ * What this trip is carrying, as one short chip.
+ *
+ * This is the whole point of the goods migration from the operator's side.
+ * Before it, every trip showed "👥 N pax" whatever it really was — so the
+ * Kwekwe -> Plumtree job whose notes read "Fragile glass to be wrapped in
+ * bubble wrap" appeared here as "2 pax" and went unquoted. An operator
+ * could not tell it apart from two people wanting a lift, and nothing in
+ * the chip row hinted there was a load to price.
+ *
+ * Trips posted before the migration have no load_type, so they keep the
+ * old passenger chip rather than being relabelled as something nobody
+ * actually chose.
+ */
+function loadLabel(r: Pick<Request, 'load_type' | 'load_size' | 'passengers'>): string {
+  if (!r.load_type || r.load_type === 'people') {
+    return `👥 ${r.passengers} pax`;
+  }
+  const what = r.load_type === 'large_item' ? 'One big item' : 'Boxes / goods';
+  const size = r.load_size === 'van' ? 'van load' : r.load_size === 'boot' ? 'boot-sized' : null;
+  return size ? `📦 ${what} · ${size}` : `📦 ${what}`;
+}
+
 type Request = {
   id: string;
   pickup: string;
@@ -45,6 +68,11 @@ type Request = {
   created_at: string;
   pickup_city?: string | null;
   destination_city?: string | null;
+  // Added 2 Sep 2026 with goods support. Optional because trips posted
+  // before that migration carry neither — see loadLabel() below, which is
+  // what decides whether an operator sees a load or a passenger count.
+  load_type?: 'people' | 'goods' | 'large_item' | null;
+  load_size?: 'boot' | 'van' | null;
 };
 
 // A trip this operator has WON — their quote was accepted.
@@ -658,7 +686,7 @@ export default function OperatorRequestsScreen() {
 
             <View style={styles.chips}>
               <Chip label={`📅 ${item.date}`} />
-              <Chip label={`👥 ${item.passengers} pax`} />
+              <Chip label={loadLabel(item)} />
             </View>
 
             {item.description ? (
