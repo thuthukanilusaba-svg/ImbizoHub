@@ -1,0 +1,44 @@
+-- Fixes "permission denied for table profiles" when an operator saves
+-- their vehicle details.
+--
+-- APPLIED TO PRODUCTION 2 September 2026, after a real report: the
+-- operator setup screen showed "Something went wrong: permission denied
+-- for table profiles" on Finish setup, for every operator.
+--
+-- WHAT WENT WRONG. profiles does not grant table-level UPDATE to
+-- `authenticated`. It grants UPDATE on a SPECIFIC LIST of eleven columns:
+--   account_type, avatar_url, base_city, full_name, licence_plate,
+--   location, operating_area, phone, push_token, vehicle_capacity,
+--   vehicle_type
+--
+-- That is a good design. It means a signed-in person can edit their own
+-- name and phone but cannot touch is_admin, registration_paid or
+-- commission_owed even if an RLS policy were misconfigured.
+--
+-- It also has a sharp edge. A column added later is covered by NO grant at
+-- all: ALTER TABLE ADD COLUMN does not inherit the existing column
+-- privileges. `carries` and `max_load_size` were added by
+-- 20260902113000_operator_capability_and_truck_loads.sql and never
+-- granted, so become-operator.tsx's update — which now writes them —
+-- failed for every operator.
+--
+-- The error message is what made this hard to place: Postgres reports a
+-- column-privilege miss as "permission denied for TABLE profiles", naming
+-- the table rather than the column, so it reads like a far larger problem
+-- than a missing grant on two new fields.
+--
+-- THE RULE TO REMEMBER: on this table, adding a column the app writes
+-- means granting UPDATE on it in the same migration. Nothing else will
+-- remind you, and the failure appears only when a real person saves.
+--
+-- `authenticated` only, not `anon`: becoming an operator requires a real
+-- account and a paid registration, and no anonymous session reaches this
+-- screen.
+
+grant update (carries, max_load_size) on public.profiles to authenticated;
+
+-- VERIFIED LIVE, 2 September 2026 (rolled back)
+--   Ran the exact update become-operator.tsx makes — vehicle_type,
+--   vehicle_capacity, carries, max_load_size, base_city, phone — while
+--   SET ROLE authenticated with a real user's JWT claims. Succeeded, and
+--   read back carries='both', max_load_size='truck'.
