@@ -261,7 +261,7 @@ export default function SellerProfileScreen() {
     <View style={styles.container}>
       <ScrollView contentContainerStyle={styles.content}>
         <View style={styles.topRow}>
-          <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+          <TouchableOpacity onPress={() => (router.canGoBack() ? router.back() : router.replace('/'))} style={styles.backBtn}>
             <Text style={styles.backText}><Text style={styles.backArrow}>‹</Text> Back</Text>
           </TouchableOpacity>
           <TouchableOpacity onPress={handleShare} style={styles.shareBtn}>

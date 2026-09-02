@@ -527,7 +527,7 @@ export default function OperatorRequestsScreen() {
   if (operatorActive === false) {
     return (
       <View style={styles.blockedScreen}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backBtnSmall}>
+        <TouchableOpacity onPress={() => (router.canGoBack() ? router.back() : router.replace('/'))} style={styles.backBtnSmall}>
           <Text style={styles.backTextSmall}><Text style={styles.backArrow}>‹</Text> Back</Text>
         </TouchableOpacity>
         <Text style={styles.blockedEmoji}>🔒</Text>
@@ -592,7 +592,7 @@ export default function OperatorRequestsScreen() {
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()}>
+        <TouchableOpacity onPress={() => (router.canGoBack() ? router.back() : router.replace('/'))}>
           <Text style={styles.backText}><Text style={styles.backArrow}>‹</Text> Back</Text>
         </TouchableOpacity>
         <Text style={styles.heading}>Open trip requests</Text>

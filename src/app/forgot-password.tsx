@@ -150,7 +150,7 @@ export default function ForgotPasswordScreen() {
          fixed elsewhere this pass — the submit button could sit below the
          fold on a shorter viewport with no way to scroll down to it. */}
       <ScrollView contentContainerStyle={styles.content}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+        <TouchableOpacity onPress={() => (router.canGoBack() ? router.back() : router.replace('/login'))} style={styles.backBtn}>
           <Text style={styles.backText}><Text style={styles.backArrow}>‹</Text> Back</Text>
         </TouchableOpacity>
 

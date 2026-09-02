@@ -257,7 +257,7 @@ export default function DeliveryOperatorRegisterPayScreen() {
             the full reasoning; the vertical-nudge nested-Text workaround
             this and the twin back button below used to need is dropped
             along with the arrow glyph it was compensating for. */}
-        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+        <TouchableOpacity onPress={() => (router.canGoBack() ? router.back() : router.replace('/'))} style={styles.backBtn}>
           <Text style={styles.backText}><Text style={styles.backArrow}>‹</Text> Back</Text>
         </TouchableOpacity>
         <Text style={styles.successEmoji}>⚠️</Text>
@@ -300,7 +300,7 @@ export default function DeliveryOperatorRegisterPayScreen() {
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+      <TouchableOpacity onPress={() => (router.canGoBack() ? router.back() : router.replace('/'))} style={styles.backBtn}>
         <Text style={styles.backText}><Text style={styles.backArrow}>‹</Text> Back</Text>
       </TouchableOpacity>
 

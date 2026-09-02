@@ -317,7 +317,7 @@ export default function ListingScreen() {
     return (
       <View style={styles.center}>
         <Text style={{ color: GREY }}>Listing not found.</Text>
-        <TouchableOpacity onPress={() => router.back()} style={{ marginTop: 16 }}>
+        <TouchableOpacity onPress={() => (router.canGoBack() ? router.back() : router.replace('/'))} style={{ marginTop: 16 }}>
           <Text style={{ color: GOLD }}><Text style={{ fontSize: 20 }}>‹</Text> Back</Text>
         </TouchableOpacity>
       </View>
@@ -381,7 +381,7 @@ export default function ListingScreen() {
           instead of relying on TouchableOpacity's default. */}
       <TouchableOpacity
         style={styles.backFloat}
-        onPress={() => router.back()}
+        onPress={() => (router.canGoBack() ? router.back() : router.replace('/'))}
         activeOpacity={0.7}
         hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
       >

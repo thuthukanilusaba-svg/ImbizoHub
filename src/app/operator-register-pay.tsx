@@ -207,7 +207,7 @@ export default function OperatorRegisterPayScreen() {
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+      <TouchableOpacity onPress={() => (router.canGoBack() ? router.back() : router.replace('/'))} style={styles.backBtn}>
         {/* CHANGED (app-wide, direct product decision): back indicator
             swapped from "‹" to "‹" — matching the ‹ / › chevron pair
             already used elsewhere in the app (listing.tsx's posting nav,

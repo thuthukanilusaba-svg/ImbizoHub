@@ -187,7 +187,7 @@ export default function DeliveryTrackScreen() {
     return (
       <View style={styles.center}>
         <Text style={styles.errorText}>⚠️ {error}</Text>
-        <TouchableOpacity style={styles.regenBtn} onPress={() => router.back()}>
+        <TouchableOpacity style={styles.regenBtn} onPress={() => (router.canGoBack() ? router.back() : router.replace('/'))}>
           <Text style={styles.regenBtnText}>Go back</Text>
         </TouchableOpacity>
       </View>
@@ -210,7 +210,7 @@ export default function DeliveryTrackScreen() {
   return (
     <View style={styles.container}>
       <ScrollView contentContainerStyle={styles.content}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+        <TouchableOpacity onPress={() => (router.canGoBack() ? router.back() : router.replace('/'))} style={styles.backBtn}>
           <Text style={styles.backText}><Text style={styles.backArrow}>‹</Text> Back</Text>
         </TouchableOpacity>
 
