@@ -147,9 +147,6 @@
   .tick li{color:var(--muted);font-size:16px;padding-left:26px;position:relative;line-height:1.55}
   .tick li::before{content:"✓";position:absolute;left:0;top:0;color:var(--green);font-weight:800}
 
-  .routes{display:flex;flex-wrap:wrap;gap:9px;margin-top:20px}
-  .route{background:var(--panel-2);border:1px solid var(--line);border-radius:999px;
-    padding:7px 14px;font-size:14.5px;color:var(--muted)}
 
   .backlink{background:var(--panel);border:1px solid var(--line);border-radius:16px;
     padding:22px 24px;display:flex;justify-content:space-between;align-items:center;gap:18px;flex-wrap:wrap}
@@ -200,16 +197,22 @@
 
   <section id="what">
     <div class="wrap">
-      <h2>What people move</h2>
+      <!-- These three cards are the three options the app actually offers on
+           the "What are you moving?" question in hirevan.tsx, in the same
+           order and with the same words. If that chip list changes, change
+           these to match — a person who reads one and then meets the other
+           should not have to work out that they are the same thing. The
+           fourth card is not a category; it explains the notes field. -->
+      <h2>What are you moving?</h2>
       <p class="lede">
-        If it fits in a van and needs a driver, post it. Operators tell you what
-        they'd charge, so you're never guessing at a fair price.
+        It's the first thing the app asks, and it's what lets an operator price
+        your job without a single phone call. Three answers, then roughly how much.
       </p>
       <div class="cards">
         <div class="card b">
           <div class="ico">📦</div>
           <div>
-            <h3>Boxes and stock</h3>
+            <h3>Boxes or goods</h3>
             <p>A shop restocking, a market trader collecting, boxes going to a
               relative in another town. If you move goods regularly, the same
               operators start bidding for your work and you build a short list
@@ -227,40 +230,36 @@
         <div class="card a">
           <div class="ico">🫙</div>
           <div>
-            <h3>Things that need care</h3>
-            <p>Glass, screens, a mirror, anything you don't want thrown in the back
-              of a lift. Say so in the notes and operators can price the extra care
+            <h3>Anything that needs care</h3>
+            <p>Glass, screens, a mirror. Not a separate category — pick what it is,
+              then say so in the notes, and operators can price the extra care
               before they bid.</p>
           </div>
         </div>
         <div class="card d">
           <div class="ico">👥</div>
           <div>
-            <h3>A group of people</h3>
-            <p>A family trip, a funeral, a church group, an airport run. Post the
-              date and the number travelling, and drivers bid for the fare.</p>
+            <h3>People</h3>
+            <p>A family trip, a funeral, a church group, an airport run. Say how
+              many are travelling and drivers bid for the fare — up to eight seats.</p>
           </div>
         </div>
       </div>
 
       <div class="fits">
-        <h3>What fits</h3>
+        <h3>Then: roughly how much?</h3>
         <p>
-          The operators on ImbizoHub drive <b>vans, not trucks</b> — so anything up to
-          a van load, or up to eight people. We'd rather tell you that now than take
-          your post for a full house move and leave it sitting without a single quote.
-          <b>Bigger loads are coming</b> as more operators join.
+          Two answers — <b>fits in a car boot</b>, or <b>a van load</b>. That's the whole
+          second question, and it's why an operator can quote without ringing you first.
+        </p>
+        <p style="margin-top:12px">
+          There is no truck option, deliberately. The operators on ImbizoHub drive
+          <b>vans</b>, so a full house move or a farm load has nobody to answer it —
+          and we'd rather say that here than take your post and leave it sitting
+          without a single quote. <b>Bigger loads are coming</b> as more operators join.
         </p>
       </div>
 
-      <div class="routes">
-        <span class="route">Harare ↔ Bulawayo</span>
-        <span class="route">Harare ↔ Mutare</span>
-        <span class="route">Bulawayo ↔ Gweru</span>
-        <span class="route">Kwekwe ↔ Plumtree</span>
-        <span class="route">Suburb to suburb</span>
-        <span class="route">Anywhere in Zimbabwe</span>
-      </div>
     </div>
   </section>
 

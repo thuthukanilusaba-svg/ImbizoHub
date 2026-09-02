@@ -87,6 +87,16 @@ export default function BecomeOperatorScreen() {
   const [phone, setPhone] = useState('');
   const [vehicleType, setVehicleType] = useState('');
   const [vehicleCapacity, setVehicleCapacity] = useState('');
+  // What this operator can actually take. Before these existed the form
+  // asked only for a free-text vehicle type and a "Passenger Capacity", so
+  // a truck owner had no way to say they carry goods, and the customer's
+  // form had no way to know a truck existed at all. hirevan.tsx derives its
+  // size options from these two columns across every active operator, so
+  // answering them here is literally what puts "A truck load" in front of
+  // customers. Defaults describe the operators already registered: a van
+  // that will take either.
+  const [carries, setCarries] = useState<'people' | 'goods' | 'both'>('both');
+  const [maxLoadSize, setMaxLoadSize] = useState<'boot' | 'van' | 'truck'>('van');
   // Picked from a fixed list, not typed. It does two jobs: it decides
   // which trips this operator is shown (see lib/cities.ts) and it is
   // what customers see on the quote card.
@@ -238,6 +248,8 @@ export default function BecomeOperatorScreen() {
         phone: phone.trim(),
         vehicle_type: isDelivery ? deliveryVehicleType : vehicleType,
         vehicle_capacity: isDelivery ? null : (parseInt(vehicleCapacity) || null),
+        carries: isDelivery ? null : carries,
+        max_load_size: isDelivery ? null : maxLoadSize,
         // Informational only — shown on the quote card so buyers can see
         // roughly where an operator is based before accepting. Not used
         // as a filter anywhere; trip requests stay nationwide by design.
@@ -358,11 +370,59 @@ export default function BecomeOperatorScreen() {
         ) : (
           <>
             <Text style={styles.label}>Vehicle Type</Text>
-            <TextInput style={styles.input} placeholder="e.g. Van, Minibus, Bus" placeholderTextColor="#888"
+            {/* Placeholder now names a truck and a bakkie. It said
+                "Van, Minibus, Bus" — three people-carriers — which told
+                every truck owner this app was not for them. */}
+            <TextInput style={styles.input} placeholder="e.g. Van, Minibus, Bakkie, 3-tonne truck" placeholderTextColor="#888"
               value={vehicleType} onChangeText={setVehicleType} />
-            <Text style={styles.label}>Passenger Capacity</Text>
-            <TextInput style={styles.input} placeholder="e.g. 8" placeholderTextColor="#888"
-              value={vehicleCapacity} onChangeText={setVehicleCapacity} keyboardType="numeric" />
+
+            <Text style={styles.label}>What do you carry? *</Text>
+            <View style={styles.capRow}>
+              {([
+                ['both', 'Both'],
+                ['goods', 'Goods only'],
+                ['people', 'People only'],
+              ] as const).map(([value, label]) => (
+                <TouchableOpacity
+                  key={value}
+                  style={[styles.capChip, carries === value && styles.capChipOn]}
+                  onPress={() => setCarries(value)}
+                  activeOpacity={0.85}
+                >
+                  <Text style={[styles.capChipText, carries === value && styles.capChipTextOn]}>{label}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            <Text style={styles.label}>Biggest load you can take *</Text>
+            <View style={styles.capRow}>
+              {([
+                ['boot', 'Car boot'],
+                ['van', 'A van load'],
+                ['truck', 'A truck load'],
+              ] as const).map(([value, label]) => (
+                <TouchableOpacity
+                  key={value}
+                  style={[styles.capChip, maxLoadSize === value && styles.capChipOn]}
+                  onPress={() => setMaxLoadSize(value)}
+                  activeOpacity={0.85}
+                >
+                  <Text style={[styles.capChipText, maxLoadSize === value && styles.capChipTextOn]}>{label}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+            <Text style={styles.hint}>
+              You&apos;ll only be shown trips you can actually take — and picking
+              &quot;a truck load&quot; is what lets customers post one.
+            </Text>
+
+            {carries !== 'goods' ? (
+              <>
+                <Text style={styles.label}>Passenger seats</Text>
+                <TextInput style={styles.input} placeholder="e.g. 8" placeholderTextColor="#888"
+                  value={vehicleCapacity} onChangeText={setVehicleCapacity} keyboardType="numeric" />
+              </>
+            ) : null}
             <Text style={styles.label}>Your base city *</Text>
             <CityPicker value={baseCity} onChange={setBaseCity} placeholder="Select your city" />
             <Text style={styles.hint}>
@@ -399,6 +459,23 @@ const styles = StyleSheet.create({
   label: { color: '#ccc', fontSize: 14, marginBottom: 6, marginTop: 12 },
   input: { backgroundColor: DARK, color: '#fff', borderRadius: 8, padding: 12, fontSize: 16, borderWidth: 1, borderColor: '#444' },
   hint: { color: '#888', fontSize: 12, marginTop: 6 },
+
+  // Capability chips. Same shape as hirevan.tsx's load chips on purpose —
+  // an operator answering "biggest load you can take" and a customer
+  // answering "roughly how much" are two halves of the same question, and
+  // they should look like it.
+  capRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  capChip: {
+    backgroundColor: '#222220',
+    borderWidth: 1,
+    borderColor: '#444',
+    borderRadius: 999,
+    paddingVertical: 9,
+    paddingHorizontal: 14,
+  },
+  capChipOn: { backgroundColor: '#2A2416', borderColor: '#5a4a1c' },
+  capChipText: { color: '#AAAAAA', fontSize: 13 },
+  capChipTextOn: { color: GOLD, fontWeight: '700' },
   note: { backgroundColor: '#1a1a2e', borderRadius: 8, padding: 12, marginTop: 16, borderWidth: 0.5, borderColor: '#3a3a5e' },
   noteText: { color: '#8888aa', fontSize: 11, lineHeight: 16 },
   error: { color: '#ff6b6b', marginTop: 16, textAlign: 'center' },

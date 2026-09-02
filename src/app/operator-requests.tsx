@@ -34,6 +34,36 @@ const RED = '#ff8a8a';
 // comment said $30, the pre-launch figure, long after the cap was
 // lowered).
 
+/** Rank of load sizes, smallest first. A bigger vehicle can take a
+ *  smaller job, so this is an ordering question, not an equality one. */
+const SIZE_RANK: Record<string, number> = { boot: 1, van: 2, truck: 3 };
+
+/**
+ * Can this operator actually take this trip?
+ *
+ * Two rules, and one that matters more than either: NULL means "not asked
+ * yet", never "cannot". The operators registered before capability existed
+ * carry null in both columns, and hiding work from them because of a
+ * question they were never given would be the worst possible outcome of
+ * adding it — they are the only supply this marketplace has.
+ */
+function canServe(
+  r: Pick<Request, 'load_type' | 'load_size'>,
+  carries: 'people' | 'goods' | 'both' | null,
+  maxLoadSize: 'boot' | 'van' | 'truck' | null,
+): boolean {
+  // A trip posted before goods support says nothing about itself; show it.
+  if (!r.load_type) return true;
+
+  if (carries === 'people' && r.load_type !== 'people') return false;
+  if (carries === 'goods' && r.load_type === 'people') return false;
+
+  if (r.load_type !== 'people' && r.load_size && maxLoadSize) {
+    if ((SIZE_RANK[r.load_size] ?? 0) > (SIZE_RANK[maxLoadSize] ?? 99)) return false;
+  }
+  return true;
+}
+
 /**
  * What this trip is carrying, as one short chip.
  *
@@ -53,7 +83,11 @@ function loadLabel(r: Pick<Request, 'load_type' | 'load_size' | 'passengers'>): 
     return `👥 ${r.passengers} pax`;
   }
   const what = r.load_type === 'large_item' ? 'One big item' : 'Boxes / goods';
-  const size = r.load_size === 'van' ? 'van load' : r.load_size === 'boot' ? 'boot-sized' : null;
+  const size =
+    r.load_size === 'truck' ? 'truck load'
+    : r.load_size === 'van' ? 'van load'
+    : r.load_size === 'boot' ? 'boot-sized'
+    : null;
   return size ? `📦 ${what} · ${size}` : `📦 ${what}`;
 }
 
@@ -72,7 +106,7 @@ type Request = {
   // before that migration carry neither — see loadLabel() below, which is
   // what decides whether an operator sees a load or a passenger count.
   load_type?: 'people' | 'goods' | 'large_item' | null;
-  load_size?: 'boot' | 'van' | null;
+  load_size?: 'boot' | 'van' | 'truck' | null;
 };
 
 // A trip this operator has WON — their quote was accepted.
@@ -161,6 +195,11 @@ export default function OperatorRequestsScreen() {
   // operatorCanSeeTrip() in lib/cities.ts for why every unknown fails
   // open rather than closed.
   const [baseCity, setBaseCity] = useState<string | null>(null);
+  // This operator's own capability, used to hide work they cannot do.
+  // NULL for anyone who registered before these questions existed, and
+  // canServe() treats null as unrestricted so none of them loses work.
+  const [carries, setCarries] = useState<'people' | 'goods' | 'both' | null>(null);
+  const [maxLoadSize, setMaxLoadSize] = useState<'boot' | 'van' | 'truck' | null>(null);
   // NEW (1 Sep 2026, reported: "people registered in Bulawayo can see
   // Harare trips"). `null` alone could not tell "this operator has no base
   // city" apart from "we have not looked yet", and operatorCanSeeTrip()
@@ -202,11 +241,13 @@ export default function OperatorRequestsScreen() {
 
     const { data: profile } = await supabase
       .from('profiles')
-      .select('operator_status, account_type, registration_expires_at, vehicle_type, base_city')
+      .select('operator_status, account_type, registration_expires_at, vehicle_type, base_city, carries, max_load_size')
       .eq('id', user.id)
       .single();
 
     setBaseCity(profile?.base_city ?? null);
+    setCarries((profile as any)?.carries ?? null);
+    setMaxLoadSize((profile as any)?.max_load_size ?? null);
     setCityChecked(true);
 
     if (profile?.account_type !== 'transport_operator') {
@@ -262,7 +303,11 @@ export default function OperatorRequestsScreen() {
     }
 
     const { data } = await query;
-    setRequests(data ?? []);
+    // Filtered in JS rather than SQL on purpose: the rule involves a size
+    // ORDERING plus a null-means-unrestricted fallback, which is clear in
+    // canServe() and would be three chained .or() clauses here. At this
+    // volume the difference is unmeasurable; the readability is not.
+    setRequests((data ?? []).filter((r: any) => canServe(r, carries, maxLoadSize)));
 
     // FIX: see myQuoteRequestIds' declaration above — without this,
     // the list had no idea which of these open requests the current

@@ -24,7 +24,7 @@ const VAN_HIRE_PAUSED = false;
 
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { useRouter } from 'expo-router';
-import { createElement, useState } from 'react';
+import { createElement, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -134,7 +134,33 @@ export default function HireVanScreen() {
   // requests, which is the exact problem this is fixing. Widen this list
   // when the operators exist, not before.
   const [loadType, setLoadType] = useState<'people' | 'goods' | 'large_item'>('people');
-  const [loadSize, setLoadSize] = useState<'boot' | 'van' | ''>('');
+  const [loadSize, setLoadSize] = useState<'boot' | 'van' | 'truck' | ''>('');
+
+  // "A truck load" appears only when a truck operator actually exists.
+  //
+  // The first version of this screen hard-coded the option list to boot/van
+  // because every operator drove an 8-seater. That was accurate on the day
+  // and wrong as a design: it baked a snapshot of supply into the customer's
+  // form, so the day someone registered a truck, a human had to notice and
+  // edit this file. Deriving it instead means the option turns itself on,
+  // and turns itself off again if every truck operator lapses.
+  const [truckAvailable, setTruckAvailable] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const { data, error: capErr } = await supabase
+        .from('profiles')
+        .select('id')
+        .eq('max_load_size', 'truck')
+        .eq('operator_status', 'active')
+        .limit(1);
+      // On error, leave it off. Showing an option nobody can serve is a
+      // worse failure than hiding one somebody could — an unquoted request
+      // costs the customer a wasted post and their trust.
+      if (!cancelled && !capErr) setTruckAvailable((data ?? []).length > 0);
+    })();
+    return () => { cancelled = true; };
+  }, []);
   const [passengers, setPassengers] = useState('');
   const [description, setDescription] = useState('');
   const [loading, setLoading] = useState(false);
@@ -492,6 +518,7 @@ export default function HireVanScreen() {
               {([
                 ['boot', 'Fits in a car boot'],
                 ['van', 'A van load'],
+                ...(truckAvailable ? [['truck', 'A truck load'] as const] : []),
               ] as const).map(([value, label]) => (
                 <TouchableOpacity
                   key={value}
@@ -508,7 +535,9 @@ export default function HireVanScreen() {
             {/* Says plainly what the vans on this app can take, so nobody
                 posts a house move that will never be quoted. */}
             <Text style={styles.cityHint}>
-              Operators here drive vans, not trucks — anything up to a van load.
+              {truckAvailable
+                ? 'Pick the closest size — operators quote against what you choose.'
+                : 'Operators here drive vans, not trucks — anything up to a van load.'}
             </Text>
           </>
         )}
