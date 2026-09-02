@@ -1200,6 +1200,21 @@ export default function ChatScreen() {
 
   function openAttachMenu() {
     if (uploadingPhoto) return;
+
+    // WEB HAS NO CHOOSER. react-native-web's Alert.alert ignores the
+    // buttons array entirely — it is not a real dialog, so nothing appears
+    // and no onPress ever fires. On web this button was therefore dead in
+    // a second, quieter way than on Android, and both failures looked
+    // identical from the outside: "the attach button does nothing".
+    //
+    // Going straight to the picker is also the better web behaviour: the
+    // browser's own file dialog already offers the camera on a phone, so
+    // the intermediate menu only ever earned its place on native.
+    if (Platform.OS === 'web') {
+      sendPhoto('library');
+      return;
+    }
+
     Alert.alert(
       'Send a photo',
       undefined,
