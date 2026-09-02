@@ -217,16 +217,39 @@
   .fnav a{color:var(--muted)}
 
   /* ---------- theme ---------- */
-  body{
+  /* The pattern lives BEHIND THE HERO ONLY, on a pseudo-element.
+     It used to be a `background-attachment: fixed` image on <body>, which
+     was wrong twice over:
+       - iOS Safari effectively ignores `fixed`, so on an iPhone the
+         pattern jumped instead of sticking; on low-end Android it forced
+         a full-page repaint every scroll frame. Desktop-first effect,
+         mobile-first audience.
+       - `cover` scaled a 1600x1200 image to the FULL document height
+         (4,400px+ on the home page), so below the fold the pattern was
+         stretched almost 4x — soft and oversized, nothing like the
+         artwork. It only ever looked correct in the hero.
+     A fixed-height pseudo-element gives the artwork a box close to its
+     own proportions, scrolls normally at no repaint cost, and is masked
+     to dissolve into the flat ground instead of ending on a hard line. */
+  html{background:var(--bg)}
+  body{background-color:transparent;position:relative}
+  body::before{
+    content:'';
+    position:absolute;
+    top:0;left:0;right:0;
+    height:820px;
+    z-index:-1;
+    pointer-events:none;
     background-image:url('/theme-hub.png');
     background-size:cover;
     background-position:top center;
-    background-attachment:fixed;
     background-repeat:no-repeat;
+    -webkit-mask-image:linear-gradient(to bottom,#000 55%,transparent 100%);
+    mask-image:linear-gradient(to bottom,#000 55%,transparent 100%);
   }
-  /* Panels get a near-opaque backing so copy never sits directly on the
-     pattern. The texture stays visible in the gutters, which is where it
-     belongs. */
+  /* Panels keep a near-opaque backing. Most now sit below the pattern
+     entirely, but the hero box can overlap the first section on a tall
+     phone where the headline wraps — this is the insurance for that. */
   .card,.step,.t,.close{background:rgba(22,22,20,.93)}
   header{background:rgba(15,15,15,.94)}
   .promo{background:rgba(18,42,23,.94)}
