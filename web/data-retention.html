@@ -31,7 +31,6 @@
     --gold-bright:#7A5A07;
     --text:#1A1A18;
     --muted:#5C574B;
-    --green:#1F7A46;
     --maxw:1080px;
   }
 
@@ -68,13 +67,13 @@
   .nav-links{display:flex;align-items:center;gap:24px;font-size:15px}
   .nav-links a{color:var(--muted)}
   .nav-links a:hover{color:var(--text);text-decoration:none}
-  .nav-links a.btn{color:#fff}
+  .nav-links a.btn{color:var(--bg)}
   .btn{
-    display:inline-block;background:var(--gold);color:#fff;
+    display:inline-block;background:var(--text);color:var(--bg);
     font-weight:800;border-radius:10px;padding:11px 20px;font-size:15px;
     border:0;cursor:pointer;
   }
-  .btn:hover{background:#6E5106;text-decoration:none}
+  .btn:hover{background:#3D3A33;text-decoration:none}
   .btn-ghost{
     background:transparent;color:var(--text);border:1px solid var(--line);
   }
@@ -85,7 +84,7 @@
   .hero{padding:72px 0 56px;text-align:center}
   .pill{
     display:inline-block;font-size:12.5px;font-weight:700;letter-spacing:.02em;
-    color:var(--green);background:#E4F1E8;border:1px solid #B9DCC6;
+    color:var(--muted);background:var(--panel-2);border:1px solid var(--line);
     padding:6px 13px;border-radius:999px;margin-bottom:22px;
   }
   h1{
@@ -136,10 +135,10 @@
 
   /* ---------- pricing ---------- */
   .promo{
-    background:#E4F1E8;border:1px solid #B9DCC6;border-radius:14px;
+    background:var(--panel-2);border:1px solid var(--line);border-radius:14px;
     padding:18px 20px;margin-bottom:24px;
   }
-  .promo strong{color:var(--green)}
+  .promo strong{color:var(--text)}
   .promo p{margin:7px 0 0;color:var(--muted);font-size:15.5px}
   /* Pricing table.
      FIX: the COST header was text-align:left while its values were
@@ -224,7 +223,7 @@
      phone where the headline wraps — this is the insurance for that. */
   .card,.step,.t,.close{background:rgba(255,255,255,.93)}
   header{background:rgba(252,249,242,.94)}
-  .promo{background:rgba(228,241,232,.94)}
+  .promo{background:rgba(244,239,227,.94)}
   /* Hero text gets a soft shadow purely for separation from the glow. */
   /* Reading measure — long lines are tiring regardless of contrast. */
   .lede,.card p,.step p,.t p{max-width:62ch}
