@@ -30,7 +30,7 @@
 import { useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import {
-  ActivityIndicator, Platform, RefreshControl, ScrollView, StyleSheet,
+  ActivityIndicator, Alert, Platform, RefreshControl, ScrollView, StyleSheet,
   Text, TouchableOpacity, View,
 } from 'react-native';
 import { supabase } from '../../lib/supabase';
@@ -132,6 +132,72 @@ export default function AdminReportsReviewScreen() {
 
     setReports((data ?? []) as Report[]);
     setLoading(false);
+  }
+
+  // THE ACTION THIS SCREEN WAS MISSING.
+  //
+  // Until now the only buttons here were "Mark reviewed" and "Dismiss",
+  // and admin_review_report() does exactly one thing: update the report's
+  // status. Nothing reached the reported ACCOUNT. admin_suspend_user() has
+  // existed and worked the whole time — it sets suspended_until, records a
+  // reason, and calls notify-user-suspended to tell the person — but no
+  // screen in the app ever called it. The only way to suspend anybody was
+  // to open the Supabase dashboard and write SQL by hand.
+  //
+  // The report is marked reviewed at the same time, because suspending
+  // someone over a report and leaving that report sitting in Open is how a
+  // queue stops meaning anything.
+  async function handleSuspend(report: Report, days: number) {
+    const label = report.reported_user_name ?? 'this user';
+    Alert.alert(
+      `Suspend ${label}?`,
+      `They will not be able to post listings, send messages, post or answer Wanted posts, post trips, quote, or leave ratings for ${days} day${days === 1 ? '' : 's'}. They are told why.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: `Suspend ${days}d`,
+          style: 'destructive',
+          onPress: async () => {
+            setUpdatingId(report.report_id);
+            const { error: rpcError } = await supabase.rpc('admin_suspend_user', {
+              p_user_id: report.reported_user_id,
+              p_days: days,
+              p_reason: report.reason ?? 'Reported by another user',
+            });
+
+            if (rpcError) {
+              setUpdatingId(null);
+              setError(rpcError.message);
+              return;
+            }
+
+            // A suspension IS the review. Leaving the report Open after
+            // acting on it would mean the queue no longer reflects what
+            // has actually been dealt with.
+            await supabase.rpc('admin_review_report', {
+              p_report_id: report.report_id,
+              p_new_status: 'reviewed',
+            });
+
+            setUpdatingId(null);
+            load(filter);
+          },
+        },
+      ]
+    );
+  }
+
+  async function handleUnsuspend(report: Report) {
+    setUpdatingId(report.report_id);
+    const { error: rpcError } = await supabase.rpc('admin_unsuspend_user', {
+      p_user_id: report.reported_user_id,
+    });
+    setUpdatingId(null);
+    if (rpcError) {
+      setError(rpcError.message);
+      return;
+    }
+    load(filter);
   }
 
   async function handleReview(reportId: string, newStatus: 'reviewed' | 'dismissed') {
@@ -283,6 +349,39 @@ export default function AdminReportsReviewScreen() {
               ) : (
                 <Text style={styles.statusTag}>Status: {r.status}</Text>
               )}
+
+              {/* Suspension is offered on EVERY report, not only open ones.
+                  A report already marked reviewed can turn out to matter
+                  after a second complaint about the same person, and
+                  having to reopen it first would be friction at exactly
+                  the wrong moment. */}
+              {isSuspended ? (
+                <TouchableOpacity
+                  style={[styles.actionBtn, styles.unsuspendBtn, updatingId === r.report_id && styles.actionBtnDisabled]}
+                  disabled={updatingId === r.report_id}
+                  onPress={() => handleUnsuspend(r)}
+                >
+                  <Text style={styles.unsuspendBtnText}>
+                    {updatingId === r.report_id ? '...' : 'Lift suspension'}
+                  </Text>
+                </TouchableOpacity>
+              ) : (
+                <View style={styles.suspendRow}>
+                  <Text style={styles.suspendLabel}>Suspend this account</Text>
+                  <View style={styles.actionRow}>
+                    {[3, 7, 30].map((days) => (
+                      <TouchableOpacity
+                        key={days}
+                        style={[styles.actionBtn, styles.suspendBtn, updatingId === r.report_id && styles.actionBtnDisabled]}
+                        disabled={updatingId === r.report_id}
+                        onPress={() => handleSuspend(r, days)}
+                      >
+                        <Text style={styles.suspendBtnText}>{days} days</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </View>
+              )}
             </View>
           );
         })}
@@ -344,5 +443,16 @@ const styles = StyleSheet.create({
   reviewBtnText: { color: BLACK, fontSize: 12, fontWeight: '800' },
   dismissBtn: { backgroundColor: DARK, borderWidth: 0.5, borderColor: '#444' },
   dismissBtnText: { color: GREY, fontSize: 12, fontWeight: '800' },
+
+  // Suspension is set apart from Mark reviewed / Dismiss on purpose: those
+  // two file a report away, this one takes something from a person. It
+  // gets its own label, its own row, and a red that appears nowhere else
+  // on the screen, so it can never be the button you meant to hit.
+  suspendRow: { marginTop: 16, borderTopWidth: 0.5, borderTopColor: '#333', paddingTop: 12 },
+  suspendLabel: { color: GREY, fontSize: 11, fontWeight: '700', letterSpacing: 0.4, textTransform: 'uppercase' },
+  suspendBtn: { backgroundColor: '#3a1a1a', borderWidth: 0.5, borderColor: '#7a2f2f' },
+  suspendBtnText: { color: '#ff8a8a', fontSize: 12, fontWeight: '800' },
+  unsuspendBtn: { backgroundColor: DARK, borderWidth: 0.5, borderColor: '#444', marginTop: 14, alignSelf: 'flex-start' },
+  unsuspendBtnText: { color: GREEN, fontSize: 12, fontWeight: '800' },
   statusTag: { color: '#666', fontSize: 11, marginTop: 12, fontStyle: 'italic' },
 });
