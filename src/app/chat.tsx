@@ -143,6 +143,10 @@ export default function ChatScreen() {
   const [sellerIsDealerPro, setSellerIsDealerPro] = useState(false);
   const [contactWarning, setContactWarning] = useState(false);
   const [sendError, setSendError] = useState('');
+  // A photo chosen but not yet sent. Holds only the local uri — nothing is
+  // uploaded while it sits here, so removing it costs nothing and leaves
+  // no orphan in storage.
+  const [pendingPhoto, setPendingPhoto] = useState<{ uri: string } | null>(null);
   // PHOTO ATTACHMENTS (built 1 Sep 2026). Until now the 📎 was a bare
   // <Text> with no handler at all — not a broken button, a picture of one —
   // and messages had no column to put an image in.
@@ -1103,7 +1107,13 @@ export default function ChatScreen() {
    * of rules inside a function that already carries a long history of
    * subtle bugs.
    */
-  async function sendPhoto(source: 'camera' | 'library') {
+  // PICK, THEN STAGE. This used to upload and send the moment a photo was
+  // chosen, with no way back — one wrong tap in the gallery went straight
+  // into the other person's chat. The photo now waits above the input as a
+  // thumbnail: it can be removed, replaced, or given a caption, and nothing
+  // is uploaded until Send is pressed. Nothing reaches storage for a photo
+  // somebody changed their mind about.
+  async function pickPhoto(source: 'camera' | 'library') {
     if (uploadingPhoto) return;
     setSendError('');
 
@@ -1127,6 +1137,21 @@ export default function ChatScreen() {
 
       if (result.canceled || !result.assets?.[0]?.uri) return;
 
+      // Replaces whatever was staged before, so "attach a different one"
+      // is simply attaching again — no separate replace flow to learn.
+      setPendingPhoto({ uri: result.assets[0].uri });
+      return;
+    } catch (err: any) {
+      setSendError('Could not open that photo. Please try again.');
+      console.log('pickPhoto failed:', err);
+    }
+  }
+
+  // Everything below is the original send path, unchanged except that it
+  // takes the staged photo's uri instead of picking one itself.
+  async function sendStagedPhoto(uri: string) {
+    setSendError('');
+    try {
       setUploadingPhoto(true);
 
       let currentUid = myId;
@@ -1142,7 +1167,7 @@ export default function ChatScreen() {
       // prepareUpload() handles the React Native blob problem documented at
       // the top of lib/uploadHelpers.ts — the same helper every other
       // upload in this app already uses.
-      const { data: uploadData, contentType, extension } = await prepareUpload(result.assets[0].uri);
+      const { data: uploadData, contentType, extension } = await prepareUpload(uri);
 
       // Folder named after the sender, because the storage write policy
       // requires exactly that: you may only write inside your own folder.
@@ -1189,10 +1214,11 @@ export default function ChatScreen() {
         setMessages((prev) => (prev.some((m) => m.id === sentMessage.id) ? prev : [...prev, sentMessage]));
       }
       setText('');
+      setPendingPhoto(null);
       setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 100);
     } catch (err: any) {
       setSendError('Could not attach that photo. Please try again.');
-      console.log('sendPhoto failed:', err);
+      console.log('sendStagedPhoto failed:', err);
     } finally {
       setUploadingPhoto(false);
     }
@@ -1211,16 +1237,16 @@ export default function ChatScreen() {
     // browser's own file dialog already offers the camera on a phone, so
     // the intermediate menu only ever earned its place on native.
     if (Platform.OS === 'web') {
-      sendPhoto('library');
+      pickPhoto('library');
       return;
     }
 
     Alert.alert(
-      'Send a photo',
+      'Attach a photo',
       undefined,
       [
-        { text: '📷 Take a photo', onPress: () => sendPhoto('camera') },
-        { text: '🖼️ Choose from gallery', onPress: () => sendPhoto('library') },
+        { text: '📷 Take a photo', onPress: () => pickPhoto('camera') },
+        { text: '🖼️ Choose from gallery', onPress: () => pickPhoto('library') },
         { text: 'Cancel', style: 'cancel' },
       ],
       { cancelable: true }
@@ -1231,11 +1257,22 @@ export default function ChatScreen() {
     // See isSendingRef's declaration for the evidence behind this.
     if (isSendingRef.current) return;
 
-    if (!text.trim()) return;
+    // A staged photo is enough on its own; the text becomes its caption.
+    if (!text.trim() && !pendingPhoto) return;
 
     if (!chatUnlocked && containsContactInfo(text)) {
       setContactWarning(true);
       setTimeout(() => setContactWarning(false), 4000);
+      return;
+    }
+
+    // Photo path. Deliberately AFTER the contact-info check above, so a
+    // phone number typed as a caption is caught exactly as it would be in
+    // a plain message — attaching a picture must not become a way around
+    // that rule.
+    if (pendingPhoto) {
+      isSendingRef.current = false;
+      await sendStagedPhoto(pendingPhoto.uri);
       return;
     }
 
@@ -1875,6 +1912,38 @@ export default function ChatScreen() {
         </ScrollView>
       )}
 
+      {/* Staged photo. Sits directly above the input so it reads as part
+          of the message being composed rather than something already
+          sent. Tapping the thumbnail opens the picker again to swap it;
+          the × discards it. Neither has touched the network yet. */}
+      {pendingPhoto ? (
+        <View style={styles.pendingRow}>
+          <TouchableOpacity
+            onPress={openAttachMenu}
+            disabled={uploadingPhoto}
+            activeOpacity={0.85}
+            accessibilityLabel="Choose a different photo"
+          >
+            <Image source={{ uri: pendingPhoto.uri }} style={styles.pendingThumb} />
+          </TouchableOpacity>
+          <View style={styles.pendingTextCol}>
+            <Text style={styles.pendingTitle}>Photo ready to send</Text>
+            <Text style={styles.pendingHint}>
+              {uploadingPhoto ? 'Sending…' : 'Tap the photo to choose a different one. Add a caption below if you like.'}
+            </Text>
+          </View>
+          <TouchableOpacity
+            onPress={() => setPendingPhoto(null)}
+            disabled={uploadingPhoto}
+            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+            accessibilityRole="button"
+            accessibilityLabel="Remove photo"
+          >
+            <Text style={styles.pendingRemove}>×</Text>
+          </TouchableOpacity>
+        </View>
+      ) : null}
+
       <View style={[styles.inputRow, { paddingBottom: 10 + insets.bottom }]}>
         {/* Was a bare <Text>📎</Text> — no TouchableOpacity, no onPress,
             nothing behind it. It had never done anything; reported as
@@ -2270,6 +2339,17 @@ const styles = StyleSheet.create({
   msgTimeMine: { textAlign: 'right' },
   inputRow: { backgroundColor: BLACK, padding: 10, paddingHorizontal: 16, flexDirection: 'row', alignItems: 'center', gap: 10, borderTopWidth: 0.5, borderTopColor: DARK },
   attachIcon: { fontSize: 20, color: GREY },
+
+  pendingRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    paddingHorizontal: 14, paddingVertical: 10,
+    backgroundColor: '#1d1d1a', borderTopWidth: 0.5, borderTopColor: '#333',
+  },
+  pendingThumb: { width: 52, height: 52, borderRadius: 8, backgroundColor: '#222' },
+  pendingTextCol: { flex: 1, minWidth: 0 },
+  pendingTitle: { color: '#fff', fontSize: 13, fontWeight: '700' },
+  pendingHint: { color: GREY, fontSize: 11.5, lineHeight: 15, marginTop: 2 },
+  pendingRemove: { color: GREY, fontSize: 24, lineHeight: 26, paddingHorizontal: 4 },
   msgImage: { width: 200, height: 200, borderRadius: 10, backgroundColor: '#222' },
   msgImageLoading: { alignItems: 'center', justifyContent: 'center' },
   inputBar: { flex: 1, backgroundColor: DARK, borderRadius: 24, padding: 10, paddingHorizontal: 16, borderWidth: 0.5, borderColor: '#333', color: '#fff', fontSize: 13 },
