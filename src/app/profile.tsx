@@ -94,6 +94,24 @@ const BLACK = '#1A1A18';
 const DARK = '#2a2a2a';
 const GREY = '#AAAAAA';
 
+// Tag labels for display. Must match the vocabulary in rating.tsx and the
+// ratings_tags_known constraint — if a tag is added there and not here, the
+// raw value ('not_as_described') is shown rather than a crash, but it looks
+// like a bug to whoever reads it.
+const TAG_LABELS: Record<string, string> = {
+  as_described: 'As described',
+  on_time: 'On time',
+  easy_to_deal_with: 'Easy to deal with',
+  fair_price: 'Fair price',
+  not_as_described: 'Not as described',
+  late: 'Late',
+  hard_to_reach: 'Hard to reach',
+  pushed_off_app: 'Pushed off the app',
+};
+const NEGATIVE_TAG_LABELS: Record<string, true> = {
+  not_as_described: true, late: true, hard_to_reach: true, pushed_off_app: true,
+};
+
 export default function ProfileScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -218,10 +236,15 @@ export default function ProfileScreen() {
     // this screen; this section is for what people wrote.
     const { data: reviews } = await supabase
       .from('ratings')
-      .select('stars, review, role, created_at')
+      // Was `.not('review','is',null).neq('review','')`, which hid every
+      // rating that carried no typed text — 14 of the first 16. So this
+      // section showed almost nothing, and what it did show was "Awesome".
+      // A rating with tags says plenty without a sentence, so the filter
+      // now keeps either. listings(title) gives the reader the one thing
+      // the card was missing entirely: what was actually traded.
+      .select('stars, review, role, created_at, tags, listings(title)')
       .eq('reviewee_id', user.id)
-      .not('review', 'is', null)
-      .neq('review', '')
+      .or('review.not.is.null,tags.not.is.null')
       .order('created_at', { ascending: false })
       .limit(5);
     setRecentReviews(reviews ?? []);
@@ -770,6 +793,27 @@ export default function ProfileScreen() {
                       {r.role === 'buyer' ? 'From a buyer' : 'From a seller'} · {new Date(r.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
                     </Text>
                   </View>
+                  {/* What was actually traded. "From a seller · 2 Sept"
+                      told a reader nothing; the item is most of what makes
+                      a review worth reading. Only listing deals carry one —
+                      Wanted posts and trips have no listing row. */}
+                  {r.listings?.title ? (
+                    <Text style={styles.reviewItemName} numberOfLines={1}>
+                      {r.role === 'buyer' ? 'Sold' : 'Bought'}: {r.listings.title}
+                    </Text>
+                  ) : null}
+                  {Array.isArray(r.tags) && r.tags.length > 0 ? (
+                    <View style={styles.reviewTagRow}>
+                      {r.tags.map((t: string) => (
+                        <Text
+                          key={t}
+                          style={[styles.reviewTag, NEGATIVE_TAG_LABELS[t] ? styles.reviewTagBad : null]}
+                        >
+                          {TAG_LABELS[t] ?? t}
+                        </Text>
+                      ))}
+                    </View>
+                  ) : null}
                   {r.review ? <Text style={styles.reviewText}>{r.review}</Text> : null}
                 </View>
               ))}
@@ -918,6 +962,13 @@ const styles = StyleSheet.create({
   reviewHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 },
   reviewRole: { fontSize: 11, color: GREY },
   reviewText: { fontSize: 13, color: '#ccc', lineHeight: 19 },
+  reviewItemName: { color: '#fff', fontSize: 13, fontWeight: '700', marginTop: 6 },
+  reviewTagRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 8 },
+  reviewTag: {
+    backgroundColor: '#2A2416', color: GOLD, fontSize: 11, fontWeight: '700',
+    paddingVertical: 4, paddingHorizontal: 9, borderRadius: 999, overflow: 'hidden',
+  },
+  reviewTagBad: { backgroundColor: '#3a1a1a', color: '#ff8a8a' },
 
   menuRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 12, borderBottomWidth: 0.5, borderBottomColor: '#2a2a2a' },
   // NEW: highlighted row variant — subtle gold-tinted background,

@@ -88,6 +88,44 @@ export default function RatingScreen() {
 
   const [stars, setStars] = useState(0);
   const [review, setReview] = useState('');
+
+  // TAPPED FEEDBACK, because typed feedback was not arriving.
+  //
+  // All 16 ratings in this app were 5 stars and 14 had no text at all; the
+  // two that did read "Awesome" and "5 star". A free text box with no
+  // prompt gets one word. A chip gets tapped — people will tap "Late" when
+  // they would never compose a sentence saying so — and unlike free text,
+  // chips aggregate into something a profile can show.
+  //
+  // Every tag names something the other person could have done
+  // differently. Nothing here is a mood: no "friendly", no "professional".
+  // Which set is offered follows the stars, so nobody is asked to explain
+  // a problem they did not report.
+  const [tags, setTags] = useState<string[]>([]);
+  const POSITIVE_TAGS: [string, string][] = [
+    ['as_described', 'As described'],
+    ['on_time', 'On time'],
+    ['easy_to_deal_with', 'Easy to deal with'],
+    ['fair_price', 'Fair price'],
+  ];
+  const NEGATIVE_TAGS: [string, string][] = [
+    ['not_as_described', 'Not as described'],
+    ['late', 'Late'],
+    ['hard_to_reach', 'Hard to reach'],
+    ['pushed_off_app', 'Pushed me off the app'],
+  ];
+  // 4 stars and up reads as "this went well"; 3 and below as "it did not".
+  const tagOptions = stars >= 4 ? POSITIVE_TAGS : NEGATIVE_TAGS;
+
+  function toggleTag(value: string) {
+    setTags((current) =>
+      current.includes(value)
+        ? current.filter((t) => t !== value)
+        // Capped at 4 to match the ratings_tags_known constraint, and
+        // because a rating that ticks everything says nothing.
+        : current.length >= 4 ? current : [...current, value]
+    );
+  }
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState('');
@@ -195,6 +233,7 @@ export default function RatingScreen() {
           p_session_id: session_id,
           p_stars: stars,
           p_review: review.trim() || null,
+          p_tags: tags.length ? tags : null,
         });
 
     setSubmitting(false);
@@ -369,6 +408,35 @@ export default function RatingScreen() {
         </Text>
       )}
 
+      {/* Tapped feedback, offered BEFORE the text box. The order matters:
+          most people will stop after the chips, and that is fine — the
+          chips are the part that carries information. Only shown once
+          stars are chosen, so the question matches the verdict. */}
+      {stars > 0 && !isDelivery ? (
+        <>
+          <Text style={styles.reviewLabel}>
+            {stars >= 4 ? 'What went well?' : 'What went wrong?'}
+          </Text>
+          <View style={styles.tagRow}>
+            {tagOptions.map(([value, label]) => {
+              const on = tags.includes(value);
+              return (
+                <TouchableOpacity
+                  key={value}
+                  style={[styles.tagChip, on && (stars >= 4 ? styles.tagChipOn : styles.tagChipBad)]}
+                  onPress={() => toggleTag(value)}
+                  activeOpacity={0.85}
+                >
+                  <Text style={[styles.tagChipText, on && (stars >= 4 ? styles.tagChipTextOn : styles.tagChipTextBad)]}>
+                    {label}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        </>
+      ) : null}
+
       {/* Optional review text */}
       <Text style={styles.reviewLabel}>Add a comment (optional)</Text>
       <TextInput
@@ -439,6 +507,20 @@ const styles = StyleSheet.create({
   starLabel: { textAlign: 'center', color: GOLD, fontSize: 14, fontWeight: '700', marginBottom: 24 },
 
   reviewLabel: { fontSize: 13, fontWeight: '700', color: '#fff', marginBottom: 8 },
+
+  // Negative chips get their own colour when selected. A red "Late" is
+  // harder to tap by accident than a gold one, and it reads back to the
+  // person as a real statement rather than a preference.
+  tagRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 18 },
+  tagChip: {
+    backgroundColor: '#222220', borderWidth: 1, borderColor: '#3a3a35',
+    borderRadius: 999, paddingVertical: 9, paddingHorizontal: 14,
+  },
+  tagChipOn: { backgroundColor: '#2A2416', borderColor: '#5a4a1c' },
+  tagChipBad: { backgroundColor: '#3a1a1a', borderColor: '#7a2f2f' },
+  tagChipText: { color: '#AAAAAA', fontSize: 13 },
+  tagChipTextOn: { color: GOLD, fontWeight: '700' },
+  tagChipTextBad: { color: '#ff8a8a', fontWeight: '700' },
   reviewInput: {
     backgroundColor: DARK, borderRadius: 12, padding: 14,
     color: '#fff', fontSize: 13, lineHeight: 20,
