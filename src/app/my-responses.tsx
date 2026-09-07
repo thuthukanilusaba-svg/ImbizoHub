@@ -98,6 +98,24 @@ const STATE_COLOUR: Record<string, string> = {
   closed: GREY,
 };
 
+/**
+ * Sort order for the list. A tester asked whether a lost offer drops off
+ * the list or moves down: it did neither. The query is created_at desc and
+ * nothing else, so a "Not selected" from three weeks ago outranked a live
+ * "Waiting" from this morning, and the screen stopped being a to-do list.
+ *
+ * Ranked, not filtered. Sellers do want to see what they lost — just not
+ * above what is still live. Accepted sits above dead but below waiting:
+ * it is good news, but waiting is the only state the seller can still act
+ * on by changing his price.
+ */
+const STATE_RANK: Record<string, number> = {
+  waiting: 0,
+  accepted: 1,
+  declined: 2,
+  closed: 3,
+};
+
 function formatDate(iso: string): string {
   try {
     return new Date(iso.replace(' ', 'T')).toLocaleDateString(undefined, {
@@ -178,17 +196,30 @@ export default function MyResponsesScreen() {
     const byId: Record<string, any> = {};
     (requests ?? []).forEach((r: any) => { byId[r.id] = r; });
 
-    setResponses(
-      mine.map((r: any) => ({
-        ...r,
-        // A want can be deleted out from under a response. Say so rather
-        // than rendering a blank card.
-        requestTitle: byId[r.item_request_id]?.title ?? 'This want was removed',
-        requestStatus: byId[r.item_request_id]?.status ?? 'closed',
-        requestOwnerId: byId[r.item_request_id]?.user_id ?? null,
-        requestLocation: byId[r.item_request_id]?.location ?? null,
-      }))
-    );
+    const mapped: MyResponse[] = mine.map((r: any) => ({
+      ...r,
+      // A want can be deleted out from under a response. Say so rather
+      // than rendering a blank card.
+      requestTitle: byId[r.item_request_id]?.title ?? 'This want was removed',
+      requestStatus: byId[r.item_request_id]?.status ?? 'closed',
+      requestOwnerId: byId[r.item_request_id]?.user_id ?? null,
+      requestLocation: byId[r.item_request_id]?.location ?? null,
+    }));
+
+    // Sorted here, not in the query. offerState() needs the WANT's status
+    // as well as the response's own — "closed" only exists as the pair of
+    // a pending response against a want that has moved on — and that join
+    // happens above in JS, so Postgres could not order by it.
+    //
+    // created_at desc is kept as the tiebreak, so within each group the
+    // list still reads newest-first exactly as before.
+    mapped.sort((a, b) => {
+      const byState = STATE_RANK[offerState(a)] - STATE_RANK[offerState(b)];
+      if (byState !== 0) return byState;
+      return b.created_at.localeCompare(a.created_at);
+    });
+
+    setResponses(mapped);
     setLoading(false);
   }
 
