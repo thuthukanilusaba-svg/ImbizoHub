@@ -545,6 +545,14 @@ enabled = true
 verify_jwt = false
 entrypoint = "./functions/notify-registration-expiring/index.ts"
 
+[functions.notify-stale-wants]
+enabled = true
+# verify_jwt = false because pg_cron calls this, and cron has no user
+# session to present. The X-Notify-Secret check inside the function is
+# what actually guards it — same arrangement as the four jobs above.
+verify_jwt = false
+entrypoint = "./functions/notify-stale-wants/index.ts"
+
 [functions.notify-user-suspended]
 enabled = true
 verify_jwt = false

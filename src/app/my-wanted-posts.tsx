@@ -132,6 +132,11 @@ export default function MyWantedPostsScreen() {
   function statusLabel(status: string) {
     if (status === 'matched') return 'Matched';
     if (status === 'open') return 'Open';
+    // Set by notify-stale-wants when a buyer leaves offers unanswered
+    // for 14 days. Without this line the fallthrough renders the raw
+    // lowercase 'expired' in the badge, beside properly cased Matched
+    // and Open.
+    if (status === 'expired') return 'Expired';
     return status;
   }
 
