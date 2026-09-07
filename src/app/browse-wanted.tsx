@@ -444,9 +444,17 @@ export default function BrowseWantedScreen() {
               </View>
 
               {alreadyResponded ? (
-                <View style={styles.respondedBadge}>
-                  <Text style={styles.respondedBadgeText}>✓ You've responded</Text>
-                </View>
+                /* Was a dead View. The seller is looking straight at his own
+                   offer here, so this is the second-best moment in the app to
+                   reach "Prices I've offered" (the best is the confirmation
+                   sheet). Until now the profile screen was the only way in. */
+                <TouchableOpacity
+                  style={styles.respondedBadge}
+                  onPress={() => router.push('/my-responses')}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.respondedBadgeText}>✓ You've responded — view or edit →</Text>
+                </TouchableOpacity>
               ) : (
                 <TouchableOpacity
                   style={[styles.respondBtn, checkingId === item.id && { opacity: 0.6 }]}
@@ -601,15 +609,39 @@ export default function BrowseWantedScreen() {
                 <Text style={styles.successTitle}>Response sent!</Text>
                 <Text style={styles.successBody}>
                   {isPromoActive()
-                    ? 'The buyer will review your price. If they pick you, you\'ll be notified and a chat will open right away — free, launch promotion through Jan 31, 2027. Responding costs you nothing and you keep 100% of your price.'
-                    : 'The buyer will review your price. If they pick you, you\'ll be notified and a chat will open once they\'ve paid ImbizoHub\'s small commission. Responding costs you nothing and you keep 100% of your price — the fee is the buyer\'s.'}
+                    ? 'The buyer will review your price. If they pick you, you\'ll be notified and a chat will open right away — free, launch promotion through Jan 31, 2027. If they pick someone else, we\'ll tell you that too. Responding costs you nothing and you keep 100% of your price.'
+                    : 'The buyer will review your price. If they pick you, you\'ll be notified and a chat will open once they\'ve paid ImbizoHub\'s small commission. If they pick someone else, we\'ll tell you that too. Responding costs you nothing and you keep 100% of your price — the fee is the buyer\'s.'}
                 </Text>
+
+                {/* A tester asked whether he could follow up or counter-offer
+                    after sending a price. He could — my-responses.tsx has let
+                    a waiting offer be edited or withdrawn since it was built.
+                    Nothing anywhere said so, and its only route in was the
+                    profile screen, so the feature was invisible at the exact
+                    moment a seller would want it. This is that signpost. */}
+                <Text style={styles.successHint}>
+                  Changed your mind on the price? While the buyer is still deciding you can
+                  edit your offer or withdraw it — any time, as often as you like.
+                </Text>
+
                 {/* Its own style, not submitModalBtn. That one carries
                     flex: 2 because it sits beside Cancel in a row; dropped
                     into this centred column it collapsed to its content
                     and rendered as a squashed little pill. */}
                 <TouchableOpacity style={styles.successBtn} onPress={() => setModalVisible(false)}>
                   <Text style={styles.submitModalBtnText}>Done</Text>
+                </TouchableOpacity>
+
+                {/* Close the modal BEFORE routing. Pushing out from under an
+                    open RN Modal leaves it mounted over the new screen on
+                    Android, and the seller lands on my-responses unable to
+                    touch anything. */}
+                <TouchableOpacity
+                  style={styles.successLinkBtn}
+                  onPress={() => { setModalVisible(false); router.push('/my-responses'); }}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.successLinkText}>See my offers →</Text>
                 </TouchableOpacity>
               </View>
             )}
@@ -726,5 +758,8 @@ const styles = StyleSheet.create({
   successBtn: { alignSelf: 'stretch', borderRadius: 12, paddingVertical: 16, alignItems: 'center', backgroundColor: GOLD },
   successEmoji: { fontSize: 48, marginBottom: 12 },
   successTitle: { fontSize: 20, fontWeight: '800', color: '#fff', marginBottom: 8 },
-  successBody: { fontSize: 14, color: GREY, textAlign: 'center', lineHeight: 20, marginBottom: 24 },
+  successBody: { fontSize: 14, color: GREY, textAlign: 'center', lineHeight: 20, marginBottom: 16 },
+  successHint: { fontSize: 13, color: GREY, textAlign: 'center', lineHeight: 19, marginBottom: 24, paddingHorizontal: 4 },
+  successLinkBtn: { alignSelf: 'stretch', paddingVertical: 14, alignItems: 'center' },
+  successLinkText: { color: GOLD, fontWeight: '700', fontSize: 14 },
 });
