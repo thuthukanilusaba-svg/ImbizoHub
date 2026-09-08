@@ -183,11 +183,34 @@ export default function ListingScreen() {
 
   async function fetchListing() {
     setLoading(true);
+    const { data: { user: viewer } } = await supabase.auth.getUser();
+
     const { data } = await supabase
       .from('listings')
       .select('*')
       .eq('id', id)
       .maybeSingle();
+
+    // A listing pulled down by a moderator (admin_block_user sets
+    // 'removed_by_admin') must not render here.
+    //
+    // Every LIST surface filters .eq('status','active') already, so a
+    // pulled listing vanishes from Home, Explore and the seller page on
+    // its own. This screen fetches by id and filtered on nothing, which
+    // meant the direct link still worked — and a direct link is exactly
+    // what a blocked scammer would keep sending on WhatsApp, where the
+    // buyer never sees the marketplace at all. Removing the listing from
+    // browse while leaving its URL live would have hidden it from
+    // everyone except the people most at risk.
+    //
+    // The owner still sees their own, so my-listings.tsx can open it and
+    // show why it is gone rather than dead-ending on "not found".
+    if (data && data.status === 'removed_by_admin' && data.user_id !== viewer?.id) {
+      setListing(null);
+      setLoading(false);
+      return;
+    }
+
     setListing(data);
 
     if (data?.user_id) {

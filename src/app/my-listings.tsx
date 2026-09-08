@@ -66,8 +66,14 @@ export default function MyListingsScreen() {
     setLoading(false);
   }
 
-  const activeCount = listings.filter((l) => l.status !== 'sold').length;
+  // 'active' explicitly, not "anything that isn't sold". A listing
+  // pulled down by a moderator ('removed_by_admin') would otherwise be
+  // counted and shown as active, so a blocked seller would look at a
+  // normal-looking list and have no idea their items had stopped being
+  // visible to anybody.
+  const activeCount = listings.filter((l) => l.status === 'active').length;
   const soldCount = listings.filter((l) => l.status === 'sold').length;
+  const removedCount = listings.filter((l) => l.status === 'removed_by_admin').length;
 
   return (
     <View style={styles.container}>
@@ -82,6 +88,7 @@ export default function MyListingsScreen() {
       {!loading && listings.length > 0 && (
         <Text style={styles.countSummary}>
           {activeCount} active{soldCount > 0 ? ` · ${soldCount} sold` : ''}
+          {removedCount > 0 ? ` · ${removedCount} removed` : ''}
         </Text>
       )}
 
@@ -101,10 +108,11 @@ export default function MyListingsScreen() {
 
           {listings.map((item) => {
             const isSold = item.status === 'sold';
+            const isRemoved = item.status === 'removed_by_admin';
             return (
               <TouchableOpacity
                 key={item.id}
-                style={[styles.card, isSold && styles.cardSold]}
+                style={[styles.card, (isSold || isRemoved) && styles.cardSold]}
                 // NEW: swipe-through-postings context — see lib/listingNav.ts.
                 onPress={() => router.push(buildListingHref(item.id, listings.map((l) => l.id)))}
                 activeOpacity={0.8}
@@ -112,12 +120,22 @@ export default function MyListingsScreen() {
                 <View style={styles.imageWrap}>
                   <Image
                     source={{ uri: item.image_url }}
-                    style={[styles.image, isSold && styles.imageSold]}
+                    style={[styles.image, (isSold || isRemoved) && styles.imageSold]}
                     contentFit="cover"
                   />
                   {isSold && (
                     <View style={styles.soldBadge}>
                       <Text style={styles.soldBadgeText}>SOLD</Text>
+                    </View>
+                  )}
+                  {/* Says removed, not just greyed out. A seller whose
+                      account was blocked is owed a plain statement that
+                      this item is no longer visible to buyers — the
+                      reason itself reaches them by push and again the
+                      moment they try to post. */}
+                  {isRemoved && (
+                    <View style={styles.removedBadge}>
+                      <Text style={styles.removedBadgeText}>REMOVED</Text>
                     </View>
                   )}
                 </View>
@@ -165,6 +183,14 @@ const styles = StyleSheet.create({
     position: 'absolute', top: 4, left: 4, backgroundColor: '#8a2a2a',
     borderRadius: 4, paddingHorizontal: 6, paddingVertical: 2,
   },
+  // Deeper red than soldBadge and full-width across the thumbnail: SOLD
+  // is good news, this is not, and the two must not be mistaken for one
+  // another at a glance.
+  removedBadge: {
+    position: 'absolute', top: 4, left: 4, right: 4, backgroundColor: '#7a1f1f',
+    borderRadius: 4, paddingHorizontal: 4, paddingVertical: 2, alignItems: 'center',
+  },
+  removedBadgeText: { color: '#ffd9d9', fontSize: 9, fontWeight: '800' },
   soldBadgeText: { color: '#fff', fontSize: 9, fontWeight: '800' },
   cardBody: { flex: 1, marginLeft: 12, justifyContent: 'center' },
   title: { color: '#fff', fontSize: 14, fontWeight: '700', marginBottom: 3 },
