@@ -30,8 +30,8 @@
 import { useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import {
-  ActivityIndicator, Alert, Platform, RefreshControl, ScrollView, StyleSheet,
-  Text, TouchableOpacity, View,
+  ActivityIndicator, Alert, Modal, Platform, RefreshControl, ScrollView, StyleSheet,
+  Text, TextInput, TouchableOpacity, View,
 } from 'react-native';
 import { supabase } from '../../lib/supabase';
 
@@ -73,6 +73,41 @@ const FILTERS: { key: StatusFilter; label: string }[] = [
   { key: 'all', label: 'All' },
 ];
 
+/**
+ * A permanent block writes suspended_until = 'infinity', which PostgREST
+ * serialises as the literal string "infinity".
+ *
+ * new Date("infinity") is an Invalid Date and NaN > Date.now() is FALSE,
+ * so the plain date comparison this screen used would have shown a
+ * blocked scammer as not suspended at all — offering to block him again
+ * and hiding the button that lifts it. Every read of suspended_until
+ * goes through these two.
+ */
+function isBlockedForever(until: string | null): boolean {
+  return until === 'infinity';
+}
+
+function isCurrentlyStopped(until: string | null): boolean {
+  if (!until) return false;
+  if (isBlockedForever(until)) return true;
+  return new Date(until).getTime() > Date.now();
+}
+
+/**
+ * Written to profiles.suspension_reason, pushed to the person by
+ * notify-user-suspended, AND read back at them by
+ * enforce_not_suspended() every time they try to act. So this text is
+ * the whole explanation they ever get — it is phrased for the person
+ * being blocked, not for the moderation queue.
+ */
+const BLOCK_REASONS = [
+  'Scamming — took payment and did not deliver',
+  'Fake or misleading listings',
+  'Impersonating someone else',
+  'Harassment or abusive messages',
+  'Selling prohibited or stolen goods',
+];
+
 export default function AdminReportsReviewScreen() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
@@ -82,6 +117,13 @@ export default function AdminReportsReviewScreen() {
   const [filter, setFilter] = useState<StatusFilter>('open');
   const [updatingId, setUpdatingId] = useState<string | null>(null);
   const [error, setError] = useState('');
+
+  // The report whose account is being blocked, null when the sheet is
+  // closed. Holding the report rather than a boolean keeps the reason
+  // typed so far bound to the person it is about.
+  const [blocking, setBlocking] = useState<Report | null>(null);
+  const [blockReason, setBlockReason] = useState('');
+  const [blockError, setBlockError] = useState('');
 
   useEffect(() => { load(filter); }, [filter]);
 
@@ -185,6 +227,57 @@ export default function AdminReportsReviewScreen() {
         },
       ]
     );
+  }
+
+  // BLOCKING. Separate from suspension on purpose: a suspension is a
+  // cooling-off period and its reason can be the reporter's category, but
+  // a block is permanent and the reason is the only thing the person ever
+  // gets told, so it is typed by a moderator and admin_block_user()
+  // rejects an empty one.
+  //
+  // A modal rather than Alert.alert with a text field: RN has no cross
+  // platform prompt (Alert.prompt is iOS-only), and react-native-web
+  // ignores Alert's buttons array entirely — the same thing that made the
+  // chat attachment menu look dead on web. This screen is used from a
+  // desktop browser as often as a phone.
+  function openBlockSheet(report: Report) {
+    setBlocking(report);
+    setBlockReason('');
+  }
+
+  async function confirmBlock() {
+    if (!blocking) return;
+    const reason = blockReason.trim();
+    if (!reason) {
+      setBlockError('Give a reason — the person is shown this text and nothing else.');
+      return;
+    }
+
+    setBlockError('');
+    setUpdatingId(blocking.report_id);
+
+    const { error: rpcError } = await supabase.rpc('admin_block_user', {
+      p_user_id: blocking.reported_user_id,
+      p_reason: reason,
+    });
+
+    if (rpcError) {
+      setUpdatingId(null);
+      setBlockError(rpcError.message);
+      return;
+    }
+
+    // Same reasoning as handleSuspend: acting on a report IS reviewing
+    // it, and a queue that still shows it as Open stops meaning anything.
+    await supabase.rpc('admin_review_report', {
+      p_report_id: blocking.report_id,
+      p_new_status: 'reviewed',
+    });
+
+    setUpdatingId(null);
+    setBlocking(null);
+    setBlockReason('');
+    load(filter);
   }
 
   async function handleUnsuspend(report: Report) {
@@ -293,8 +386,8 @@ export default function AdminReportsReviewScreen() {
         ) : null}
 
         {reports.map((r) => {
-          const isSuspended = !!r.reported_user_suspended_until
-            && new Date(r.reported_user_suspended_until).getTime() > Date.now();
+          const isSuspended = isCurrentlyStopped(r.reported_user_suspended_until);
+          const isBlocked = isBlockedForever(r.reported_user_suspended_until);
 
           return (
             <View key={r.report_id} style={styles.card}>
@@ -316,7 +409,7 @@ export default function AdminReportsReviewScreen() {
                 </Text>
                 <Text style={styles.partyLine}>
                   <Text style={styles.partyLabel}>Reported user: </Text>{r.reported_user_name ?? 'Unknown user'}
-                  {isSuspended ? ' (currently suspended)' : ''}
+                  {isBlocked ? ' (BLOCKED)' : isSuspended ? ' (currently suspended)' : ''}
                 </Text>
                 {r.listing_title ? (
                   <Text style={styles.partyLine}>
@@ -362,14 +455,20 @@ export default function AdminReportsReviewScreen() {
                   onPress={() => handleUnsuspend(r)}
                 >
                   <Text style={styles.unsuspendBtnText}>
-                    {updatingId === r.report_id ? '...' : 'Lift suspension'}
+                    {updatingId === r.report_id ? '...' : isBlocked ? 'Unblock this account' : 'Lift suspension'}
                   </Text>
                 </TouchableOpacity>
               ) : (
                 <View style={styles.suspendRow}>
+                  {/* 3 days removed: too short to be a real consequence
+                      and it made the row read as a sliding scale, which
+                      invited picking the smallest option by default. 7
+                      and 30 are the cooling-off periods; anything worse
+                      than 30 days is not a longer suspension, it is a
+                      block. */}
                   <Text style={styles.suspendLabel}>Suspend this account</Text>
                   <View style={styles.actionRow}>
-                    {[3, 7, 30].map((days) => (
+                    {[7, 30].map((days) => (
                       <TouchableOpacity
                         key={days}
                         style={[styles.actionBtn, styles.suspendBtn, updatingId === r.report_id && styles.actionBtnDisabled]}
@@ -380,6 +479,17 @@ export default function AdminReportsReviewScreen() {
                       </TouchableOpacity>
                     ))}
                   </View>
+
+                  <Text style={[styles.suspendLabel, styles.blockLabel]}>Scamming? Block permanently</Text>
+                  <TouchableOpacity
+                    style={[styles.actionBtn, styles.blockBtn, updatingId === r.report_id && styles.actionBtnDisabled]}
+                    disabled={updatingId === r.report_id}
+                    onPress={() => openBlockSheet(r)}
+                  >
+                    <Text style={styles.blockBtnText}>
+                      🚫 Block {r.reported_user_name ?? 'this account'}
+                    </Text>
+                  </TouchableOpacity>
                 </View>
               )}
             </View>
@@ -388,6 +498,71 @@ export default function AdminReportsReviewScreen() {
 
         <View style={{ height: 40 }} />
       </ScrollView>
+
+      {/* THE BLOCK SHEET. The reason typed here is the entire explanation
+          the person ever receives, through three channels:
+            1. profiles.suspension_reason  (the record)
+            2. notify-user-suspended       (a push, if they have a token)
+            3. enforce_not_suspended()     (raised at them the next time
+                                            they try to post or message)
+          (3) is the one that always lands, which is why the wording is
+          addressed to them rather than filed as a moderator's note. */}
+      <Modal visible={!!blocking} transparent animationType="fade" onRequestClose={() => setBlocking(null)}>
+        <View style={styles.modalBackdrop}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>
+              Block {blocking?.reported_user_name ?? 'this account'}?
+            </Text>
+            <Text style={styles.modalBody}>
+              Permanent. They keep their login but cannot post listings, send messages,
+              post or answer Wanted posts, post trips, quote, or leave ratings — ever,
+              until you unblock them. They are told the reason below.
+            </Text>
+
+            <Text style={styles.modalLabel}>Reason (they see this)</Text>
+            <View style={styles.reasonChips}>
+              {BLOCK_REASONS.map((preset) => (
+                <TouchableOpacity
+                  key={preset}
+                  style={[styles.reasonChip, blockReason === preset && styles.reasonChipActive]}
+                  onPress={() => { setBlockReason(preset); setBlockError(''); }}
+                >
+                  <Text style={[styles.reasonChipText, blockReason === preset && styles.reasonChipTextActive]}>
+                    {preset}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            <TextInput
+              style={styles.reasonInput}
+              value={blockReason}
+              onChangeText={(t) => { setBlockReason(t); setBlockError(''); }}
+              placeholder="Or write your own reason"
+              placeholderTextColor="#666"
+              multiline
+              maxLength={300}
+            />
+
+            {blockError ? <Text style={styles.modalError}>{blockError}</Text> : null}
+
+            <View style={styles.modalActions}>
+              <TouchableOpacity style={styles.modalCancel} onPress={() => setBlocking(null)}>
+                <Text style={styles.modalCancelText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modalConfirm, !!updatingId && styles.actionBtnDisabled]}
+                disabled={!!updatingId}
+                onPress={confirmBlock}
+              >
+                <Text style={styles.modalConfirmText}>
+                  {updatingId ? 'Blocking…' : 'Block permanently'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -454,5 +629,34 @@ const styles = StyleSheet.create({
   suspendBtnText: { color: '#ff8a8a', fontSize: 12, fontWeight: '800' },
   unsuspendBtn: { backgroundColor: DARK, borderWidth: 0.5, borderColor: '#444', marginTop: 14, alignSelf: 'flex-start' },
   unsuspendBtnText: { color: GREEN, fontSize: 12, fontWeight: '800' },
+
+  // Deliberately louder than suspendBtn — a solid red fill against that
+  // one's muted outline. This action does not expire and cannot be
+  // undone by waiting, so it should not look like the next notch along
+  // from "30 days".
+  blockLabel: { marginTop: 16 },
+  blockBtn: { backgroundColor: '#7a1f1f', borderWidth: 0.5, borderColor: '#a83232', marginTop: 8, flex: 0 },
+  blockBtnText: { color: '#ffd9d9', fontSize: 12, fontWeight: '800' },
+
+  modalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.75)', justifyContent: 'center', padding: 20 },
+  modalCard: { backgroundColor: '#1f1f1d', borderRadius: 16, padding: 20, borderWidth: 0.5, borderColor: '#3a3a3a' },
+  modalTitle: { color: '#fff', fontSize: 18, fontWeight: '800', marginBottom: 8 },
+  modalBody: { color: GREY, fontSize: 13, lineHeight: 19, marginBottom: 16 },
+  modalLabel: { color: GREY, fontSize: 11, fontWeight: '700', letterSpacing: 0.4, textTransform: 'uppercase', marginBottom: 8 },
+  reasonChips: { flexDirection: 'row', flexWrap: 'wrap', marginBottom: 12 },
+  reasonChip: { borderWidth: 0.5, borderColor: '#444', borderRadius: 999, paddingHorizontal: 12, paddingVertical: 7, marginRight: 8, marginBottom: 8 },
+  reasonChipActive: { backgroundColor: '#3a1a1a', borderColor: '#a83232' },
+  reasonChipText: { color: GREY, fontSize: 12, fontWeight: '600' },
+  reasonChipTextActive: { color: '#ffd9d9' },
+  reasonInput: {
+    backgroundColor: BLACK, borderRadius: 10, borderWidth: 0.5, borderColor: '#444',
+    color: '#fff', fontSize: 14, padding: 12, minHeight: 64, textAlignVertical: 'top',
+  },
+  modalError: { color: RED, fontSize: 12, marginTop: 10 },
+  modalActions: { flexDirection: 'row', marginTop: 18 },
+  modalCancel: { flex: 1, paddingVertical: 14, alignItems: 'center', borderRadius: 12, borderWidth: 0.5, borderColor: '#444', marginRight: 10 },
+  modalCancelText: { color: GREY, fontSize: 14, fontWeight: '700' },
+  modalConfirm: { flex: 2, paddingVertical: 14, alignItems: 'center', borderRadius: 12, backgroundColor: '#7a1f1f', borderWidth: 0.5, borderColor: '#a83232' },
+  modalConfirmText: { color: '#ffd9d9', fontSize: 14, fontWeight: '800' },
   statusTag: { color: '#666', fontSize: 11, marginTop: 12, fontStyle: 'italic' },
 });

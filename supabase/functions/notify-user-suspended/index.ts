@@ -15,12 +15,18 @@
 // arriving later is discarded unseen. Same blind spot that hid three dead
 // cron jobs.
 //
-// Expected payload from admin_suspend_user():
-//   { user_id: uuid, days: number, reason: text | null }
+// Expected payload from admin_suspend_user() and admin_block_user():
+//   { user_id: uuid, days: number | null, permanent?: boolean, reason: text | null }
 //
 // Modelled on notify-verification-reviewed, which is the closest existing
 // shape: same shared-secret check, same Expo push helper, same fail-soft
 // 200 when there is nobody to notify.
+//
+// 8 Sep: handles permanent blocks (admin_block_user, suspended_until =
+// 'infinity'). Push is still the WEAKER of the two channels — no token,
+// notifications denied, or a reinstall and it never lands. The one that
+// always lands is enforce_not_suspended(), which raises the reason at
+// the person the moment they try to act.
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
@@ -64,7 +70,7 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { user_id, days, reason } = await req.json();
+    const { user_id, days, reason, permanent } = await req.json();
     if (!user_id) return new Response('Missing user_id', { status: 400 });
 
     // suspended_until is read from the row rather than recomputed from
@@ -84,14 +90,22 @@ Deno.serve(async (req) => {
       return new Response('No matching profile', { status: 200 });
     }
 
+    // A permanent block is suspended_until = 'infinity', which PostgREST
+    // returns as the literal string "infinity". new Date("infinity") is
+    // an Invalid Date, so the old code below would have pushed
+    // "suspended until Invalid Date" to the person. Checked before any
+    // date parsing happens, and trusted over the caller's `permanent`
+    // flag because the row is what is actually being enforced.
+    const isPermanent = profile.suspended_until === 'infinity' || permanent === true;
+
     let untilLabel = '';
-    if (profile.suspended_until) {
+    if (!isPermanent && profile.suspended_until) {
       untilLabel = new Date(profile.suspended_until).toLocaleDateString('en-GB', {
         day: 'numeric',
         month: 'long',
         year: 'numeric',
       });
-    } else if (typeof days === 'number' && days > 0) {
+    } else if (!isPermanent && typeof days === 'number' && days > 0) {
       untilLabel = new Date(Date.now() + days * 24 * 60 * 60 * 1000).toLocaleDateString('en-GB', {
         day: 'numeric',
         month: 'long',
@@ -101,16 +115,26 @@ Deno.serve(async (req) => {
 
     const statedReason = profile.suspension_reason ?? reason ?? null;
 
-    const body =
-      `Your account is suspended${untilLabel ? ` until ${untilLabel}` : ''}.` +
-      (statedReason ? ` Reason: ${statedReason}.` : '') +
-      ' Contact support if you believe this is a mistake.';
+    const title = isPermanent
+      ? 'Your account has been blocked'
+      : 'Your account has been suspended';
+
+    const body = isPermanent
+      ? 'Your account has been blocked and can no longer post, message or trade on ImbizoHub.' +
+        (statedReason ? ` Reason: ${statedReason}.` : '') +
+        ' Contact support@imbizohub.com if you believe this is a mistake.'
+      : `Your account is suspended${untilLabel ? ` until ${untilLabel}` : ''}.` +
+        (statedReason ? ` Reason: ${statedReason}.` : '') +
+        ' Contact support if you believe this is a mistake.';
 
     await sendExpoPushNotification(
       profile.push_token,
-      'Your account has been suspended',
+      title,
       body,
-      { type: 'account_suspended', suspended_until: profile.suspended_until ?? null }
+      {
+        type: isPermanent ? 'account_blocked' : 'account_suspended',
+        suspended_until: profile.suspended_until ?? null,
+      }
     );
 
     return new Response('OK', { status: 200 });
