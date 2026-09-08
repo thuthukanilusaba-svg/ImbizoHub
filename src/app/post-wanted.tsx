@@ -57,6 +57,7 @@ import {
 } from 'react-native';
 import { supabase } from '../../lib/supabase';
 import { reportHandledError } from '../../lib/crashReporter';
+import LocationPicker from '../../components/LocationPicker';
 
 const GOLD = '#B8860B';
 const BLACK = '#1A1A18';
@@ -264,13 +265,15 @@ export default function PostWantedScreen() {
             />
           </View>
 
+          {/* Was free text with placeholder "e.g. Harare", which is how
+              the live data ended up holding 'bulawayo' next to
+              'Bulawayo' and one row reading 'ghdxed'. See
+              components/LocationPicker.tsx. */}
           <Text style={styles.label}>Your location *</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="e.g. Harare"
-            placeholderTextColor="#666"
+          <LocationPicker
             value={location}
-            onChangeText={setLocation}
+            onChange={setLocation}
+            placeholder="Select your city"
           />
         </View>
 

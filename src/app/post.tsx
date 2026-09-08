@@ -40,6 +40,7 @@ import { normalizeImageOrientation } from '../../lib/imageOrientation';
 import { supabase } from '../../lib/supabase';
 import { prepareUpload } from '../../lib/uploadHelpers';
 import { reportHandledError } from '../../lib/crashReporter';
+import LocationPicker from '../../components/LocationPicker';
 
 const GOLD = '#B8860B';
 const BLACK = '#1A1A18';
@@ -418,13 +419,15 @@ export default function PostScreen() {
             keyboardType="decimal-pad"
           />
 
+          {/* Was free text. A browser autofilled 'Burbank' into it twice
+              — a US city, on a Zimbabwean marketplace — which is the
+              clearest possible argument for a picker. See
+              components/LocationPicker.tsx. */}
           <Text style={styles.label}>Location *</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="e.g. Harare"
-            placeholderTextColor="#666"
+          <LocationPicker
             value={location}
-            onChangeText={setLocation}
+            onChange={setLocation}
+            placeholder="Select your city"
           />
 
           <Text style={styles.label}>Category</Text>
