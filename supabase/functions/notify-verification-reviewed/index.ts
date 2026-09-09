@@ -79,11 +79,24 @@ Deno.serve(async (req) => {
 
     const typeLabel = TYPE_LABEL[request.verification_type] || 'verification';
     const isApproved = request.status === 'approved';
+    // 'expired' means nobody reviewed it inside the retention window and
+    // cleanup-expired-data deleted the document. Worded apart from
+    // 'rejected' deliberately: "wasn't approved" would send someone off
+    // to re-photograph an ID that was never the problem, and would
+    // blame them for our own unworked queue.
+    const isExpired = request.status === 'expired';
 
-    const title = isApproved ? 'Verification approved ✅' : 'Verification update';
+    const title = isApproved
+      ? 'Verification approved ✅'
+      : isExpired
+        ? 'Please submit your ID again'
+        : 'Verification update';
+
     const body = isApproved
       ? `Your ${typeLabel} application was approved!`
-      : `Your ${typeLabel} application wasn't approved.${request.rejection_reason ? ' Reason: ' + request.rejection_reason : ''}`;
+      : isExpired
+        ? `We didn't get to your ${typeLabel} application in time, and the document was deleted under our retention policy. Nothing was wrong with it — please submit again and we'll review it.`
+        : `Your ${typeLabel} application wasn't approved.${request.rejection_reason ? ' Reason: ' + request.rejection_reason : ''}`;
 
     await sendExpoPushNotification(
       profile?.push_token,

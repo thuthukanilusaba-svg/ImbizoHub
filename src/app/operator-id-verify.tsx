@@ -50,7 +50,11 @@ const GREY = '#AAAAAA';
 const RED = '#ff8a8a';
 
 type OperatorType = 'delivery_operator' | 'transport_operator';
-type ReviewStatus = 'not_submitted' | 'pending_review' | 'approved' | 'rejected';
+// 'expired' = nobody reviewed it within the retention window and
+// cleanup-expired-data deleted the document. Falls through to the
+// upload form below, which is exactly right — there is nothing to wait
+// for and resubmitting is the whole remedy.
+type ReviewStatus = 'not_submitted' | 'pending_review' | 'approved' | 'rejected' | 'expired';
 
 // FIX: `type` used to silently default to 'delivery_operator' whenever it
 // was missing or malformed (`type === 'transport_operator' ? ... :
@@ -278,6 +282,7 @@ export default function OperatorIdVerifyScreen() {
   }
 
   const wasRejected = reviewStatus === 'rejected';
+  const hasExpired = reviewStatus === 'expired';
 
   return (
     <View style={styles.container}>
@@ -294,6 +299,19 @@ export default function OperatorIdVerifyScreen() {
             <Text style={styles.errorText}>
               ⚠️ Your last submission wasn't approved{rejectionReason ? `: ${rejectionReason}` : '.'} Please upload a
               clearer photo to try again.
+            </Text>
+          </View>
+        )}
+
+        {/* Kept apart from the rejection banner on purpose. Telling
+            someone their ID "wasn't approved" when nobody ever looked
+            at it sends them off to re-photograph a document that was
+            never the problem, and blames them for our queue. */}
+        {hasExpired && (
+          <View style={styles.errorBox}>
+            <Text style={styles.errorText}>
+              🕐 We didn't review your last submission in time, so the photo was deleted under our
+              retention policy. Nothing was wrong with it — please upload it again.
             </Text>
           </View>
         )}

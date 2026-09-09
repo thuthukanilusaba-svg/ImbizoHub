@@ -57,6 +57,10 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
 const REJECTED_ID_DAYS = 90;
 const APPROVED_ID_DAYS = 365;
+// Submissions nobody ever reviewed. Well past any honest review time —
+// operator-id-verify.tsx promises "within a few business days" — so
+// reaching this number means the queue was abandoned, not busy.
+const PENDING_ID_DAYS = 60;
 const STALE_PUSH_TOKEN_DAYS = 180;
 
 function daysAgoIso(days: number): string {
@@ -77,6 +81,7 @@ Deno.serve(async (req) => {
     approved_documents_deleted: 0,
     stale_push_tokens_cleared: 0,
     // NEW: photo and payment-record cleanup — see additions below.
+    pending_documents_expired: 0,
     dispatch_photos_deleted: 0,
     wanted_response_photos_deleted: 0,
     listing_photos_deleted: 0,
@@ -106,7 +111,20 @@ Deno.serve(async (req) => {
           results.errors.push(`rejected remove ${row.id}: ${removeError.message}`);
           continue;
         }
-        await supabase.from('verification_requests').update({ document_url: null }).eq('id', row.id);
+        // Error CHECKED, and the counter only moves if it worked. This
+        // update failed on every run until 9 Sep 2026 — document_url
+        // was NOT NULL — and because the result was discarded and the
+        // counter incremented anyway, the function reported deleting
+        // documents it had half-deleted. The file was already gone from
+        // storage by this point, so the row was left pointing at a
+        // missing file and matched the same query again the next night,
+        // for ever.
+        const { error: nullError } = await supabase
+          .from('verification_requests').update({ document_url: null }).eq('id', row.id);
+        if (nullError) {
+          results.errors.push(`rejected null ${row.id}: ${nullError.message}`);
+          continue;
+        }
         results.rejected_documents_deleted++;
       }
     }
@@ -132,8 +150,77 @@ Deno.serve(async (req) => {
           results.errors.push(`approved remove ${row.id}: ${removeError.message}`);
           continue;
         }
-        await supabase.from('verification_requests').update({ document_url: null }).eq('id', row.id);
+        // Checked for the same reason as the rejected branch above.
+        const { error: nullError } = await supabase
+          .from('verification_requests').update({ document_url: null }).eq('id', row.id);
+        if (nullError) {
+          results.errors.push(`approved null ${row.id}: ${nullError.message}`);
+          continue;
+        }
         results.approved_documents_deleted++;
+      }
+    }
+
+    // 2b. Submissions NOBODY EVER REVIEWED, older than 60 days.
+    //
+    // The retention policy had no branch for these at all, so the one
+    // case where an ID photograph was kept indefinitely was the case
+    // where it was serving no purpose whatsoever. Rules 1 and 2 only
+    // match rows that reached 'approved' or 'rejected'.
+    //
+    // THE STATUS IS 'pending_review', NOT 'pending'. Writing the
+    // obvious .eq('status','pending') here would match nothing for
+    // ever and be invisible: no error, no failed run, an empty result
+    // identical to "nothing due yet".
+    //
+    // Filtered on submitted_at, not reviewed_at — reviewed_at is null
+    // on these by definition, and .lt() against null matches no rows,
+    // which would have been the same silent no-op in a different
+    // costume.
+    const { data: stale, error: staleError } = await supabase
+      .from('verification_requests')
+      .select('id, document_url')
+      .eq('status', 'pending_review')
+      .lt('submitted_at', daysAgoIso(PENDING_ID_DAYS))
+      .not('document_url', 'is', null);
+
+    if (staleError) {
+      results.errors.push(`pending fetch: ${staleError.message}`);
+    } else {
+      for (const row of stale ?? []) {
+        const { error: removeError } = await supabase.storage
+          .from('verification-documents')
+          .remove([row.document_url]);
+        if (removeError) {
+          results.errors.push(`pending remove ${row.id}: ${removeError.message}`);
+          continue;
+        }
+
+        // 'expired', not 'rejected'. Rejecting says we looked and said
+        // no, and would send someone off to re-photograph a perfectly
+        // good ID. Expiring says we never looked, which is the truth
+        // and is our failure, not theirs.
+        //
+        // Setting status is also what notifies them: the
+        // on_verification_reviewed trigger fires on the transition, so
+        // they are told to resubmit rather than left waiting on a
+        // review that is never coming. Nulling document_url alone
+        // would not fire it — the trigger function returns early when
+        // the status has not changed.
+        const { error: expireError } = await supabase
+          .from('verification_requests')
+          .update({
+            document_url: null,
+            status: 'expired',
+            reviewed_at: new Date().toISOString(),
+            rejection_reason: 'We did not review this in time, so the document was deleted under our retention policy. Please submit again.',
+          })
+          .eq('id', row.id);
+        if (expireError) {
+          results.errors.push(`pending expire ${row.id}: ${expireError.message}`);
+          continue;
+        }
+        results.pending_documents_expired++;
       }
     }
 

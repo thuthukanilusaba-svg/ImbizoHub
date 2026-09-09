@@ -54,7 +54,10 @@ const POLL_MAX_ATTEMPTS = 20; // ~40 seconds total — was 15 (~30s); widened
 // after a real trip_deposit payment on quotes.tsx took 32s to confirm
 // and got missed under the old window. Same webhook path, same fix.
 
-type ReviewStatus = 'not_submitted' | 'pending_review' | 'approved' | 'rejected';
+// 'expired' — see operator-id-verify.tsx. Nobody reviewed it inside the
+// retention window, so the document was deleted and resubmitting is the
+// remedy; falls through to the upload form below.
+type ReviewStatus = 'not_submitted' | 'pending_review' | 'approved' | 'rejected' | 'expired';
 
 export default function VerifiedSellerPayScreen() {
   const router = useRouter();
@@ -330,6 +333,15 @@ export default function VerifiedSellerPayScreen() {
 
         <Text style={styles.heading}>Verified Seller</Text>
         <Text style={styles.subheading}>Stand out and build trust with buyers.</Text>
+
+        {reviewStatus === 'expired' && (
+          <View style={styles.errorBox}>
+            <Text style={styles.errorText}>
+              🕐 We didn't review your last submission in time, so the document was deleted under our
+              retention policy. Nothing was wrong with it — please upload it again.
+            </Text>
+          </View>
+        )}
 
         {wasRejected && (
           <View style={styles.errorBox}>
