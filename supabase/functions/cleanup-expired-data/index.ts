@@ -177,17 +177,25 @@ Deno.serve(async (req) => {
     // on these by definition, and .lt() against null matches no rows,
     // which would have been the same silent no-op in a different
     // costume.
-    const { data: stale, error: staleError } = await supabase
+    // NAMED pendingRows/pendingError, NOT stale/staleError: section 3
+    // below already declares `staleError` in this same try block, and a
+    // second `const staleError` here is a redeclaration in the same
+    // block scope — "Identifier 'staleError' has already been
+    // declared". That is a module-level SyntaxError, so it does not
+    // break this branch, it stops the ENTIRE function from loading:
+    // every nightly run would do nothing at all, which is precisely the
+    // silent-no-op failure this whole file keeps being bitten by.
+    const { data: pendingRows, error: pendingError } = await supabase
       .from('verification_requests')
       .select('id, document_url')
       .eq('status', 'pending_review')
       .lt('submitted_at', daysAgoIso(PENDING_ID_DAYS))
       .not('document_url', 'is', null);
 
-    if (staleError) {
-      results.errors.push(`pending fetch: ${staleError.message}`);
+    if (pendingError) {
+      results.errors.push(`pending fetch: ${pendingError.message}`);
     } else {
-      for (const row of stale ?? []) {
+      for (const row of pendingRows ?? []) {
         const { error: removeError } = await supabase.storage
           .from('verification-documents')
           .remove([row.document_url]);
