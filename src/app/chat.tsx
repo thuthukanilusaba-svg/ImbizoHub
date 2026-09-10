@@ -130,6 +130,12 @@ export default function ChatScreen() {
   const [enteredPin, setEnteredPin] = useState('');
   const [pinError, setPinError] = useState('');
   const [confirming, setConfirming] = useState(false);
+  // Calling the meetup off — see declineMeetup(). The reason is optional
+  // but asked for, because "they can't make it" without a word of
+  // explanation is barely better than silence.
+  const [declineOpen, setDeclineOpen] = useState(false);
+  const [declineReason, setDeclineReason] = useState('');
+  const [declining, setDeclining] = useState(false);
   const [confirmed, setConfirmed] = useState(false);
   // NEW (tester: "it still asks for rating, I'm afraid one would rate
   // many times"). A second rating was never actually written — the RPC
@@ -1481,6 +1487,36 @@ export default function ChatScreen() {
   // with the meetup. agree_to_meetpay() checks server-side that the
   // caller is this session's seller and that it's still pending, same
   // guard pattern regenerate_meetpay_pin() below already uses.
+  // CALLING IT OFF (10 Sep 2026). Until now the only options were agree
+  // or ignore, so a seller who had sold the item elsewhere, or simply
+  // could not make it, had no way to say so — and the buyer sat on a
+  // spinner unable to tell being ignored from being on the way.
+  //
+  // decline_meetpay() takes either party (a buyer who changes their mind
+  // strands the seller identically), refuses once the deal is
+  // 'confirmed', and posts the reason into the chat as a message from
+  // whoever declined. That message is what actually reaches a closed
+  // app — it rides notify-new-message rather than needing a new push
+  // event — and it leaves the explanation where the two of them will
+  // look for it.
+  async function declineMeetup() {
+    if (!session) return;
+    setPinError('');
+    setDeclining(true);
+
+    const { error } = await supabase.rpc('decline_meetpay', {
+      p_session_id: session.id,
+      p_reason: declineReason.trim() || null,
+    });
+
+    setDeclining(false);
+    if (error) { setPinError(error.message); return; }
+
+    setDeclineOpen(false);
+    setDeclineReason('');
+    setMeetPayModal(false);
+  }
+
   async function agreeToMeet() {
     if (!session) return;
     setPinError('');
@@ -2154,6 +2190,26 @@ export default function ChatScreen() {
               // naming two different options in a menu, not a single
               // confirm action, so "Confirm handover" wouldn't fit
               // there. Text-only.
+              session?.status === 'cancelled' ? (
+                /* CALLED OFF. Without this the buyer just kept seeing a
+                   spinner: the session was cancelled underneath them and
+                   the sheet had no state for it, so "waiting" and
+                   "never happening" looked identical — the exact
+                   confusion this feature exists to end. */
+                <>
+                  <Text style={styles.modalTitle}>Meetup called off</Text>
+                  <Text style={styles.modalBody}>
+                    {session.declined_by === myId
+                      ? 'You called this meetup off. The other person has been told in the chat.'
+                      : 'The other person can\'t go ahead with this meetup.'}
+                    {session.decline_reason ? `\n\n"${session.decline_reason}"` : ''}
+                    {'\n\nNothing has been charged. You can arrange a new deal whenever you like.'}
+                  </Text>
+                  <TouchableOpacity style={styles.cancelLink} onPress={() => setMeetPayModal(false)}>
+                    <Text style={styles.cancelLinkText}>Close</Text>
+                  </TouchableOpacity>
+                </>
+              ) : (
               <>
                 <Text style={styles.modalTitle}>Confirm handover</Text>
                 <Text style={styles.modalBody}>
@@ -2221,10 +2277,31 @@ export default function ChatScreen() {
                   </>
                 )}
 
+                {/* The buyer can call it off too. Their reasons are
+                    just as real — changed their mind, found it cheaper,
+                    cannot travel — and a buyer who silently stops
+                    replying strands the seller exactly the way this
+                    feature exists to prevent. Only offered before a PIN
+                    exists: once the seller is standing there showing
+                    four digits, "call it off" is a conversation, not a
+                    button. */}
+                {session && !session.pin ? (
+                  <DeclineControl
+                    open={declineOpen}
+                    setOpen={setDeclineOpen}
+                    reason={declineReason}
+                    setReason={setDeclineReason}
+                    busy={declining}
+                    onConfirm={declineMeetup}
+                    label="I can't go ahead with this"
+                  />
+                ) : null}
+
                 <TouchableOpacity style={styles.cancelLink} onPress={() => setMeetPayModal(false)}>
                   <Text style={styles.cancelLinkText}>Close</Text>
                 </TouchableOpacity>
               </>
+              )
             ) : (
               // CHANGED (PIN-role reversal): the seller no longer
               // confirms the buyer's PIN — once they've met the buyer
@@ -2236,6 +2313,22 @@ export default function ChatScreen() {
               // handover', now trimmed to 'Confirm sale' — kept in
               // sync with the header pill that opens this exact modal.
               // Text-only.
+              session?.status === 'cancelled' ? (
+                /* Mirror of the buyer's cancelled state — see there. */
+                <>
+                  <Text style={styles.modalTitle}>Meetup called off</Text>
+                  <Text style={styles.modalBody}>
+                    {session.declined_by === myId
+                      ? 'You called this meetup off. The buyer has been told in the chat.'
+                      : 'The buyer can\'t go ahead with this meetup.'}
+                    {session.decline_reason ? `\n\n"${session.decline_reason}"` : ''}
+                    {'\n\nNothing has been charged. The deal can be arranged again whenever you both want.'}
+                  </Text>
+                  <TouchableOpacity style={styles.cancelLink} onPress={() => setMeetPayModal(false)}>
+                    <Text style={styles.cancelLinkText}>Close</Text>
+                  </TouchableOpacity>
+                </>
+              ) : (
               <>
                 <Text style={styles.modalTitle}>Confirm sale</Text>
                 <Text style={styles.modalBody}>
@@ -2318,16 +2411,104 @@ export default function ChatScreen() {
                   </>
                 )}
 
+                {/* The gap this whole change closes: before now the
+                    seller could only agree or ignore, so someone who
+                    had sold the item elsewhere left the buyer watching
+                    a spinner with no way to tell being ignored from
+                    being on the way.
+
+                    Hidden once a PIN exists — at that point the seller
+                    is standing in front of the buyer showing four
+                    digits, and calling it off is something you say, not
+                    something you tap. */}
+                {session && !session.pin ? (
+                  <DeclineControl
+                    open={declineOpen}
+                    setOpen={setDeclineOpen}
+                    reason={declineReason}
+                    setReason={setDeclineReason}
+                    busy={declining}
+                    onConfirm={declineMeetup}
+                    label="I can't make this meetup"
+                  />
+                ) : null}
+
                 <TouchableOpacity style={styles.cancelLink} onPress={() => setMeetPayModal(false)}>
                   <Text style={styles.cancelLinkText}>Close</Text>
                 </TouchableOpacity>
               </>
+              )
             )}
 
           </View>
         </View>
       </Modal>
     </KeyboardAvoidingView>
+  );
+}
+
+/**
+ * Two taps to call a meetup off, with the reason optional but asked for.
+ *
+ * Not a single button: cancelling is destructive and easy to hit by
+ * accident on a crowded sheet. Not Alert.alert either — react-native-web
+ * ignores its buttons array entirely (the bug that made the chat
+ * attachment menu look dead), and this screen is used from a desktop
+ * browser as well as a phone.
+ *
+ * The reason is optional because forcing one produces "asdf", and
+ * blocking someone from leaving a deal they cannot honour is worse than
+ * a blank explanation. It is asked for because "they can't make it"
+ * with no word of why is barely better than silence.
+ */
+function DeclineControl({
+  open, setOpen, reason, setReason, busy, onConfirm, label,
+}: {
+  open: boolean;
+  setOpen: (v: boolean) => void;
+  reason: string;
+  setReason: (v: string) => void;
+  busy: boolean;
+  onConfirm: () => void;
+  label: string;
+}) {
+  if (!open) {
+    return (
+      <TouchableOpacity style={styles.declineLink} onPress={() => setOpen(true)}>
+        <Text style={styles.declineLinkText}>{label}</Text>
+      </TouchableOpacity>
+    );
+  }
+
+  return (
+    <View style={styles.declineBox}>
+      <Text style={styles.declineTitle}>Call this meetup off?</Text>
+      <Text style={styles.declineBody}>
+        The other person is told straight away, with your reason if you give one. Nothing is
+        charged, and either of you can arrange a new deal afterwards.
+      </Text>
+      <TextInput
+        style={styles.declineInput}
+        value={reason}
+        onChangeText={setReason}
+        placeholder="Why? (optional — e.g. sold it already)"
+        placeholderTextColor="#666"
+        maxLength={140}
+        multiline
+      />
+      <View style={styles.declineActions}>
+        <TouchableOpacity style={styles.declineCancel} onPress={() => setOpen(false)}>
+          <Text style={styles.declineCancelText}>Never mind</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.declineConfirm, busy && { opacity: 0.6 }]}
+          onPress={onConfirm}
+          disabled={busy}
+        >
+          <Text style={styles.declineConfirmText}>{busy ? 'Calling off…' : 'Call it off'}</Text>
+        </TouchableOpacity>
+      </View>
+    </View>
   );
 }
 
@@ -2436,6 +2617,33 @@ const styles = StyleSheet.create({
   modalBtnText: { color: BLACK, fontSize: 15, fontWeight: '800' },
   cancelLink: { alignItems: 'center', paddingVertical: 12, marginTop: 4 },
   cancelLinkText: { color: GREY, fontSize: 13 },
+
+  // Quiet by default — this is an escape hatch, not an invitation. It
+  // only becomes loud (the red confirm below) once someone has
+  // deliberately opened it.
+  declineLink: { alignItems: 'center', paddingVertical: 12, marginTop: 8 },
+  declineLinkText: { color: '#c98a8a', fontSize: 13, fontWeight: '600' },
+  declineBox: {
+    marginTop: 12, padding: 14, borderRadius: 12,
+    backgroundColor: '#2a1f1f', borderWidth: 0.5, borderColor: '#5a3232',
+  },
+  declineTitle: { color: '#ffd9d9', fontSize: 15, fontWeight: '800', marginBottom: 6 },
+  declineBody: { color: '#c9b8b8', fontSize: 12.5, lineHeight: 18, marginBottom: 12 },
+  declineInput: {
+    backgroundColor: '#1a1414', borderRadius: 10, borderWidth: 0.5, borderColor: '#5a3232',
+    color: '#fff', fontSize: 14, padding: 11, minHeight: 54, textAlignVertical: 'top',
+  },
+  declineActions: { flexDirection: 'row', marginTop: 12 },
+  declineCancel: {
+    flex: 1, paddingVertical: 12, alignItems: 'center', borderRadius: 10,
+    borderWidth: 0.5, borderColor: '#555', marginRight: 9,
+  },
+  declineCancelText: { color: GREY, fontSize: 13, fontWeight: '700' },
+  declineConfirm: {
+    flex: 1, paddingVertical: 12, alignItems: 'center', borderRadius: 10,
+    backgroundColor: '#7a1f1f', borderWidth: 0.5, borderColor: '#a83232',
+  },
+  declineConfirmText: { color: '#ffd9d9', fontSize: 13, fontWeight: '800' },
 
   dealOption: { flexDirection: 'row', alignItems: 'center', gap: 14, backgroundColor: DARK, borderRadius: 14, padding: 16, marginBottom: 10, borderWidth: 0.5, borderColor: '#333' },
   dealOptionIcon: { width: 48, height: 48, backgroundColor: '#1a1a1a', borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
