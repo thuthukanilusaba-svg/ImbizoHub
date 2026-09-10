@@ -2173,8 +2173,13 @@ export default function ChatScreen() {
                   {session?.pin
                     ? 'Enter the PIN the seller shows you once you\'ve inspected the item and you\'re both happy to complete the deal.'
                     : session?.seller_agreed_at
-                      ? 'Almost there. Ask the seller to tap "Generate PIN" on their screen and show you the four digits.'
-                      : 'Meet the seller in person first. When you\'re both happy, ask them to open this chat, tap "Confirm sale" at the top, then "Agree to meet". The PIN comes after that.'}
+                      // Covers both routes: standing together (PIN now)
+                      // and committed-but-apart (time still to arrange).
+                      // The old copy assumed the first and left anyone
+                      // in the second waiting for a PIN that was never
+                      // coming yet.
+                      ? 'The seller is in. If you\'re together now, ask them to tap "Generate PIN" and read you the four digits. If not, agree a time and place in chat — they\'ll generate the PIN when you meet.'
+                      : 'Meet the seller in person first. When you\'re both happy, ask them to open this chat and tap "Confirm sale" at the top — then "Generate PIN" if you\'re standing together, and read you the four digits.'}
                 </Text>
 
                 {pinError ? <Text style={styles.modalError}>⚠️ {pinError}</Text> : null}
@@ -2184,8 +2189,12 @@ export default function ChatScreen() {
                     <ActivityIndicator color={GOLD} style={{ marginBottom: 10 }} />
                     <Text style={styles.waitingText}>
                       {session?.seller_agreed_at
-                        ? 'Waiting for the seller to tap "Generate PIN"...'
-                        : 'Waiting for the seller to tap "Agree to meet"...'}
+                        // Not "waiting for them to tap it" — once the
+                        // seller is in, they may be days from meeting,
+                        // and a spinner implying imminent action reads
+                        // as something being stuck.
+                        ? 'The seller is in. The PIN appears when they generate it at the meetup.'
+                        : 'Waiting for the seller to generate the PIN...'}
                     </Text>
                   </View>
                 ) : (
@@ -2242,7 +2251,7 @@ export default function ChatScreen() {
                       // seller — and being told to arrange a time with
                       // someone you are looking at reads as the app not
                       // understanding the situation. Covers both now.
-                      ? 'The buyer wants to arrange a meetup. Once you\'re genuinely ready to go through with it, tap Agree to meet. Already together? Do it now and generate the PIN straight after.'
+                      ? 'The buyer wants to arrange a meetup. Standing together right now and both happy? Generate the PIN and show it to them. Not yet? Tap "I\'m in" so they know the deal is on, then agree a time in chat — the app doesn\'t set one for you.'
                       : 'Once you\'ve met the buyer and you\'re both happy, generate a PIN and show it to them to confirm they received the goods.'}
                 </Text>
 
@@ -2254,9 +2263,39 @@ export default function ChatScreen() {
                     <Text style={styles.waitingText}>Waiting for the buyer to arrange the deal...</Text>
                   </View>
                 ) : !session.seller_agreed_at ? (
-                  <TouchableOpacity style={styles.modalBtn} onPress={agreeToMeet}>
-                    <Text style={styles.modalBtnText}>Agree to meet</Text>
-                  </TouchableOpacity>
+                  /* BOTH PATHS, NOT ONE (10 Sep 2026). "Agree to meet"
+                     used to be the only button here, which made it a
+                     dead-end at an in-person handover: the buyer stood
+                     there watching "Waiting for the seller to agree to
+                     meet" while the fix was a tap the seller had no
+                     reason to see the point of.
+
+                     Generate PIN is primary because that is the case
+                     where somebody is actually standing waiting. It
+                     sets seller_agreed_at itself (see
+                     regenerate_meetpay_pin), so the buyer's state
+                     machine stays coherent whichever route is taken.
+
+                     "Agree to meet" survives as the secondary action and
+                     still earns its place: a meetup arranged in advance,
+                     where committing before anyone travels is the whole
+                     point of the step. */
+                  <>
+                    <TouchableOpacity style={styles.modalBtn} onPress={regeneratePin}>
+                      <Text style={styles.modalBtnText}>Generate PIN — we're together now</Text>
+                    </TouchableOpacity>
+                    {/* "We'll meet later" was vague — it told the buyer
+                        somebody tapped something, not when anything
+                        happens. seller_agreed_at does not mean "ready
+                        now", it means "I am committed to this deal";
+                        the time itself can only be arranged in chat,
+                        since nothing in the app schedules one. The
+                        label now says that, and points at the next
+                        action rather than leaving it hanging. */}
+                    <TouchableOpacity style={styles.regenBtn} onPress={agreeToMeet}>
+                      <Text style={styles.regenBtnText}>I'm in — we'll agree a time in chat</Text>
+                    </TouchableOpacity>
+                  </>
                 ) : !session.pin ? (
                   <TouchableOpacity style={styles.modalBtn} onPress={regeneratePin}>
                     <Text style={styles.modalBtnText}>Generate PIN</Text>
