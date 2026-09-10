@@ -312,9 +312,14 @@ export default function VerifiedSellerPayScreen() {
           <View style={styles.pendingCard}>
             <Text style={styles.pendingEmoji}>🕐</Text>
             <Text style={styles.pendingTitle}>Your documents are under review</Text>
+            {/* Wording matched to operator-id-verify.tsx — see the note
+                there for why this is a number rather than "a few
+                business days", and why "our team" is gone. */}
             <Text style={styles.pendingBody}>
-              We've received your payment and your ID document. Our team reviews submissions within a
-              few business days — you'll see your Verified badge here as soon as it's approved.
+              We've received your payment and your ID document. We review submissions within 3
+              business days — you'll see your Verified badge here as soon as it's approved. If we
+              haven't looked at yours within two weeks, we delete the photo and ask you to submit
+              again; we won't hold your ID while a queue sits unworked.
             </Text>
           </View>
         </ScrollView>

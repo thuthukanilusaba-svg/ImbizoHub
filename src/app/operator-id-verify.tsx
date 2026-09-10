@@ -271,9 +271,23 @@ export default function OperatorIdVerifyScreen() {
           <View style={styles.pendingCard}>
             <Text style={styles.pendingEmoji}>🕐</Text>
             <Text style={styles.pendingTitle}>Your ID is under review</Text>
+            {/* A NUMBER, NOT "a few business days".
+                The old wording was unfalsifiable — we could never be
+                late, which sounds like an advantage and is not: the
+                person waiting cannot tell whether to worry, and there
+                is nothing to hold ourselves to.
+
+                "Our team" is also gone. There isn't one, and inventing
+                staff on a trust screen is a strange risk to take.
+
+                The two-week line is the retention rule stated plainly
+                (PENDING_ID_DAYS in cleanup-expired-data). Saying what
+                happens when we fail reassures more than a vague pledge,
+                because it is checkable. */}
             <Text style={styles.pendingBody}>
-              Our team reviews submissions within a few business days — you'll see your verified status
-              here as soon as it's approved.
+              We review ID submissions within 3 business days — you'll see your verified status here
+              as soon as it's approved. If we haven't looked at yours within two weeks, we delete the
+              photo and ask you to submit again; we won't hold your ID while a queue sits unworked.
             </Text>
           </View>
         </ScrollView>
