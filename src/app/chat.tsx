@@ -2157,16 +2157,24 @@ export default function ChatScreen() {
               <>
                 <Text style={styles.modalTitle}>Confirm handover</Text>
                 <Text style={styles.modalBody}>
+                  {/* NAME THE EXACT BUTTON, AND THE RIGHT ONE (10 Sep
+                      2026). Reported from a real handover: buyer and
+                      seller standing together, buyer's screen reading
+                      "Waiting for the seller to agree to meet…" with no
+                      way to act on it.
+                      The body said "ask them to generate a PIN" — the
+                      step AFTER the one actually blocking — while the
+                      spinner said something different again, so between
+                      them they told the buyer to ask for the wrong
+                      thing. Neither named where the seller finds it.
+                      Each state now names one action and where it
+                      lives, so the buyer can simply say it out loud to
+                      the person in front of them. */}
                   {session?.pin
                     ? 'Enter the PIN the seller shows you once you\'ve inspected the item and you\'re both happy to complete the deal.'
                     : session?.seller_agreed_at
-                      // NEW (meetpay_seller_agreed_step): the seller has
-                      // committed to the meetup — different wording from
-                      // the plain "still waiting" state below, since
-                      // there's now something concrete to act on
-                      // (coordinating a time), not just waiting blind.
-                      ? 'The seller agreed to meet! Coordinate a time in chat, then wait for them to show you the PIN.'
-                      : 'Meet the seller in person first. Once you\'re both happy, ask them to generate a PIN so you can confirm here.'}
+                      ? 'Almost there. Ask the seller to tap "Generate PIN" on their screen and show you the four digits.'
+                      : 'Meet the seller in person first. When you\'re both happy, ask them to open this chat, tap "Confirm sale" at the top, then "Agree to meet". The PIN comes after that.'}
                 </Text>
 
                 {pinError ? <Text style={styles.modalError}>⚠️ {pinError}</Text> : null}
@@ -2176,8 +2184,8 @@ export default function ChatScreen() {
                     <ActivityIndicator color={GOLD} style={{ marginBottom: 10 }} />
                     <Text style={styles.waitingText}>
                       {session?.seller_agreed_at
-                        ? 'Waiting for the seller to generate a PIN...'
-                        : 'Waiting for the seller to agree to meet...'}
+                        ? 'Waiting for the seller to tap "Generate PIN"...'
+                        : 'Waiting for the seller to tap "Agree to meet"...'}
                     </Text>
                   </View>
                 ) : (
@@ -2228,7 +2236,13 @@ export default function ChatScreen() {
                     // a session exists but this seller hasn't yet
                     // committed to the meetup.
                     : !session.seller_agreed_at
-                      ? 'The buyer wants to arrange a meetup. Once you\'re genuinely ready to go through with it, agree to meet — then coordinate a time in chat.'
+                      // Was "...then coordinate a time in chat", which
+                      // assumes the two are apart. Often they are not —
+                      // the buyer opens this standing in front of the
+                      // seller — and being told to arrange a time with
+                      // someone you are looking at reads as the app not
+                      // understanding the situation. Covers both now.
+                      ? 'The buyer wants to arrange a meetup. Once you\'re genuinely ready to go through with it, tap Agree to meet. Already together? Do it now and generate the PIN straight after.'
                       : 'Once you\'ve met the buyer and you\'re both happy, generate a PIN and show it to them to confirm they received the goods.'}
                 </Text>
 
