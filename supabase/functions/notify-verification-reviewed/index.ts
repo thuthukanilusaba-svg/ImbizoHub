@@ -7,6 +7,9 @@
 // verification_type, status, rejection_reason — checked directly
 // before writing this).
 //
+// ALSO DELETES THE DOCUMENT ON APPROVAL (10 Sep 2026) — see the block
+// at the end of the handler.
+//
 // Expected trigger payload: { request_id: uuid }
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
@@ -62,7 +65,7 @@ Deno.serve(async (req) => {
 
     const { data: request, error: requestError } = await supabase
       .from('verification_requests')
-      .select('id, user_id, verification_type, status, rejection_reason')
+      .select('id, user_id, verification_type, status, rejection_reason, document_url')
       .eq('id', request_id)
       .maybeSingle();
 
@@ -104,6 +107,50 @@ Deno.serve(async (req) => {
       body,
       { type: 'verification_reviewed', request_id: request.id, status: request.status }
     );
+
+    // DELETE ON APPROVAL (10 Sep 2026). Was: kept a year, then deleted by
+    // cleanup-expired-data overnight.
+    //
+    // The document exists to answer one question — is this person who
+    // they say they are — and an admin has just answered it. From this
+    // moment the photograph is pure liability: it can be breached, it
+    // must be disclosed, and it protects nobody. The verification RESULT
+    // (profiles.is_verified, verification_tier, operator_id_verified) is
+    // untouched and permanent, so nothing about the person's standing
+    // depends on the file surviving.
+    //
+    // Here rather than in the nightly cleanup because "on approval"
+    // should mean seconds, not up to 24 hours. This function is already
+    // the on-approval hook — it runs with the service role and fires
+    // from the same status transition — so putting it here adds no new
+    // trigger and no second thing that can silently stop running.
+    //
+    // REJECTED documents are deliberately NOT deleted here: they keep
+    // their 90-day appeal window, because that is the case where the
+    // person may well contest the decision and the image is the thing
+    // in dispute.
+    //
+    // Fail-soft, and after the push: a storage hiccup must not cost the
+    // person their notification. cleanup-expired-data still sweeps
+    // approved documents as a safety net, so anything missed here is
+    // caught within a day rather than lingering.
+    if (isApproved && request.document_url) {
+      const { error: removeError } = await supabase.storage
+        .from('verification-documents')
+        .remove([request.document_url]);
+
+      if (removeError) {
+        console.error('notify-verification-reviewed: document remove failed', request.id, removeError.message);
+      } else {
+        const { error: nullError } = await supabase
+          .from('verification_requests')
+          .update({ document_url: null })
+          .eq('id', request.id);
+        if (nullError) {
+          console.error('notify-verification-reviewed: document_url null failed', request.id, nullError.message);
+        }
+      }
+    }
 
     return new Response('OK', { status: 200 });
   } catch (err) {

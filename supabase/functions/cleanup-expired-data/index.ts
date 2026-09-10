@@ -56,7 +56,12 @@ const NOTIFY_SHARED_SECRET = Deno.env.get('NOTIFY_SHARED_SECRET')!;
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
 const REJECTED_ID_DAYS = 90;
-const APPROVED_ID_DAYS = 365;
+// Approved documents are deleted the moment they are approved, by
+// notify-verification-reviewed. This is the SAFETY NET, not the primary
+// mechanism: it catches anything that immediate delete missed (a
+// storage error, a function that failed to fire) within a day instead
+// of leaving it for a year. Was 365 until 10 Sep 2026.
+const APPROVED_ID_DAYS = 1;
 // Submissions nobody ever reviewed. Well past any honest review time —
 // operator-id-verify.tsx promises "within a few business days" — so
 // reaching this number means the queue was abandoned, not busy.
@@ -129,7 +134,10 @@ Deno.serve(async (req) => {
       }
     }
 
-    // 2. Approved ID documents older than 1 year — the raw file only.
+    // 2. Approved ID documents — SAFETY NET ONLY. These are normally
+    // already gone: notify-verification-reviewed deletes the file
+    // within seconds of approval. This sweep catches the ones where
+    // that failed, so a missed delete costs a day rather than a year.
     // is_verified / verification_tier / operator_id_verified are
     // never touched here; the fact of verification stays permanent.
     const { data: approved, error: approvedError } = await supabase
