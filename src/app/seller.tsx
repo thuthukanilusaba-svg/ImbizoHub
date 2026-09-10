@@ -90,6 +90,16 @@ export default function SellerProfileScreen() {
   // Counts per star level, index 0 = 1★ … index 4 = 5★.
   const [starCounts, setStarCounts] = useState<number[]>([0, 0, 0, 0, 0]);
   const [listingCount, setListingCount] = useState(0);
+  // Verifiable facts from public_trust_facts() — a SECURITY DEFINER RPC,
+  // because meetpay_sessions RLS correctly stops a stranger reading
+  // someone else's deals. It returns only aggregates, never a row.
+  const [facts, setFacts] = useState<{
+    member_since: string;
+    days_on_platform: number;
+    deals_completed: number;
+    distinct_counterparties: number;
+    id_verified: boolean;
+  } | null>(null);
 
   useEffect(() => { load(); }, [id]);
 
@@ -110,6 +120,12 @@ export default function SellerProfileScreen() {
     }
 
     setProfile(profileData);
+
+    // Fire-and-forget relative to the rest of the page: if this RPC
+    // fails the panel simply does not render, rather than the whole
+    // seller profile failing to load over a trust panel.
+    const { data: factsData } = await supabase.rpc('public_trust_facts', { p_user_id: id });
+    setFacts((factsData as any) ?? null);
 
     const { data: activeListings, count } = await supabase
       .from('listings')
@@ -315,6 +331,56 @@ export default function SellerProfileScreen() {
           </View>
         </View>
 
+        {/* WHAT WE CAN CONFIRM.
+            Sits above the listings because it is what a buyer deciding
+            whether to trust a stranger actually needs, and above the
+            reviews because — with every rating on the platform currently
+            five stars — the reviews are the weaker signal of the two.
+
+            Every line is a fact ImbizoHub can attest to. Nothing here is
+            a judgement: "ID verified" is checkable, "trusted seller"
+            would be an endorsement of work nobody inspected. See
+            public_trust_facts() for what is deliberately left out. */}
+        {facts && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>What we can confirm</Text>
+            <View style={styles.factsCard}>
+              <View style={styles.factRow}>
+                <Text style={styles.factLabel}>Identity</Text>
+                <Text style={[styles.factValue, facts.id_verified && styles.factValueGood]}>
+                  {facts.id_verified ? '✅ National ID verified' : 'Not verified'}
+                </Text>
+              </View>
+              <View style={styles.factRow}>
+                <Text style={styles.factLabel}>On ImbizoHub</Text>
+                <Text style={styles.factValue}>
+                  {facts.days_on_platform < 1
+                    ? 'Joined today'
+                    : `${facts.days_on_platform} day${facts.days_on_platform === 1 ? '' : 's'}`}
+                </Text>
+              </View>
+              <View style={styles.factRow}>
+                <Text style={styles.factLabel}>Deals completed</Text>
+                <Text style={styles.factValue}>{facts.deals_completed}</Text>
+              </View>
+              {/* The anti-gaming line. Five deals with five people is a
+                  trading history; five with one friend is not, and a
+                  plain deal count cannot tell them apart. */}
+              <View style={[styles.factRow, styles.factRowLast]}>
+                <Text style={styles.factLabel}>Different people dealt with</Text>
+                <Text style={styles.factValue}>{facts.distinct_counterparties}</Text>
+              </View>
+            </View>
+            {facts.deals_completed === 0 && (
+              <Text style={styles.factsNote}>
+                Nobody has completed a deal with this seller on ImbizoHub yet. That does not mean
+                they are untrustworthy — only that we have nothing to confirm. Meet in a public
+                place and use Meet &amp; Pay.
+              </Text>
+            )}
+          </View>
+        )}
+
         {listings.length > 0 && (
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Active listings</Text>
@@ -454,6 +520,19 @@ const styles = StyleSheet.create({
 
   section: { marginBottom: 20 },
   sectionTitle: { fontSize: 14, fontWeight: '700', color: '#fff', marginBottom: 12 },
+  factsCard: {
+    backgroundColor: '#1f1f1d', borderRadius: 14, borderWidth: 0.5, borderColor: '#333',
+    paddingHorizontal: 16,
+  },
+  factRow: {
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+    paddingVertical: 13, borderBottomWidth: 0.5, borderBottomColor: '#2e2e2e',
+  },
+  factRowLast: { borderBottomWidth: 0 },
+  factLabel: { color: '#AAAAAA', fontSize: 13, flex: 1, marginRight: 12 },
+  factValue: { color: '#fff', fontSize: 13, fontWeight: '700' },
+  factValueGood: { color: '#4fc96e' },
+  factsNote: { color: '#8a8a8a', fontSize: 12, lineHeight: 18, marginTop: 10 },
 
   listingsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
   listingCard: { width: '31%', backgroundColor: BLACK, borderRadius: 10, padding: 8, borderWidth: 0.5, borderColor: '#333' },
