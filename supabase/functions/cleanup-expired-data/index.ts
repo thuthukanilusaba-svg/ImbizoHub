@@ -55,7 +55,12 @@ const NOTIFY_SHARED_SECRET = Deno.env.get('NOTIFY_SHARED_SECRET')!;
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
-const REJECTED_ID_DAYS = 90;
+// Rejected documents are deleted the moment they are rejected, by
+// notify-verification-reviewed — same as approved ones. This is the
+// SAFETY NET for a delete that failed, not the primary mechanism. Was
+// 90 days until 10 Sep 2026, justified as an appeal window that did not
+// exist in the product.
+const REJECTED_ID_DAYS = 1;
 // Approved documents are deleted the moment they are approved, by
 // notify-verification-reviewed. This is the SAFETY NET, not the primary
 // mechanism: it catches anything that immediate delete missed (a
@@ -95,9 +100,10 @@ Deno.serve(async (req) => {
   };
 
   try {
-    // 1. Rejected ID documents older than 90 days — no ongoing
-    // purpose once rejected; this window just covers a reasonable
-    // appeal period.
+    // 1. Rejected ID documents — SAFETY NET ONLY, same as the approved
+    // sweep below. These are normally already gone:
+    // notify-verification-reviewed deletes the file within seconds of
+    // the rejection. This catches the ones where that failed.
     const { data: rejected, error: rejectedError } = await supabase
       .from('verification_requests')
       .select('id, document_url')

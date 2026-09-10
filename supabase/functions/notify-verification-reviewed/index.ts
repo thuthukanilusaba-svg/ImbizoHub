@@ -125,16 +125,28 @@ Deno.serve(async (req) => {
     // from the same status transition — so putting it here adds no new
     // trigger and no second thing that can silently stop running.
     //
-    // REJECTED documents are deliberately NOT deleted here: they keep
-    // their 90-day appeal window, because that is the case where the
-    // person may well contest the decision and the image is the thing
-    // in dispute.
+    // REJECTED DOCUMENTS GO TOO (10 Sep 2026). They used to be kept for
+    // 90 days, justified as an appeal window — but no appeal exists
+    // anywhere in the app, and admin_list_pending_verifications only
+    // ever returns 'pending_review', so a rejected document sat in
+    // storage for three months in a state no screen could retrieve. It
+    // was pure liability with no capability behind it.
+    //
+    // Nothing is lost by deleting it: the rejection REASON is what the
+    // person actually needs, and that reaches them by push and again on
+    // the upload screen. If they want another go they resubmit, which
+    // creates a fresh request and never depended on the old file.
+    //
+    // So both terminal outcomes now behave the same way — decided means
+    // deleted. One rule, easy to state, easy to defend.
     //
     // Fail-soft, and after the push: a storage hiccup must not cost the
-    // person their notification. cleanup-expired-data still sweeps
-    // approved documents as a safety net, so anything missed here is
-    // caught within a day rather than lingering.
-    if (isApproved && request.document_url) {
+    // person their notification. cleanup-expired-data still sweeps both
+    // as a safety net, so anything missed here is caught within a day
+    // rather than lingering.
+    const isDecided = isApproved || request.status === 'rejected';
+
+    if (isDecided && request.document_url) {
       const { error: removeError } = await supabase.storage
         .from('verification-documents')
         .remove([request.document_url]);
