@@ -70,7 +70,7 @@ const APPROVED_ID_DAYS = 1;
 // Submissions nobody ever reviewed. Well past any honest review time —
 // operator-id-verify.tsx promises "within a few business days" — so
 // reaching this number means the queue was abandoned, not busy.
-const PENDING_ID_DAYS = 60;
+const PENDING_ID_DAYS = 14;
 const STALE_PUSH_TOKEN_DAYS = 180;
 
 function daysAgoIso(days: number): string {
@@ -175,7 +175,12 @@ Deno.serve(async (req) => {
       }
     }
 
-    // 2b. Submissions NOBODY EVER REVIEWED, older than 60 days.
+    // 2b. Submissions NOBODY EVER REVIEWED, older than 14 days.
+    //
+    // Was 60 days. Fourteen is deliberately uncomfortable: the app
+    // promises review "within a few business days", so a submission
+    // reaching two weeks means the queue was abandoned, and the person
+    // is owed their document back rather than a longer wait.
     //
     // The retention policy had no branch for these at all, so the one
     // case where an ID photograph was kept indefinitely was the case
