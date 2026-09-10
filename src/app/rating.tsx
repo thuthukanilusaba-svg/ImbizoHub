@@ -128,6 +128,9 @@ export default function RatingScreen() {
   }
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
+  // True when the rating was written but is still blind because the
+  // other side hasn't rated yet — drives the success copy below.
+  const [heldBlind, setHeldBlind] = useState(false);
   const [error, setError] = useState('');
   // Only meaningful when isDelivery — which of the two possible targets
   // (seller, then optionally driver) this screen is currently rating.
@@ -258,6 +261,11 @@ export default function RatingScreen() {
       return;
     }
 
+    // published=false means the other person has not rated yet, so this
+    // one is written but invisible to them (and to everyone) until they
+    // do, or 14 days pass. Delivery ratings never return this — they are
+    // one-directional and publish on the spot.
+    setHeldBlind((data as any)?.published === false);
     setSubmitted(true);
   }
 
@@ -271,6 +279,7 @@ export default function RatingScreen() {
     setReview('');
     setError('');
     setSubmitted(false);
+    setHeldBlind(false);
     // Clear rather than leave the seller's row on screen while the
     // effect re-runs for the driver — otherwise the first frame of the
     // driver step shows the rating they gave the seller.
@@ -285,8 +294,15 @@ export default function RatingScreen() {
         <View style={styles.successCard}>
           <Text style={styles.successIcon}>⭐</Text>
           <Text style={styles.successTitle}>Rating submitted!</Text>
+          {/* Without this the change is invisible and reads as a bug —
+              someone rates, looks at the profile, sees nothing, and
+              concludes the app lost it. Saying it plainly is also the
+              point of the feature: knowing neither of you can see the
+              other's rating first is what makes an honest one safe. */}
           <Text style={styles.successBody}>
-            Thank you for your feedback. It helps build trust on ImbizoHub.
+            {heldBlind
+              ? 'Your rating is sealed until they rate you too — then both appear at once. Neither of you can see the other’s first. If they never rate, yours goes live after 14 days.'
+              : 'Thank you for your feedback. It helps build trust on ImbizoHub.'}
           </Text>
           {offerDriverStep && (
             <TouchableOpacity style={styles.doneBtn} onPress={startDriverRating}>
