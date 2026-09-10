@@ -89,6 +89,21 @@
   ];
 
   var CSS = [
+    // The launcher is fixed to the VIEWPORT, so at the bottom of the page
+    // it sat on top of the footer links — "Open the marketplace · Contact"
+    // ran underneath it and the last item was unreadable.
+    //
+    // Fixed here rather than in each page's stylesheet because this widget
+    // is what creates the obstruction: any page that loads sindie.js gets
+    // the clearance automatically, and a page that stops loading it gets
+    // its space back. Four separate copies of a magic number would drift.
+    //
+    // The footer carries no background of its own (border-top and inherited
+    // colour only), so extra bottom padding cannot show a seam. Two-element
+    // selector so it beats the page's own `footer{padding:34px 0}` on
+    // specificity rather than relying on injection order.
+    'body footer{padding-bottom:104px}',
+    '@media(max-width:480px){body footer{padding-bottom:88px}}',
     '.sd-launch{position:fixed;right:20px;bottom:20px;z-index:9998;display:flex;align-items:center;gap:9px;',
       'background:#1A1A18;color:#FCF9F2;border:0;border-radius:999px;padding:13px 19px;cursor:pointer;',
       'font:700 15px/1 Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;',
