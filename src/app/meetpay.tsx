@@ -291,11 +291,11 @@ export default function MeetPayScreen() {
     subscribeToSession(data.id);
   }
 
-  // thenRate: the passenger flow. Their confirmation and their rating
-  // are one action, so this finishes the confirmation and goes straight
-  // to the rating screen rather than parking them on a success page
-  // they would have to tap through.
-  async function handleConfirmMyself(thenRate = false) {
+  // Confirms, and stops there. Used to take a `thenRate` flag that sent
+  // the passenger straight on to the rating screen; that is gone, along
+  // with the flag — see the note at the end of this function for why
+  // rating an hour later beats rating at the handover.
+  async function handleConfirmMyself() {
     if (!session) return;
     setError('');
     setConfirming(true);
@@ -326,26 +326,26 @@ export default function MeetPayScreen() {
     setSession(data);
     setConfirming(false);
 
-    if (thenRate && data) {
-      const revieweeId = role === 'buyer' ? data.seller_id : data.buyer_id;
-      if (revieweeId) {
-        // push, NOT replace (changed 1 Sep 2026). The trip is already
-        // confirmed by the time this runs — but with replace() this
-        // screen was destroyed on the way to the rating, so anyone who
-        // then skipped the rating was ejected to the home feed having
-        // never been told the trip completed. They tapped a button, saw
-        // a star picker, backed out, and landed somewhere unrelated.
-        //
-        // Keeping this screen on the stack means skipping the rating
-        // returns here — and `isFullyConfirmed` now renders the
-        // "Service delivered! Both you and your driver confirmed"
-        // receipt. The consequential action becomes visible whether or
-        // not they choose to rate.
-        router.push(
-          `/rating?session_id=${data.id}&reviewee_id=${revieweeId}&role=${role}`
-        );
-      }
-    }
+    // NO LONGER JUMPS STRAIGHT TO THE RATING SCREEN (10 Sep 2026).
+    //
+    // This used to push to /rating the instant the handover PIN
+    // confirmed — which is the one moment buyer and seller are standing
+    // next to each other. Sealed ratings stop you seeing the other
+    // person's rating on YOUR screen; they do nothing about reading it
+    // on theirs, or about "give me five and I'll give you five" said out
+    // loud. Asking here made the blinding almost worthless on the main
+    // path, and asked for a verdict before the buyer had even used the
+    // thing they just bought.
+    //
+    // notify-rating-due now pushes both sides an hour later, once they
+    // have walked away from each other (and only during civil hours —
+    // the cron runs 05:00-18:00 UTC, 07:00-20:00 in Harare).
+    //
+    // The receipt below still carries a "Rate this trip" button, so
+    // anyone who WANTS to rate immediately can. What changed is that
+    // the app no longer puts a star picker in front of two people who
+    // are looking at each other.
+    //
   }
 
   // FIX: previously any early setError() (e.g. "not your trip") left
@@ -541,21 +541,28 @@ export default function MeetPayScreen() {
 
           Every label now leads with the consequential action. Text-only:
           no handler, no RPC, no rating eligibility touched. */}
+      {/* LABELS (10 Sep 2026): these read "Confirm trip and rate driver"
+          until rating moved to an hour later. The button no longer opens
+          a rating screen, so the old label promised something it stopped
+          doing — the exact failure the note above describes, just
+          pointing the other way. Now each button names only what it
+          actually does. The receipt that follows still offers "Rate this
+          trip" for anyone who wants to do it straight away. */}
       {role === 'buyer' && otherConfirmedAt ? (
         <TouchableOpacity
           style={[styles.confirmBtn, confirming && { opacity: 0.6 }]}
-          onPress={() => handleConfirmMyself(true)}
+          onPress={() => handleConfirmMyself()}
           disabled={confirming}
         >
-          {confirming ? <ActivityIndicator color={BLACK} /> : <Text style={styles.confirmBtnText}>Confirm trip and rate driver</Text>}
+          {confirming ? <ActivityIndicator color={BLACK} /> : <Text style={styles.confirmBtnText}>Confirm trip</Text>}
         </TouchableOpacity>
       ) : role === 'buyer' ? (
         <TouchableOpacity
           style={[styles.confirmBtn, confirming && { opacity: 0.6 }]}
-          onPress={() => handleConfirmMyself(true)}
+          onPress={() => handleConfirmMyself()}
           disabled={confirming}
         >
-          {confirming ? <ActivityIndicator color={BLACK} /> : <Text style={styles.confirmBtnText}>Confirm trip and rate driver</Text>}
+          {confirming ? <ActivityIndicator color={BLACK} /> : <Text style={styles.confirmBtnText}>Confirm trip</Text>}
         </TouchableOpacity>
       ) : (
         <TouchableOpacity
