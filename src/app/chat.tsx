@@ -60,7 +60,11 @@
 
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { useCallback, useEffect, useRef, useState } from 'react';
+// Fragment by name, not React.Fragment: this file has no default React
+// import, so React.Fragment would be undefined at runtime. The message
+// list needs a keyed wrapper (the shorthand <> cannot take a key) so the
+// deal-completed divider can sit between two messages.
+import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
 import * as ImagePicker from 'expo-image-picker';
 import { ActivityIndicator, Alert, AppState, Image, Keyboard, KeyboardAvoidingView, Modal, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -1609,6 +1613,54 @@ export default function ChatScreen() {
     return `${m}:${sec.toString().padStart(2, '0')}`;
   }
 
+  // WHERE THE DEAL FINISHED, IN THE CONVERSATION ITSELF.
+  //
+  // Reported: a completed deal looked exactly like an unfinished one.
+  // The only sign was the "Deal complete" pill in the header, and
+  // people carry on chatting afterwards — about a charger, a receipt,
+  // a return — so the thread just runs on with nothing marking the
+  // moment. Scroll back a week later and there is no way to tell which
+  // messages came before the handover and which came after.
+  //
+  // Van hire already had a completion bar (tripDoneBar, 1 Sep). Listing
+  // and Wanted deals never got one, which is why the screenshot that
+  // prompted this shows three messages and no indication at all.
+  //
+  // Two marks, doing different jobs. The bar at the top answers "is
+  // this done?" the instant the chat opens. The line in the stream
+  // answers "done WHEN, and what has been said since" — it sits at the
+  // confirmation timestamp, so everything below it is post-deal.
+  // Any chat type, because the divider is worth having on a finished
+  // trip as much as a finished sale. Only the top BAR is split — trips
+  // already have their own (tripDoneBar), so the new one below is
+  // guarded to avoid rendering two of them.
+  const dealDoneAt: string | null = isRequestChat
+    ? (tripFullyConfirmed ? tripConfirmedAt : null)
+    : (confirmed ? (session?.confirmed_at ?? null) : null);
+
+  const dealDoneMs = dealDoneAt ? parsePgTimestamp(dealDoneAt) : NaN;
+
+  // The first message sent after the handover. messages.length means the
+  // deal is the most recent thing that happened and the line goes last;
+  // -1 means there is no line to draw.
+  const dealMarkerIndex = Number.isNaN(dealDoneMs)
+    ? -1
+    : (() => {
+        const i = messages.findIndex((m: any) => parsePgTimestamp(m.created_at) > dealDoneMs);
+        return i === -1 ? messages.length : i;
+      })();
+
+  // Rendered in two places, so it lives in one.
+  const dealMarker = (
+    <View style={styles.dealMarkerRow}>
+      <View style={styles.dealMarkerLine} />
+      <Text style={styles.dealMarkerText}>
+        ✅ Deal completed{dealDoneAt ? ` · ${formatTripDate(dealDoneAt)}` : ''}
+      </Text>
+      <View style={styles.dealMarkerLine} />
+    </View>
+  );
+
   if (!depositChecked) {
     return (
       <View style={styles.center}>
@@ -1849,6 +1901,29 @@ export default function ChatScreen() {
         </View>
       )}
 
+      {/* The same bar for listing and Wanted deals. Identical reasoning
+          to the trip one above — the action is what closes, not the
+          talking — and deliberately the same component and styling, so
+          a finished deal looks the same wherever it happened rather
+          than teaching people two visual languages for one idea. */}
+      {dealDoneAt && !isRequestChat && (
+        <View style={styles.tripDoneBar}>
+          <Text style={styles.tripDoneIcon}>✅</Text>
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <Text style={styles.tripDoneTitle}>
+              This deal is complete
+              {` · ${formatTripDate(dealDoneAt)}`}
+              {session?.amount != null ? ` · $${session.amount}` : ''}
+            </Text>
+            <Text style={styles.tripDoneBody}>
+              {isBuyerRole
+                ? 'You confirmed the handover. You can still message about anything left over.'
+                : 'The buyer confirmed the handover. You can still message about anything left over.'}
+            </Text>
+          </View>
+        </View>
+      )}
+
       {contactWarning && (
         <View style={styles.contactWarningBar}>
           <Text style={styles.contactWarningText}>
@@ -1883,10 +1958,12 @@ export default function ChatScreen() {
             </Text>
           )}
 
-          {messages.map((msg) => {
+          {messages.map((msg, index) => {
             const isMine = msg.sender_id === myId;
             return (
-              <View key={msg.id} style={[styles.msgRow, isMine && styles.msgRowMine]}>
+              <Fragment key={msg.id}>
+              {index === dealMarkerIndex && dealMarker}
+              <View style={[styles.msgRow, isMine && styles.msgRowMine]}>
                 {!isMine && (
                   <View style={styles.msgAvatar}>
                     <Text style={styles.msgAvatarText}>{getInitials(otherPersonName)}</Text>
@@ -1941,8 +2018,13 @@ export default function ChatScreen() {
                   </Text>
                 </View>
               </View>
+              </Fragment>
             );
           })}
+
+          {/* Nothing has been said since the handover, so the line goes
+              at the end rather than never being drawn at all. */}
+          {dealMarkerIndex === messages.length && dealMarker}
 
           <View style={{ height: 80 }} />
         </ScrollView>
@@ -2197,9 +2279,22 @@ export default function ChatScreen() {
                    "never happening" looked identical — the exact
                    confusion this feature exists to end. */
                 <>
-                  <Text style={styles.modalTitle}>Meetup called off</Text>
+                  {/* THREE CASES, NOT TWO (10 Sep 2026). A session can now
+                      also be closed by notify-stale-meetpay after seven
+                      days of nobody arranging it, and that arrives here
+                      with declined_by NULL. With only the two cases below,
+                      an automatic timeout rendered as "The other person
+                      can't go ahead with this meetup" — telling both
+                      sides the other one had pulled out, when in fact
+                      neither had done anything. Blaming a real person for
+                      a cron job is worse than saying nothing. */}
+                  <Text style={styles.modalTitle}>
+                    {session.declined_by ? 'Meetup called off' : 'Meetup closed'}
+                  </Text>
                   <Text style={styles.modalBody}>
-                    {session.declined_by === myId
+                    {!session.declined_by
+                      ? 'This handover was never arranged, so we closed it. Neither of you did anything wrong.'
+                      : session.declined_by === myId
                       ? 'You called this meetup off. The other person has been told in the chat.'
                       : 'The other person can\'t go ahead with this meetup.'}
                     {session.decline_reason ? `\n\n"${session.decline_reason}"` : ''}
@@ -2316,9 +2411,13 @@ export default function ChatScreen() {
               session?.status === 'cancelled' ? (
                 /* Mirror of the buyer's cancelled state — see there. */
                 <>
-                  <Text style={styles.modalTitle}>Meetup called off</Text>
+                  <Text style={styles.modalTitle}>
+                    {session.declined_by ? 'Meetup called off' : 'Meetup closed'}
+                  </Text>
                   <Text style={styles.modalBody}>
-                    {session.declined_by === myId
+                    {!session.declined_by
+                      ? 'This handover was never arranged, so we closed it. Neither of you did anything wrong.'
+                      : session.declined_by === myId
                       ? 'You called this meetup off. The buyer has been told in the chat.'
                       : 'The buyer can\'t go ahead with this meetup.'}
                     {session.decline_reason ? `\n\n"${session.decline_reason}"` : ''}
@@ -2558,6 +2657,13 @@ const styles = StyleSheet.create({
   contactWarningBar: { backgroundColor: '#3a1a1a', padding: 10, paddingHorizontal: 16, borderBottomWidth: 0.5, borderBottomColor: '#5a2a2a' },
   contactWarningText: { color: '#ff8a8a', fontSize: 11, lineHeight: 16 },
   messages: { flex: 1, backgroundColor: '#111', padding: 16 },
+  // Reads as a divider rather than a message: a rule straight across
+  // the thread with the label sitting in it. Green, matching the
+  // completion bar, so the two marks are recognisably the same fact.
+  dealMarkerRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginVertical: 18 },
+  dealMarkerLine: { flex: 1, height: 0.5, backgroundColor: '#2f3d34' },
+  dealMarkerText: { color: '#9dc4ab', fontSize: 10.5, fontWeight: '800', flexShrink: 0 },
+
   dateStamp: { alignItems: 'center', marginBottom: 16 },
   dateText: { color: '#444', fontSize: 10, backgroundColor: '#1a1a1a', paddingHorizontal: 10, paddingVertical: 3, borderRadius: 20 },
   msgRow: { flexDirection: 'row', gap: 8, marginBottom: 14, alignItems: 'flex-end' },

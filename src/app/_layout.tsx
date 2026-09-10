@@ -302,6 +302,47 @@ export default function RootLayout() {
           // Routes to dealer.tsx, which now shows exactly the jobs
           // assigned to this operator awaiting accept/decline.
           router.push('/dealer');
+        } else if (
+          (data?.type === 'meetpay_waiting' || data?.type === 'meetpay_expired') &&
+          typeof data?.route === 'string' &&
+          data.route.startsWith('/chat')
+        ) {
+          // NEW (notify-stale-meetpay): the 24-hour "someone is waiting
+          // on you" nudge and the 7-day closure notice. Both name the
+          // exact thread, because a nudge that lands on a generic screen
+          // makes the person hunt for the deal it was about — and the
+          // whole point of the nudge is that they act now.
+          //
+          // The route is built server-side from the session's own type
+          // and reference_id, never from anything a user typed; the
+          // prefix check is belt and braces so a malformed payload can
+          // only ever fail to navigate, never navigate somewhere else.
+          router.push(data.route);
+        } else if (
+          (data?.type === 'rating_due' || data?.type === 'rating_sealed') &&
+          data?.session_id
+        ) {
+          // NEW: all three rating pushes were dead taps. The two that
+          // exist to GET someone onto the rating screen — the 1-hour
+          // prompt from notify-rating-due and the sealed nudge from
+          // notify-new-rating — had no case here at all, so tapping
+          // them left you wherever the app already was. That is the
+          // whole job of those notifications.
+          //
+          // session_id alone is enough: rating.tsx re-derives who is
+          // being rated from the confirmed session rather than
+          // trusting the URL (see its header), and submit_rating()
+          // does the same server-side. role is passed only so the
+          // screen labels itself correctly, and is carried in both
+          // payloads for exactly that.
+          router.push(
+            `/rating?session_id=${data.session_id}${data?.role ? `&role=${data.role}` : ''}`
+          );
+        } else if (data?.type === 'new_rating') {
+          // Informational — the rating is already published by the
+          // time this fires, so there is nothing to do but look at it.
+          // Own profile is where your own ratings are shown.
+          router.push('/profile');
         } else if (data?.type === 'delivery_declined' && data?.booking_id) {
           // NEW: sent to the BUYER when their assigned driver declines
           // — see notify-delivery-status/index.ts's 'declined' event.
@@ -310,7 +351,7 @@ export default function RootLayout() {
           // bookings in this status.
           router.push(`/delivery-track?booking_id=${data.booking_id}`);
         }
-        // All eleven notification types built today are now handled.
+        // All notification types are now handled.
       }
     ).then((unsubscribe) => {
       unsubscribeRef.current = unsubscribe;

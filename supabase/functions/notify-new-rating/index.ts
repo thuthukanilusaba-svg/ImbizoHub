@@ -1,12 +1,34 @@
 // supabase/functions/notify-new-rating/index.ts
 //
-// Closes a real gap: no notification currently fires when someone
-// receives a rating — they'd only find out by checking their own
-// profile. Built against the CONFIRMED real schema (ratings.reviewee_id,
-// reviewer_id, stars, review, listing_id — checked directly via
-// information_schema before writing this, not guessed).
+// AUTH: verify_jwt is false. The caller is a database trigger, which
+// has no user session to attach an Authorization header with; the
+// shared secret below is the auth.
 //
-// Expected trigger payload: { rating_id: uuid }
+// WHAT CHANGED (10 Sep). This used to fire only on INSERT and always
+// said "<name> rated you ⭐⭐". Once sealed ratings landed that was a
+// hole straight through them: the app hid the other side's stars
+// behind RLS and this push read them out on the lock screen. Whoever
+// rated first handed their score to the person who had not rated yet
+// — the exact retaliation loop blinding exists to close.
+//
+// The stars now only ever appear for a rating that is already
+// published. Until then the reviewee is told there is something
+// waiting and nothing else — no number, no adjective, nothing that
+// hints at the score.
+//
+// The sealed nudge earns its place rather than merely being harmless:
+// the only thing that unseals a rating before the 14-day timer is the
+// other side rating back, so a push saying "rate them back to see it"
+// is the one most likely to complete the pair.
+//
+// THE EVENT COMES FROM SQL, IN THE PAYLOAD. It is NOT re-derived from
+// published_at here, and must not be: pg_net delivers after commit, so
+// a rating that was sealed when the trigger fired and published later
+// in the same transaction already reads as published by the time this
+// runs. Trusting the column here produced a duplicate push to the same
+// person, which is how this was caught.
+//
+// Payload: { rating_id: uuid, event: 'sealed' | 'published' }
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
@@ -24,7 +46,7 @@ async function sendExpoPushNotification(
   body: string,
   data?: Record<string, unknown>
 ) {
-  if (!pushToken || !pushToken.startsWith('ExponentPushToken')) return;
+  if (!pushToken || !pushToken.startsWith('ExponentPushToken')) return false;
   try {
     const resp = await fetch(EXPO_PUSH_URL, {
       method: 'POST',
@@ -34,9 +56,12 @@ async function sendExpoPushNotification(
     const result = await resp.json().catch(() => null);
     if (result?.data?.status === 'error') {
       console.error('Expo push send error:', result.data.message, result.data.details);
+      return false;
     }
+    return true;
   } catch (err) {
     console.error('sendExpoPushNotification failed:', err);
+    return false;
   }
 }
 
@@ -50,12 +75,12 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { rating_id } = await req.json();
+    const { rating_id, event } = await req.json();
     if (!rating_id) return new Response('Missing rating_id', { status: 400 });
 
     const { data: rating, error: ratingError } = await supabase
       .from('ratings')
-      .select('id, reviewer_id, reviewee_id, stars, listing_id')
+      .select('id, reviewer_id, reviewee_id, stars, role, listing_id, published_at, meetpay_session_id')
       .eq('id', rating_id)
       .maybeSingle();
 
@@ -64,22 +89,43 @@ Deno.serve(async (req) => {
       return new Response('No matching rating', { status: 200 });
     }
 
+    // Falling back to the column is only safe for a caller that sent no
+    // event at all, which by definition predates the publish transition.
+    const isPublished = event ? event === 'published' : rating.published_at !== null;
+
     const [reviewerProfile, revieweeProfile] = await Promise.all([
       supabase.from('profiles').select('full_name').eq('id', rating.reviewer_id).maybeSingle(),
       supabase.from('profiles').select('push_token').eq('id', rating.reviewee_id).maybeSingle(),
     ]);
 
     const reviewerName = reviewerProfile.data?.full_name || 'Someone';
-    const stars = '⭐'.repeat(Math.max(1, Math.min(5, rating.stars || 0)));
+
+    if (isPublished) {
+      const stars = '⭐'.repeat(Math.max(1, Math.min(5, rating.stars || 0)));
+      await sendExpoPushNotification(
+        revieweeProfile.data?.push_token,
+        'New rating received',
+        `${reviewerName} rated you ${stars}`,
+        { type: 'new_rating', rating_id: rating.id }
+      );
+      return new Response('OK published', { status: 200 });
+    }
 
     await sendExpoPushNotification(
       revieweeProfile.data?.push_token,
-      'New rating received',
-      `${reviewerName} rated you ${stars}`,
-      { type: 'new_rating', rating_id: rating.id }
+      'You have a sealed rating',
+      `${reviewerName} has rated you. Rate them back to unseal both.`,
+      {
+        type: 'rating_sealed',
+        rating_id: rating.id,
+        session_id: rating.meetpay_session_id,
+        // The reviewee's role when they rate back is the opposite of
+        // the incoming rating's. Labelling only — the rating screen and
+        // submit_rating() both re-derive it from the session itself.
+        role: rating.role === 'buyer' ? 'seller' : 'buyer',
+      }
     );
-
-    return new Response('OK', { status: 200 });
+    return new Response('OK sealed', { status: 200 });
   } catch (err) {
     console.error('notify-new-rating error:', err);
     return new Response('Server error', { status: 500 });

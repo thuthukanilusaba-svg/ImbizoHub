@@ -162,7 +162,10 @@ Deno.serve(async (req) => {
           isTrip
             ? 'Rate the other side — they cannot see what you said until they have rated too.'
             : 'Rate the other side — they cannot see what you said until they have rated too.',
-          { type: 'rating_due', session_id: s.id }
+          // role is carried so _layout.tsx can label the rating screen
+          // correctly on tap — the screen re-derives who is being rated
+          // from the session itself and does not trust this.
+          { type: 'rating_due', session_id: s.id, role: side }
         );
         if (sent) results.prompts_sent++;
       }

@@ -89,18 +89,34 @@ export async function savePushToken(token: string) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return;
 
-  // FIX: push_token_updated_at added — needed by the data retention
-  // policy's stale-token cleanup job (cleanup-expired-data), which
-  // clears any token that hasn't refreshed in 6 months. Without this
-  // timestamp, that job has no way to tell a genuinely stale token
-  // apart from one set yesterday. Set every time this function runs,
-  // which happens on every app launch — so an actively-used token's
-  // clock keeps resetting naturally, and only truly abandoned ones
-  // (app uninstalled, account inactive) ever reach the 6-month mark.
-  await supabase
+  // THIS FUNCTION SILENTLY FAILED FOR EVERY USER, FOR MONTHS.
+  //
+  // It used to set push_token_updated_at here too, for the retention
+  // policy's stale-token cleanup. But `profiles` has no table-level
+  // UPDATE grant for `authenticated` — only column-level ones — and
+  // that newer column was never added to the list. A single UPDATE
+  // touching one ungranted column fails in its ENTIRETY, so the token
+  // never got saved either. The error even names the table rather than
+  // the column ("permission denied for table profiles"), and the
+  // result was never checked, so nothing anywhere said a word.
+  //
+  // The damage was total and invisible: zero push tokens in the whole
+  // database, so every notification the app has ever sent went
+  // nowhere.
+  //
+  // Two changes. The timestamp is now stamped by a database trigger on
+  // any push_token change (trg_stamp_push_token_updated_at), so this
+  // writes ONE column and cannot be broken again by a column added
+  // later. And the error is checked, because a write that matters and
+  // reports nothing is how this hid for so long.
+  const { error } = await supabase
     .from('profiles')
-    .update({ push_token: token, push_token_updated_at: new Date().toISOString() })
+    .update({ push_token: token })
     .eq('id', user.id);
+
+  if (error) {
+    console.error('savePushToken failed — this device will receive no notifications:', error.message);
+  }
 }
 
 // Clear the launcher badge and remove already-delivered notifications.
