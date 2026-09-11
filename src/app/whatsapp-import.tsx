@@ -53,6 +53,7 @@ import {
 } from 'react-native';
 import { supabase } from '../../lib/supabase';
 import { checkListingContent } from '../../lib/contentSafety';
+import LocationPicker from '../../components/LocationPicker';
 
 const GOLD = '#B8860B';
 const BLACK = '#1A1A18';
@@ -380,12 +381,17 @@ export default function WhatsAppImportScreen() {
               Found {items.length} items — review each one below, uncheck any you don't want to import.
             </Text>
             <Text style={styles.label}>Location (applies to all, unless overridden below)</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="e.g. Harare"
-              placeholderTextColor="#666"
+            {/* Was free text with placeholder "e.g. Harare", like post.tsx
+                and post-wanted.tsx before they were wired to this picker.
+                Free text is what produced 'Bulawayo' and 'bulawayo' as two
+                separate cities in the live data, plus 'ghdxed' and a
+                browser-autofilled 'Burbank'. This screen is the worst place
+                to leave it: one careless entry here is applied to EVERY
+                item in the import at once. */}
+            <LocationPicker
               value={sharedLocation}
-              onChangeText={setSharedLocation}
+              onChange={setSharedLocation}
+              placeholder="Select the city for all items"
             />
           </View>
         )}
@@ -437,25 +443,33 @@ export default function WhatsAppImportScreen() {
             {items.length === 1 && (
               <>
                 <Text style={styles.label}>Location *</Text>
-                <TextInput
-                  style={styles.input}
-                  placeholder="e.g. Harare"
-                  placeholderTextColor="#666"
+                <LocationPicker
                   value={item.location}
-                  onChangeText={(v) => updateItem(item.key, 'location', v)}
+                  onChange={(v) => updateItem(item.key, 'location', v)}
+                  placeholder="Select the city"
                 />
               </>
             )}
             {items.length > 1 && (
               <>
                 <Text style={styles.label}>Location override (optional)</Text>
-                <TextInput
-                  style={styles.input}
-                  placeholder={sharedLocation || 'Uses the shared location above'}
-                  placeholderTextColor="#666"
+                <LocationPicker
                   value={item.location}
-                  onChangeText={(v) => updateItem(item.key, 'location', v)}
+                  onChange={(v) => updateItem(item.key, 'location', v)}
+                  placeholder={sharedLocation || 'Uses the shared location above'}
                 />
+                {/* A picker has no empty option, so without this there is
+                    no way back to the shared location once one is chosen
+                    by mistake — the free-text field it replaces could just
+                    be cleared. Shown only when there is something to
+                    clear. */}
+                {item.location ? (
+                  <TouchableOpacity onPress={() => updateItem(item.key, 'location', '')}>
+                    <Text style={styles.clearOverride}>
+                      ← Use the shared location instead
+                    </Text>
+                  </TouchableOpacity>
+                ) : null}
               </>
             )}
 
@@ -529,6 +543,7 @@ const styles = StyleSheet.create({
   errorText: { color: RED, fontSize: 13 },
 
   label: { fontSize: 13, fontWeight: '700', color: '#fff', marginBottom: 8, marginTop: 14 },
+  clearOverride: { color: GOLD, fontSize: 12, fontWeight: '700', marginTop: 8 },
 
   card: { backgroundColor: BLACK, borderRadius: 14, padding: 16, marginTop: 16, borderWidth: 0.5, borderColor: '#333' },
   input: {
