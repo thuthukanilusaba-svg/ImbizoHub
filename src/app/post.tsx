@@ -40,6 +40,7 @@ import { normalizeImageOrientation } from '../../lib/imageOrientation';
 import { supabase } from '../../lib/supabase';
 import { prepareUpload } from '../../lib/uploadHelpers';
 import { reportHandledError } from '../../lib/crashReporter';
+import { checkListingContent } from '../../lib/contentSafety';
 import LocationPicker from '../../components/LocationPicker';
 
 const GOLD = '#B8860B';
@@ -239,6 +240,19 @@ export default function PostScreen() {
     // sentence they can act on instead of a constraint-violation error.
     if (priceNum > MAX_PRICE) {
       setError(`That price looks too high — the most you can list is $${MAX_PRICE.toLocaleString()}.`);
+      return;
+    }
+
+    // Checked here, BEFORE the photos are committed and the row is
+    // sent, so somebody who pastes code into the description is told
+    // straight away rather than watching a save fail at the end.
+    //
+    // The database refuses the same content and is the boundary that
+    // actually holds — this file can be skipped by calling the API
+    // directly. See lib/contentSafety.ts; the two must stay in step.
+    const unsafe = checkListingContent(title, description);
+    if (unsafe) {
+      setError(unsafe);
       return;
     }
 

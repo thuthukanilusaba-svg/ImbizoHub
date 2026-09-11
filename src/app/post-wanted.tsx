@@ -57,6 +57,7 @@ import {
 } from 'react-native';
 import { supabase } from '../../lib/supabase';
 import { reportHandledError } from '../../lib/crashReporter';
+import { checkListingContent } from '../../lib/contentSafety';
 import LocationPicker from '../../components/LocationPicker';
 
 const GOLD = '#B8860B';
@@ -99,6 +100,11 @@ export default function PostWantedScreen() {
     if (min !== null && isNaN(min)) { setError('Enter a valid minimum budget, or leave it blank.'); return; }
     if (max !== null && isNaN(max)) { setError('Enter a valid maximum budget, or leave it blank.'); return; }
     if (min !== null && max !== null && min > max) { setError('Minimum budget can\'t be higher than maximum.'); return; }
+
+    // Wanted posts go through the same trigger as listings, so they get
+    // the same check here. See lib/contentSafety.ts.
+    const unsafe = checkListingContent(title, description);
+    if (unsafe) { setError(unsafe); return; }
 
     setLoading(true);
 

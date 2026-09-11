@@ -52,6 +52,7 @@ import {
   View,
 } from 'react-native';
 import { supabase } from '../../lib/supabase';
+import { checkListingContent } from '../../lib/contentSafety';
 
 const GOLD = '#B8860B';
 const BLACK = '#1A1A18';
@@ -258,6 +259,16 @@ export default function WhatsAppImportScreen() {
       }
       if (isNaN(parseFloat(it.price)) || parseFloat(it.price) <= 0) {
         setError(`"${it.title}" has an invalid price.`);
+        return;
+      }
+      // This screen matters more than the others for this check: the
+      // text comes from a pasted WhatsApp export, so the person
+      // importing it did not write it and may not have read it. Caught
+      // before the loop starts, so an import never half-completes on a
+      // row the database is going to refuse anyway.
+      const unsafe = checkListingContent(it.title, it.description);
+      if (unsafe) {
+        setError(`"${it.title || 'One item'}": ${unsafe}`);
         return;
       }
     }
