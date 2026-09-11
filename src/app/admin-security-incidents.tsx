@@ -106,11 +106,11 @@ export default function AdminSecurityIncidentsScreen() {
       return;
     }
 
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('is_admin')
-      .eq('id', user.id)
-      .maybeSingle();
+    // is_admin is no longer exposed on the table — it told an attacker
+    // exactly which account to go after. my_profile() returns it for
+    // the caller's own row only. The RPCs behind this screen re-check
+    // is_admin server-side regardless; this only decides what to render.
+    const { data: profile } = await supabase.rpc('my_profile').single();
 
     if (!profile?.is_admin) {
       setAuthorized(false);

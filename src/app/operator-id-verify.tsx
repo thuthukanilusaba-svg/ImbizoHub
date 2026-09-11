@@ -126,11 +126,7 @@ export default function OperatorIdVerifyScreen() {
       }
       setCurrentlyIdVerified(data.verification_tier === 'id_verified' || data.verification_tier === 'trusted');
     } else {
-      const { data } = await supabase
-        .from('profiles')
-        .select('operator_id_verified')
-        .eq('id', user.id)
-        .maybeSingle();
+      const { data } = await supabase.rpc('my_profile').single();
       setCurrentlyIdVerified(!!data?.operator_id_verified);
     }
 

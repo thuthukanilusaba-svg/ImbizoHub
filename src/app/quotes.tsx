@@ -223,20 +223,36 @@ export default function QuotesScreen() {
       return;
     }
 
+    // THE PHONE NUMBER IS NO LONGER FETCHED HERE.
+    //
+    // This used to select `phone` for EVERY operator who had quoted,
+    // the moment the screen loaded, and merely hide it in the UI until
+    // the quote was accepted and the fee paid. The gate was decorative:
+    // every operator's number was already sitting on the device before
+    // anyone paid a cent, and readable by anyone who looked at the
+    // network tab. It was also exactly the thing the fee is charged
+    // for.
+    //
+    // Now the number is fetched one quote at a time, from
+    // operator_contact_for_quote(), which checks server-side that the
+    // caller owns the request and that the quote is accepted AND paid.
+    // The column is not client-readable at all any more.
     const operatorIds = [...new Set((quotesData ?? []).map((q: any) => q.operator_id))];
-    const profileMap: Record<string, { full_name: string; phone: string; base_city: string }> = {};
+    const profileMap: Record<string, { full_name: string; base_city: string }> = {};
     if (operatorIds.length > 0) {
       const { data: profiles } = await supabase
         .from('profiles')
-        .select('id, full_name, phone, base_city')
+        .select('id, full_name, base_city')
         .in('id', operatorIds);
-      (profiles ?? []).forEach((p: any) => { profileMap[p.id] = { full_name: p.full_name, phone: p.phone, base_city: p.base_city }; });
+      (profiles ?? []).forEach((p: any) => { profileMap[p.id] = { full_name: p.full_name, base_city: p.base_city }; });
     }
 
     setQuotes((quotesData ?? []).map((q: any) => ({
       ...q,
       operator_name: profileMap[q.operator_id]?.full_name ?? 'Operator',
-      operator_phone: profileMap[q.operator_id]?.phone ?? '',
+      // Filled in by openModal() once the server confirms this quote is
+      // accepted and paid for.
+      operator_phone: '',
       // Was operating_area, a free-text field an operator could fill
       // with 'Harare, Bulawayo, or both'. Matching is on pickup city
       // alone, so that let an operator advertise coverage the app would
@@ -253,14 +269,37 @@ export default function QuotesScreen() {
     setRefreshing(false);
   }
 
-  function openModal(quote: Quote) {
+  // Pulls the operator's contact details for a quote the caller has
+  // just paid for (or paid for earlier). The server re-checks
+  // ownership, acceptance and payment every time — see
+  // operator_contact_for_quote(). Called after the reveal rather than
+  // on load, because loading them on load is what leaked them.
+  // quoteId is typed string here because that is how this file models
+  // Quote.id; PostgREST accepts it for the bigint parameter unchanged.
+  async function revealContact(quoteId: string) {
+    const { data } = await supabase.rpc('operator_contact_for_quote', { p_quote_id: quoteId });
+    const contact = Array.isArray(data) ? data[0] : data;
+    if (contact?.phone) {
+      setChosenQuote((prev) => (prev && prev.id === quoteId ? { ...prev, operator_phone: contact.phone } : prev));
+    }
+  }
+
+  async function openModal(quote: Quote) {
     setChosenQuote(quote);
     // If this quote is already accepted+paid (the "View contact
     // details" button on an accepted card), skip straight to the
     // revealed step instead of showing the payment screen again.
-    setStep(quote.status === 'accepted' && quote.deposit_paid ? 'revealed' : 'confirm');
+    const alreadyPaid = quote.status === 'accepted' && quote.deposit_paid;
+    setStep(alreadyPaid ? 'revealed' : 'confirm');
     setPayError('');
     setModalVisible(true);
+
+    // Fetch the contact details only at the point they are actually
+    // shown, and let the database decide whether this caller has earned
+    // them. Returns no rows if the quote is not theirs, not accepted,
+    // or not paid — so a tampered client gets nothing rather than a
+    // hidden field it can read back.
+    if (alreadyPaid) await revealContact(quote.id);
   }
 
   // NEW: free-promo accept path — calls accept-quote-free-promo
@@ -300,6 +339,7 @@ export default function QuotesScreen() {
     }
 
     setStep('revealed');
+    await revealContact(chosenQuote.id);
     await loadData();
   }
 
@@ -362,6 +402,7 @@ export default function QuotesScreen() {
 
     if (paid) {
       setStep('revealed');
+      if (chosenQuote) await revealContact(chosenQuote.id);
       await loadData(); // pick up the server-confirmed quote/request state
     } else {
       setStep('confirm');

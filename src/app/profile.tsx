@@ -195,11 +195,11 @@ export default function ProfileScreen() {
     setUserId(user.id);
     setEmail(user.email ?? '');
 
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('*')
-      .eq('id', user.id)
-      .maybeSingle();
+    // Was select('*'), which now returns nothing for the private
+    // columns this screen exists to edit. my_profile() returns the
+    // caller's own row in full — see the migration for why the table
+    // stopped handing those columns to the client.
+    const { data: profile } = await supabase.rpc('my_profile').single();
 
     if (profile) {
       setFullName(profile.full_name ?? '');

@@ -91,11 +91,8 @@ export default function VerifiedSellerPayScreen() {
     setMyId(user.id);
     setMyEmail(user.email ?? '');
 
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('is_verified, verified_expires_at, verified_paid_at')
-      .eq('id', user.id)
-      .maybeSingle();
+    // verified_paid_at is private now; my_profile() carries it.
+    const { data: profile } = await supabase.rpc('my_profile').single();
 
     const isActive = !!(
       profile?.is_verified &&

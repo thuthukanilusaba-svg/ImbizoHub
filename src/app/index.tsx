@@ -76,11 +76,8 @@ export default function HomeScreen() {
   async function loadUser() {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('full_name, is_admin, avatar_url')
-      .eq('id', user.id)
-      .maybeSingle();
+    // is_admin is no longer readable from the table — see my_profile().
+    const { data: profile } = await supabase.rpc('my_profile').single();
 
     if (profile?.full_name) {
       setUserName(profile.full_name.split(' ')[0]);

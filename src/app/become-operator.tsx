@@ -183,11 +183,9 @@ export default function BecomeOperatorScreen() {
     (async () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user || cancelled) return;
-      const { data } = await supabase
-        .from('profiles')
-        .select('phone, base_city')
-        .eq('id', user.id)
-        .maybeSingle();
+      // phone is not a client-readable column any more; my_profile()
+      // returns the caller's own row.
+      const { data } = await supabase.rpc('my_profile').single();
       if (cancelled) return;
       if (data?.phone) setPhone(data.phone);
       if (data?.base_city) setBaseCity(data.base_city);
