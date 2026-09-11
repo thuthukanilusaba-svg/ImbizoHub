@@ -1,7 +1,7 @@
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, FlatList, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import BottomNav from '../../components/BottomNav';
@@ -16,6 +16,73 @@ const DARK = '#2a2a2a';
 const GREY = '#AAAAAA';
 
 const PAGE_SIZE = 20;
+
+// A bulk import from one seller used to fill the entire feed. Sindiso's
+// WhatsApp catalogue was 24 of the marketplace's 31 listings, so a buyer
+// opening the app saw one wholesaler's grocery list and nothing else —
+// 23 of them with no photo, so 23 identical grey boxes.
+//
+// Consecutive listings from the same seller now collapse into ONE tile
+// that opens their shopfront. The listings themselves are untouched:
+// each keeps its own page, chat, Meet & Pay, price and search entry.
+// This is purely how the feed draws them.
+//
+// THREE, NOT TWO. Someone posting a couch and a chair has not flooded
+// anything, and collapsing that pair would hide a listing for no reason.
+// A run has to be long enough to actually be a catalogue.
+const GROUP_MIN = 3;
+
+// Enough tiles to be sure the list is taller than any phone screen, so
+// onEndReached has something to fire on. Deliberately generous: the
+// cost of being wrong is one extra page fetch, and the cost of being
+// wrong the other way is a feed that cannot be scrolled at all.
+const MIN_TILES_TO_FILL_SCREEN = 8;
+
+type FeedRow =
+  | { kind: 'listing'; listing: any }
+  | { kind: 'group'; userId: string; items: any[] };
+
+// Runs are found in the order the feed already sorts by (created_at
+// desc), NOT by gathering every listing a seller has. A seller who
+// posted last week and again today should appear in both places — the
+// point is to collapse a burst, not to bury someone's older items next
+// to their newer ones.
+function groupFeed(rows: any[]): FeedRow[] {
+  const out: FeedRow[] = [];
+  let i = 0;
+
+  while (i < rows.length) {
+    const uid = rows[i]?.user_id;
+
+    // An absent user_id never groups — two listings from deleted
+    // accounts are not "the same seller" just because both are null.
+    //
+    // Handled as its own branch rather than by letting the scan below
+    // fail: the first version relied on `uid &&` short-circuiting the
+    // while loop, which left the run EMPTY and silently dropped the
+    // listing from the feed entirely. Three null-seller listings in,
+    // zero tiles out. Found by testing, not by reading.
+    if (!uid) {
+      out.push({ kind: 'listing', listing: rows[i] });
+      i += 1;
+      continue;
+    }
+
+    let j = i;
+    while (j < rows.length && rows[j]?.user_id === uid) j++;
+
+    const run = rows.slice(i, j);
+    if (run.length >= GROUP_MIN) {
+      out.push({ kind: 'group', userId: uid, items: run });
+    } else {
+      for (const listing of run) out.push({ kind: 'listing', listing });
+    }
+    i = j;
+  }
+
+  return out;
+}
+
 
 const categories = [
   { icon: '📱', label: 'Phones' },
@@ -420,14 +487,37 @@ export default function HomeScreen() {
     );
   }
 
+  // Derived from the accumulated list rather than per page, so a run
+  // that straddles a pagination boundary still collapses into one tile
+  // instead of two.
+  const feedRows = useMemo(() => groupFeed(listings), [listings]);
+
+  // GROUPING CAN LEAVE TOO LITTLE TO SCROLL.
+  //
+  // A page is 20 listings, and Sindiso's import collapses all 20 into a
+  // single tile — so the first page renders ONE card, the list is
+  // shorter than the screen, and onEndReached never fires because there
+  // is nothing to scroll. The feed would sit there showing one tile
+  // with no way to reach the rest, which looks like an empty
+  // marketplace rather than a busy one.
+  //
+  // So when grouping has left the screen thin and there is more to
+  // fetch, fetch it. loadMore() already guards against overlapping
+  // calls, and hasMore stops this once the end is reached.
+  useEffect(() => {
+    if (feedRows.length < MIN_TILES_TO_FILL_SCREEN) loadMore();
+  }, [feedRows.length, loadMore]);
+
   return (
     <View style={styles.container}>
       <StatusBar style="light" />
 
       <FlatList
         key={numColumns}
-        data={listings}
-        keyExtractor={(item) => String(item.id)}
+        data={feedRows}
+        keyExtractor={(row) =>
+          row.kind === 'group' ? `g:${row.userId}:${row.items[0].id}` : `l:${row.listing.id}`
+        }
         numColumns={numColumns}
         columnWrapperStyle={styles.listingRow}
         contentContainerStyle={styles.listingGridContainer}
@@ -444,12 +534,60 @@ export default function HomeScreen() {
             </Text>
           )
         }
-        renderItem={({ item }) => {
+        renderItem={({ item: row }) => {
+          // A collapsed run of one seller's listings — see groupFeed().
+          if (row.kind === 'group') {
+            const g = sellerProfiles[row.userId];
+            const prices = row.items
+              .map((x: any) => Number(x.price))
+              .filter((n: number) => Number.isFinite(n) && n > 0);
+            const cheapest = prices.length ? Math.min(...prices) : null;
+            return (
+              <TouchableOpacity
+                style={[styles.listingCard, styles.groupCard]}
+                onPress={() => router.push(`/seller?id=${row.userId}`)}
+              >
+                {/* Four titles rather than four photos: a bulk import
+                    usually has no photos at all (23 of Sindiso's 24
+                    didn't), and four grey squares would say less than
+                    the product names do. */}
+                <View style={[styles.listingImg, styles.groupPreview]}>
+                  {row.items.slice(0, 4).map((x: any) => (
+                    <Text key={x.id} style={styles.groupPreviewLine} numberOfLines={1}>
+                      {x.title}
+                    </Text>
+                  ))}
+                  {row.items.length > 4 ? (
+                    <Text style={styles.groupPreviewMore}>+{row.items.length - 4} more</Text>
+                  ) : null}
+                </View>
+                <View style={styles.listingBody}>
+                  <Text style={styles.listingTitle} numberOfLines={1}>
+                    {g?.full_name || 'Seller'}
+                  </Text>
+                  <Text style={styles.listingPrice}>
+                    {cheapest !== null ? `from $${formatPrice(cheapest)}` : 'See prices'}
+                  </Text>
+                  {g && g.rating_count > 0 && renderStarRating(g.rating, g.rating_count)}
+                  <View style={styles.listingMeta}>
+                    <Text style={styles.listingLoc}>{row.items[0].location}</Text>
+                    <View style={styles.badgeGroup}>
+                      <Text style={styles.badgeGroupText}>{row.items.length} items</Text>
+                    </View>
+                  </View>
+                </View>
+              </TouchableOpacity>
+            );
+          }
+
+          const item = row.listing;
           const seller = sellerProfiles[item.user_id];
           return (
             <TouchableOpacity
               style={styles.listingCard}
               // NEW: swipe-through-postings context — see lib/listingNav.ts.
+              // Built from the flat list, not the grouped rows, so
+              // swiping still moves through every listing in order.
               onPress={() => router.push(buildListingHref(item.id, listings.map((x) => x.id)))}
             >
               {item.image_url ? (
@@ -585,6 +723,12 @@ const styles = StyleSheet.create({
   listingImg: { aspectRatio: 1, width: '100%' },
   listingImgPlaceholder: { backgroundColor: DARK, alignItems: 'center', justifyContent: 'center' },
   listingImgPlaceholderText: { fontSize: 28, opacity: 0.5 },
+  groupCard: { borderColor: '#4a4132' },
+  groupPreview: { backgroundColor: DARK, padding: 10, justifyContent: 'center', gap: 4 },
+  groupPreviewLine: { color: '#cfcfcf', fontSize: 10, lineHeight: 14 },
+  groupPreviewMore: { color: GOLD, fontSize: 10, fontWeight: '800', marginTop: 2 },
+  badgeGroup: { backgroundColor: '#3a3020', borderRadius: 4, paddingHorizontal: 5, paddingVertical: 2 },
+  badgeGroupText: { color: GOLD, fontSize: 9, fontWeight: '800' },
   listingBody: { padding: 8 },
   listingTitle: { color: '#fff', fontSize: 12, fontWeight: '700', marginBottom: 2 },
   listingPrice: { color: GOLD, fontSize: 13, fontWeight: '800', marginBottom: 3 },
