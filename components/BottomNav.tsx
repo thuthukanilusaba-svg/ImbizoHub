@@ -209,7 +209,12 @@ export default function BottomNav({ active, showDashboardTab, isAdmin }: BottomN
         }}
         onPress={() => handlePress(entry)}
       >
-        <View>
+        {/* Was a bare <View>, which shrank to the width of the glyph —
+            so the badge's right:-10 pushed it outside the tab entirely
+            and over the neighbouring one, which is the overlap that was
+            reported. Giving the wrapper its own padding means the badge
+            has room to sit inside the tab it belongs to. */}
+        <View style={styles.navIconWrap}>
           <Animated.Text
             style={[
               styles.navIcon,
@@ -291,8 +296,13 @@ const styles = StyleSheet.create({
   navItemWeb: { flex: 1, minWidth: 0 },
   // Anchored to the icon rather than the whole tab, so it sits on the
   // glyph the way people expect and does not drift when the label wraps.
+  // Room for the badge to overhang the glyph without leaving the tab.
+  navIconWrap: { paddingRight: 10, paddingTop: 2 },
   navBadge: {
-    position: 'absolute', top: -4, right: -10, minWidth: 18, height: 18,
+    // right: 0 rather than -10 — the padding above provides the overhang
+    // now, so the badge stays inside its own tab at any width, including
+    // the narrow flex:1 tabs on web.
+    position: 'absolute', top: -2, right: 0, minWidth: 18, height: 18,
     borderRadius: 9, backgroundColor: '#c0392b', alignItems: 'center',
     justifyContent: 'center', paddingHorizontal: 4,
   },

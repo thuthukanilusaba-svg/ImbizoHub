@@ -28,8 +28,8 @@
 // (gesture bar / nav buttons) instead of a hardcoded paddingBottom,
 // which was overlapping with the system navigation on some phones.
 
-import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import BottomNav from '../../components/BottomNav';
 import { supabase } from '../../lib/supabase';
@@ -49,6 +49,21 @@ type Conversation = {
   lastAt: string;
   listingTitle: string;
   otherName: string;
+  // Messages in this thread addressed to me and still unread. Counted
+  // from the rows the list already fetches, so it costs no extra query.
+  unread: number;
+};
+
+// One person, and everything you have on the go with them. The chats
+// stay separate — each keeps its own Meet & Pay, unlock fee and rating,
+// which all attach to one listing or Wanted post — but the list stops
+// showing the same person as several strangers.
+type PersonGroup = {
+  otherId: string;
+  otherName: string;
+  threads: Conversation[];
+  unread: number;
+  lastAt: string;
 };
 
 function getInitials(name: string): string {
@@ -77,7 +92,20 @@ export default function MessagesScreen() {
   // silent redirect. See loadConversations() for the full reasoning.
   const [needsAccount, setNeedsAccount] = useState(false);
 
-  useEffect(() => { loadConversations(); loadUserRole(); }, []);
+  useEffect(() => { loadUserRole(); }, []);
+
+  // ON FOCUS, not once on mount.
+  //
+  // This screen loaded its conversations exactly once. Open a chat —
+  // which calls markConversationRead() — press back, and the list still
+  // showed the thread as unread, because nothing had asked the database
+  // again. expo-router keeps the screen mounted underneath the pushed
+  // route, so the mount effect never re-ran.
+  //
+  // Invisible while the rows showed no unread state. The moment they
+  // carry a count, a badge that survives reading the messages is the
+  // whole feature failing in the most obvious way possible.
+  useFocusEffect(useCallback(() => { loadConversations(); }, []));
 
   async function loadConversations() {
     setLoading(true);
@@ -117,7 +145,7 @@ export default function MessagesScreen() {
     // considered below.
     const { data: messages, error } = await supabase
       .from('messages')
-      .select('listing_id, request_id, item_request_id, sender_id, receiver_id, text, created_at')
+      .select('listing_id, request_id, item_request_id, sender_id, receiver_id, text, created_at, read_at')
       .or(`sender_id.eq.${user.id},receiver_id.eq.${user.id}`)
       .order('created_at', { ascending: false });
 
@@ -157,7 +185,16 @@ export default function MessagesScreen() {
           lastAt: msg.created_at,
           listingTitle: '',
           otherName: '',
+          unread: 0,
         });
+      }
+
+      // Counted for EVERY message in the thread, not just the newest,
+      // which is why it sits outside the block above. Only messages
+      // addressed to me count — my own replies are not unread — and
+      // read_at is set by mark_conversation_read() when I open the chat.
+      if (msg.receiver_id === user.id && !msg.read_at) {
+        grouped.get(key)!.unread += 1;
       }
     }
 
@@ -288,6 +325,64 @@ export default function MessagesScreen() {
     ? conversations.filter((c) => String(c.listingId) === listingIdFilter)
     : conversations;
 
+  // ONE CARD PER PERSON.
+  //
+  // Reported from the live list: Kwanele appeared twice and read as two
+  // different people. He wasn't — one row was a trip (Njube → Bulawayo)
+  // and the other a Wanted post (Baby gadgets). Test2 appears SEVEN
+  // times for the same reason.
+  //
+  // The threads themselves must stay separate. A handover PIN, the
+  // "Deal complete" marker, the decline flow and a rating all attach to
+  // ONE listing or Wanted post, and the unlock fee is charged per
+  // listing — merging seven negotiations into one conversation would
+  // leave no way to say which deal a PIN belongs to. So this groups the
+  // PRESENTATION and nothing else.
+  //
+  // Order is by most recent message across the person's threads, so a
+  // fresh reply still brings them to the top.
+  const people = useMemo<PersonGroup[]>(() => {
+    const byPerson = new Map<string, PersonGroup>();
+
+    for (const c of visibleConversations) {
+      const existing = byPerson.get(c.otherId);
+      if (existing) {
+        existing.threads.push(c);
+        existing.unread += c.unread;
+        if (c.lastAt > existing.lastAt) existing.lastAt = c.lastAt;
+      } else {
+        byPerson.set(c.otherId, {
+          otherId: c.otherId,
+          otherName: c.otherName,
+          threads: [c],
+          unread: c.unread,
+          lastAt: c.lastAt,
+        });
+      }
+    }
+
+    const groups = Array.from(byPerson.values());
+    groups.sort((a, b) => (a.lastAt < b.lastAt ? 1 : a.lastAt > b.lastAt ? -1 : 0));
+    // Newest thread first within a person, for the same reason.
+    for (const g of groups) {
+      g.threads.sort((a, b) => (a.lastAt < b.lastAt ? 1 : a.lastAt > b.lastAt ? -1 : 0));
+    }
+    return groups;
+  }, [visibleConversations]);
+
+  function openThread(c: Conversation) {
+    // FIX (kept from the row version): the item_request_id case —
+    // without it a Wanted conversation fell into the request_id branch
+    // and opened chat.tsx with the wrong identity entirely.
+    if (c.listingId) {
+      router.push(`/chat?listing_id=${c.listingId}&receiver_id=${c.otherId}`);
+    } else if (c.requestId) {
+      router.push(`/chat?request_id=${c.requestId}&receiver_id=${c.otherId}`);
+    } else {
+      router.push(`/chat?item_request_id=${c.itemRequestId}&receiver_id=${c.otherId}`);
+    }
+  }
+
   return (
     <View style={styles.container}>
       <View style={styles.header}>
@@ -322,40 +417,105 @@ export default function MessagesScreen() {
         </View>
       ) : (
         <ScrollView style={styles.listContainer} contentContainerStyle={styles.list}>
-          {visibleConversations.map((c) => (
-            <TouchableOpacity
-              key={c.key}
-              style={styles.convoRow}
-              onPress={() => {
-                // FIX: added the item_request_id case — previously
-                // tapping a Wanted-tab conversation (had this screen
-                // even been showing them, which it wasn't) would have
-                // incorrectly fallen into the request_id branch, opening
-                // chat.tsx with the wrong identity entirely.
-                if (c.listingId) {
-                  router.push(`/chat?listing_id=${c.listingId}&receiver_id=${c.otherId}`);
-                } else if (c.requestId) {
-                  router.push(`/chat?request_id=${c.requestId}&receiver_id=${c.otherId}`);
-                } else {
-                  router.push(`/chat?item_request_id=${c.itemRequestId}&receiver_id=${c.otherId}`);
-                }
-              }}
-            >
-              <View style={styles.avatar}>
-                <Text style={styles.avatarText}>{getInitials(c.otherName)}</Text>
+          {people.map((person) => {
+            const single = person.threads.length === 1;
+            const newest = person.threads[0];
+
+            return (
+              <View key={person.otherId} style={styles.convoRow}>
+                <TouchableOpacity
+                  style={styles.personHeader}
+                  activeOpacity={single ? 0.6 : 1}
+                  // With one thread the whole card is the chat, exactly
+                  // as before. With several, the name is a heading and
+                  // the subjects below are the tap targets — tapping the
+                  // name would have to guess which conversation you
+                  // meant.
+                  onPress={single ? () => openThread(newest) : undefined}
+                  disabled={!single}
+                >
+                  <View style={styles.avatar}>
+                    <Text style={styles.avatarText}>{getInitials(person.otherName)}</Text>
+                  </View>
+                  <View style={styles.convoBody}>
+                    <View style={styles.convoTopRow}>
+                      <Text
+                        style={[styles.convoName, person.unread > 0 && styles.convoNameUnread]}
+                        numberOfLines={1}
+                      >
+                        {person.otherName || 'ImbizoHub user'}
+                      </Text>
+                      <Text style={[styles.convoTime, person.unread > 0 && styles.convoTimeUnread]}>
+                        {formatTime(person.lastAt)}
+                      </Text>
+                    </View>
+
+                    {single ? (
+                      <>
+                        <Text style={styles.convoListing} numberOfLines={1}>{newest.listingTitle}</Text>
+                        <View style={styles.convoBottomRow}>
+                          <Text
+                            style={[styles.convoPreview, newest.unread > 0 && styles.convoPreviewUnread]}
+                            numberOfLines={1}
+                          >
+                            {newest.lastText}
+                          </Text>
+                          {newest.unread > 0 ? (
+                            <View
+                              style={styles.convoBadge}
+                              accessible
+                              accessibilityLabel={`${newest.unread} unread ${newest.unread === 1 ? 'message' : 'messages'}`}
+                            >
+                              <Text style={styles.convoBadgeText} allowFontScaling={false}>
+                                {newest.unread > 99 ? '99+' : String(newest.unread)}
+                              </Text>
+                            </View>
+                          ) : null}
+                        </View>
+                      </>
+                    ) : (
+                      <Text style={styles.personSummary}>
+                        {person.threads.length} conversations
+                        {person.unread > 0 ? ` · ${person.unread} unread` : ''}
+                      </Text>
+                    )}
+                  </View>
+                </TouchableOpacity>
+
+                {/* Each subject keeps its own chat, and its own deal. */}
+                {!single && person.threads.map((c) => (
+                  <TouchableOpacity
+                    key={c.key}
+                    style={styles.threadRow}
+                    onPress={() => openThread(c)}
+                  >
+                    <View style={styles.threadBody}>
+                      <Text style={styles.convoListing} numberOfLines={1}>
+                        {c.listingTitle || 'Conversation'}
+                      </Text>
+                      <Text
+                        style={[styles.convoPreview, c.unread > 0 && styles.convoPreviewUnread]}
+                        numberOfLines={1}
+                      >
+                        {c.lastText}
+                      </Text>
+                    </View>
+                    {c.unread > 0 ? (
+                      <View
+                        style={styles.convoBadge}
+                        accessible
+                        accessibilityLabel={`${c.unread} unread ${c.unread === 1 ? 'message' : 'messages'}`}
+                      >
+                        <Text style={styles.convoBadgeText} allowFontScaling={false}>
+                          {c.unread > 99 ? '99+' : String(c.unread)}
+                        </Text>
+                      </View>
+                    ) : null}
+                  </TouchableOpacity>
+                ))}
               </View>
-              <View style={styles.convoBody}>
-                <View style={styles.convoTopRow}>
-                  <Text style={styles.convoName} numberOfLines={1}>
-                    {c.otherName || 'ImbizoHub user'}
-                  </Text>
-                  <Text style={styles.convoTime}>{formatTime(c.lastAt)}</Text>
-                </View>
-                <Text style={styles.convoListing} numberOfLines={1}>{c.listingTitle}</Text>
-                <Text style={styles.convoPreview} numberOfLines={1}>{c.lastText}</Text>
-              </View>
-            </TouchableOpacity>
-          ))}
+            );
+          })}
         </ScrollView>
       )}
 
@@ -409,7 +569,7 @@ const styles = StyleSheet.create({
   // my-wanted-posts.tsx, which had it on their FlatLists.
   listContainer: { flex: 1 },
   list: { padding: 16, paddingBottom: 100 },
-  convoRow: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: BLACK, borderRadius: 14, padding: 14, marginBottom: 10, borderWidth: 0.5, borderColor: '#333' },
+  convoRow: { backgroundColor: BLACK, borderRadius: 14, padding: 14, marginBottom: 10, borderWidth: 0.5, borderColor: '#333' },
   avatar: { width: 46, height: 46, borderRadius: 23, backgroundColor: GOLD, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
   avatarText: { color: BLACK, fontSize: 15, fontWeight: '800' },
   convoBody: { flex: 1, minWidth: 0 },
@@ -417,6 +577,31 @@ const styles = StyleSheet.create({
   convoName: { color: '#fff', fontSize: 14, fontWeight: '700', flex: 1, marginRight: 8 },
   convoTime: { color: GREY, fontSize: 11 },
   convoListing: { color: GOLD, fontSize: 11, marginBottom: 2 },
-  convoPreview: { color: GREY, fontSize: 12 },
+  convoPreview: { color: GREY, fontSize: 12, flex: 1, marginRight: 8 },
+
+  // convoRow is now the card AROUND a person, so the row layout moves
+  // to personHeader and the card itself stacks.
+  personHeader: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  personSummary: { color: GREY, fontSize: 12 },
+  threadRow: {
+    flexDirection: 'row', alignItems: 'center',
+    marginTop: 10, paddingTop: 10, paddingLeft: 58,
+    borderTopWidth: 0.5, borderTopColor: '#2e2e2e',
+  },
+  threadBody: { flex: 1, minWidth: 0, marginRight: 8 },
+
+  // Unread carried by weight and brightness as well as the number: a
+  // count alone is easy to miss in a long list, and colour alone is no
+  // use to anyone who cannot distinguish it.
+  convoNameUnread: { color: '#fff', fontWeight: '800' },
+  convoTimeUnread: { color: GOLD, fontWeight: '700' },
+  convoPreviewUnread: { color: '#e8e8e8', fontWeight: '600' },
+
+  convoBottomRow: { flexDirection: 'row', alignItems: 'center' },
+  convoBadge: {
+    minWidth: 20, height: 20, borderRadius: 10, backgroundColor: GOLD,
+    alignItems: 'center', justifyContent: 'center', paddingHorizontal: 6, flexShrink: 0,
+  },
+  convoBadgeText: { color: BLACK, fontSize: 11, fontWeight: '800' },
 
 });
