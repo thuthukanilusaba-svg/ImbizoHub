@@ -57,3 +57,15 @@ node_modules/
 # is not part of the project. Excluded in tsconfig.json too; this keeps
 # them out of commits.
 Claude outputs/
+
+# FCM / Firebase.
+#
+# google-services.json is NOT a secret — it ships inside the app and is
+# referenced by app.json, so it belongs in the repo. Left tracked
+# deliberately; without it, every EAS build fails.
+#
+# The SERVICE ACCOUNT key is a different thing entirely: it can send a
+# push to any user of this project and must never be committed. Upload
+# it through `eas credentials` and keep the file out of the repo.
+*service-account*.json
+*firebase-adminsdk*.json

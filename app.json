@@ -16,7 +16,10 @@
     "ios": {
       "icon": "./assets/expo.icon",
       "bundleIdentifier": "com.imbizohub.app",
-      "associatedDomains": ["applinks:imbizohub.com", "applinks:imbizohub.app"]
+      "associatedDomains": [
+        "applinks:imbizohub.com",
+        "applinks:imbizohub.app"
+      ]
     },
     "android": {
       "adaptiveIcon": {
@@ -43,9 +46,13 @@
               "pathPrefix": "/seller"
             }
           ],
-          "category": ["BROWSABLE", "DEFAULT"]
+          "category": [
+            "BROWSABLE",
+            "DEFAULT"
+          ]
         }
-      ]
+      ],
+      "googleServicesFile": "./google-services.json"
     },
     "web": {
       "output": "static",
@@ -78,6 +85,13 @@
         "expo-camera",
         {
           "cameraPermission": "ImbizoHub uses your camera to photograph your ID document for operator and seller verification."
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/images/android-icon-monochrome.png",
+          "color": "#B8860B"
         }
       ]
     ],

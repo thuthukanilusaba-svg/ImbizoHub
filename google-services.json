@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "233542288018",
+    "project_id": "imbizohub-d8b07",
+    "storage_bucket": "imbizohub-d8b07.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:233542288018:android:956b158a7b71af72d25c4b",
+        "android_client_info": {
+          "package_name": "com.imbizohub.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCtoasFdTy9GSEYw1xZIFBChfEgeLbNgc0"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
