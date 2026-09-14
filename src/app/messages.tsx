@@ -29,7 +29,7 @@
 // which was overlapping with the system navigation on some phones.
 
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import BottomNav from '../../components/BottomNav';
 import { supabase } from '../../lib/supabase';
@@ -65,6 +65,59 @@ type PersonGroup = {
   unread: number;
   lastAt: string;
 };
+
+// ONE CARD PER PERSON — and deliberately NOT a hook.
+//
+// This was a useMemo inside the component, placed where it reads best:
+// just after visibleConversations. That put it AFTER the two early
+// returns for `loading` and `needsAccount`, which is a rules-of-hooks
+// violation. The first render bailed out at `if (loading)` having run
+// N hooks; the next render fell through and ran N+1. React refuses
+// that — "Rendered more hooks than during the previous render" — and
+// the whole screen throws, which is why Messages came up blank after
+// the update rather than merely looking wrong.
+//
+// A module-level function cannot have the problem at all. Grouping a
+// dozen conversations costs nothing, so there is no reason to memoise
+// it and every reason not to.
+//
+// WHY GROUP AT ALL: reported from the live list — Kwanele appeared
+// twice and read as two different people. He wasn't. One row was a trip
+// (Njube -> Bulawayo), the other a Wanted post (Baby gadgets). Test2
+// appears seven times for the same reason. The threads must stay
+// separate — a handover PIN, the "Deal complete" marker and a rating
+// all attach to ONE listing or Wanted post, and the unlock fee is
+// charged per listing — so this groups the PRESENTATION and nothing
+// else.
+function groupByPerson(convos: Conversation[]): PersonGroup[] {
+  const byPerson = new Map<string, PersonGroup>();
+
+  for (const c of convos) {
+    const existing = byPerson.get(c.otherId);
+    if (existing) {
+      existing.threads.push(c);
+      existing.unread += c.unread;
+      if (c.lastAt > existing.lastAt) existing.lastAt = c.lastAt;
+    } else {
+      byPerson.set(c.otherId, {
+        otherId: c.otherId,
+        otherName: c.otherName,
+        threads: [c],
+        unread: c.unread,
+        lastAt: c.lastAt,
+      });
+    }
+  }
+
+  // Most recent message across a person's threads, so a fresh reply
+  // still brings them to the top; newest thread first within a person.
+  const groups = Array.from(byPerson.values());
+  groups.sort((a, b) => (a.lastAt < b.lastAt ? 1 : a.lastAt > b.lastAt ? -1 : 0));
+  for (const g of groups) {
+    g.threads.sort((a, b) => (a.lastAt < b.lastAt ? 1 : a.lastAt > b.lastAt ? -1 : 0));
+  }
+  return groups;
+}
 
 function getInitials(name: string): string {
   if (!name) return '👤';
@@ -341,34 +394,7 @@ export default function MessagesScreen() {
   //
   // Order is by most recent message across the person's threads, so a
   // fresh reply still brings them to the top.
-  const people = useMemo<PersonGroup[]>(() => {
-    const byPerson = new Map<string, PersonGroup>();
-
-    for (const c of visibleConversations) {
-      const existing = byPerson.get(c.otherId);
-      if (existing) {
-        existing.threads.push(c);
-        existing.unread += c.unread;
-        if (c.lastAt > existing.lastAt) existing.lastAt = c.lastAt;
-      } else {
-        byPerson.set(c.otherId, {
-          otherId: c.otherId,
-          otherName: c.otherName,
-          threads: [c],
-          unread: c.unread,
-          lastAt: c.lastAt,
-        });
-      }
-    }
-
-    const groups = Array.from(byPerson.values());
-    groups.sort((a, b) => (a.lastAt < b.lastAt ? 1 : a.lastAt > b.lastAt ? -1 : 0));
-    // Newest thread first within a person, for the same reason.
-    for (const g of groups) {
-      g.threads.sort((a, b) => (a.lastAt < b.lastAt ? 1 : a.lastAt > b.lastAt ? -1 : 0));
-    }
-    return groups;
-  }, [visibleConversations]);
+  const people = groupByPerson(visibleConversations);
 
   function openThread(c: Conversation) {
     // FIX (kept from the row version): the item_request_id case —
