@@ -16,12 +16,12 @@ import { Stack, usePathname, useRouter } from 'expo-router';
 import * as ScreenOrientation from 'expo-screen-orientation';
 import * as SplashScreen from 'expo-splash-screen';
 import { useEffect, useRef } from 'react';
-import { AppState, Platform, StyleSheet, useWindowDimensions, View } from 'react-native';
+import { AppState, Platform, StyleSheet, Text, TouchableOpacity, useWindowDimensions, View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { useIsDesktopWeb } from '../../lib/responsive';
 import { supabase } from '../../lib/supabase';
 import { theme } from '../../lib/theme';
-import { installCrashReporter, setCrashRoute } from '../../lib/crashReporter';
+import { installCrashReporter, reportHandledError, setCrashRoute } from '../../lib/crashReporter';
 import { clearNotificationBadge, registerForPushNotifications, registerNotificationListeners, savePushToken } from '../../lib/notifications';
 import { startUnreadWatcher, stopUnreadWatcher } from '../../lib/unreadMessages';
 
@@ -440,7 +440,70 @@ export default function RootLayout() {
   );
 }
 
+// THE GAP THIS CLOSES (found 14 September 2026, by reading the crash
+// table rather than the code).
+//
+// crash_reports held FOUR rows in the project's entire history — all
+// from the web build, all the same realtime warning, none newer than
+// 31 August. Not one row has ever arrived from an Android or iOS
+// device. That included the several days when the Messages tab came up
+// blank on real phones: a genuine React render error, reported by a
+// person over the phone, invisible to every instrument we own.
+//
+// WHY installCrashReporter() COULD NOT SEE IT. It hooks ErrorUtils,
+// which fires on UNHANDLED errors. A render error is not unhandled —
+// expo-router catches it in its own error boundary and renders a
+// fallback. That is exactly why the screen went blank instead of the
+// app dying, and exactly why ErrorUtils stayed silent. The failure mode
+// most likely to strand someone was the one mode the reporter was
+// structurally blind to.
+//
+// Exporting a component named `ErrorBoundary` from a route file is how
+// expo-router lets you replace that silent default. It receives the
+// error and a retry function.
+//
+// It also finally CALLS reportHandledError(), which lib/crashReporter.ts
+// defined — with a long comment on where it should be used — and which
+// no file in the app had ever called. Zero '[handled]' rows existed.
+export function ErrorBoundary({ error, retry }: { error: Error; retry: () => Promise<void> }) {
+  // Reported once per mount of this boundary, not on every re-render.
+  // The reporter de-duplicates by message for 30 seconds anyway, but a
+  // boundary that re-renders in a loop should not lean on that.
+  const reported = useRef(false);
+  useEffect(() => {
+    if (reported.current) return;
+    reported.current = true;
+    reportHandledError('render', error, { boundary: 'root' });
+  }, [error]);
+
+  // Deliberately NOT a blank screen, and deliberately not the raw error
+  // either. Someone who hits this needs a way out of it; the diagnosis
+  // is already on its way to crash_reports.
+  return (
+    <View style={styles.crashScreen}>
+      <Text style={styles.crashEmoji}>😕</Text>
+      <Text style={styles.crashTitle}>This screen did not load</Text>
+      <Text style={styles.crashBody}>
+        Something went wrong on our side, not yours. We have been told about it automatically.
+      </Text>
+      <TouchableOpacity style={styles.crashBtn} onPress={() => { void retry(); }}>
+        <Text style={styles.crashBtnText}>Try again</Text>
+      </TouchableOpacity>
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
+  crashScreen: {
+    flex: 1, alignItems: 'center', justifyContent: 'center',
+    padding: 32, backgroundColor: '#111111',
+  },
+  crashEmoji: { fontSize: 44, marginBottom: 18 },
+  crashTitle: { color: '#fff', fontSize: 18, fontWeight: '800', textAlign: 'center', marginBottom: 10 },
+  crashBody: { color: '#AAAAAA', fontSize: 13.5, textAlign: 'center', lineHeight: 20, marginBottom: 26 },
+  crashBtn: { backgroundColor: '#B8860B', borderRadius: 14, paddingVertical: 15, paddingHorizontal: 42 },
+  crashBtnText: { color: '#1A1A18', fontSize: 15, fontWeight: '800' },
+
   webOuter: {
     flex: 1,
     backgroundColor: Platform.OS === 'web' ? WEB_MARGIN_COLOR : undefined,
