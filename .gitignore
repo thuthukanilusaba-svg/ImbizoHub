@@ -49,3 +49,11 @@ example
 *.pem
 node_modules/
 .DS_Store
+
+# Where the desktop app drops files it could not write straight into the
+# repo (it does this whenever the bridge is offline). Copies of real
+# source files, at the wrong depth — so tsc tried to compile them and
+# reported "Cannot find module '../../lib/supabase'" against a file that
+# is not part of the project. Excluded in tsconfig.json too; this keeps
+# them out of commits.
+Claude outputs/

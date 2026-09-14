@@ -21,6 +21,7 @@
     "node_modules",
     "dist",
     "supabase/functions",
-    "_old_*.tsx"
+    "_old_*.tsx",
+    "Claude outputs"
   ]
 }
