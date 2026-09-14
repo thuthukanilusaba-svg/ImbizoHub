@@ -27,6 +27,22 @@
 // was covering whichever field was focused, on this screen and every
 // other screen with text inputs app-wide.
 //
+// FIX (14 Sep, found in testing — not a code defect, a missing
+// guardrail): this screen always did insert({ user_id: user.id }), so
+// every imported item becomes the importer's own listing. That is
+// correct for the intended user — a trader migrating their own
+// catalogue — but the screen said "paste your whole WhatsApp catalog"
+// and never said whose items it expected. A tester pasted a WhatsApp
+// GROUP, and 24 items belonging to other people went live under that
+// tester's name: buyers messaged someone who had nothing to sell,
+// their seller rating was exposed to deals they could not complete,
+// and the Meet & Pay handover PIN meant nothing because they held no
+// goods. Fixed by stating the rule (note above the paste box) and
+// requiring it to be acknowledged (ownItems checkbox, enforced again
+// in handlePostAll). Deliberately NOT solved by letting people post on
+// someone else's behalf — that is a real design question, and it
+// collides with the paid contact-unlock model.
+//
 // FIX (real bug, found during a full-codebase sweep): this screen
 // creates real `listings` rows — functionally identical to post.tsx —
 // but was missing post.tsx's explicit "requires a REAL (non-anonymous)
@@ -198,6 +214,14 @@ export default function WhatsAppImportScreen() {
   const [success, setSuccess] = useState(false);
   const [successCount, setSuccessCount] = useState(0);
 
+  // Must be ticked before anything is imported. See the note rendered
+  // above the paste box for why this exists — a tester pasted a
+  // WhatsApp GROUP rather than their own catalogue and 24 other
+  // people's items went live under their name. Deliberately NOT
+  // remembered between visits: it is a statement about the specific
+  // items being imported right now, not a preference.
+  const [ownItems, setOwnItems] = useState(false);
+
   function handleParse() {
     setError('');
     if (!rawText.trim()) {
@@ -240,6 +264,15 @@ export default function WhatsAppImportScreen() {
 
   async function handlePostAll() {
     setError('');
+
+    // Checked here as well as in the disabled button, not instead of
+    // it. The button is the affordance; this is the guarantee. Nothing
+    // reaches the listings table without the person having said these
+    // items are theirs.
+    if (!ownItems) {
+      setError('Confirm these are your own items before importing.');
+      return;
+    }
 
     const toPost = items.filter((it) => it.include);
     if (toPost.length === 0) {
@@ -346,11 +379,29 @@ export default function WhatsAppImportScreen() {
           <Text style={styles.backText}><Text style={styles.backArrow}>‹</Text> Back</Text>
         </TouchableOpacity>
 
-        <Text style={styles.heading}>Import from WhatsApp</Text>
+        <Text style={styles.heading}>Import your own items</Text>
         <Text style={styles.subheading}>
-          Paste your whole WhatsApp catalog at once — one item or twenty. Separate each product with a
-          blank line and we'll split them out automatically.
+          Paste your own WhatsApp catalogue — one item or twenty. Separate each product with a blank
+          line and we'll split them out automatically.
         </Text>
+
+        {/* WHY THIS IS HERE (found in testing, 14 Sep): a tester pasted
+            a WhatsApp GROUP rather than their own catalogue, and 24
+            other people's items went live under the tester's name. The
+            screen said "your whole WhatsApp catalog" and then quietly
+            did insert({ user_id: user.id }) — the assumption lived only
+            in the copy, never stated and never enforced. Buyers then
+            messaged someone with nothing to sell, that person's seller
+            rating was exposed to deals they could not complete, and the
+            handover PIN was meaningless because they held no goods.
+            Saying it plainly costs one paragraph. */}
+        <View style={styles.ownershipNote}>
+          <Text style={styles.ownershipNoteText}>
+            Everything you import is posted as <Text style={styles.ownershipNoteStrong}>your</Text> listing.
+            Buyers message you, and you arrange the payment and handover — so only import items you are
+            selling yourself, not items other people posted in a group.
+          </Text>
+        </View>
 
         {error ? (
           <View style={styles.errorBox}>
@@ -505,9 +556,29 @@ export default function WhatsAppImportScreen() {
 
         {parsed && items.length > 0 && (
           <TouchableOpacity
-            style={[styles.postBtn, posting && { opacity: 0.6 }]}
+            style={styles.ownCheckRow}
+            onPress={() => setOwnItems((v) => !v)}
+            activeOpacity={0.7}
+            accessibilityRole="checkbox"
+            accessibilityState={{ checked: ownItems }}
+            accessibilityLabel="These are my own items and I can sell them"
+          >
+            <View style={[styles.ownCheckBox, ownItems && styles.ownCheckBoxOn]}>
+              {ownItems ? <Text style={styles.ownCheckTick}>✓</Text> : null}
+            </View>
+            <Text style={styles.ownCheckText}>
+              These are my own items. I have them, and I'll deal with buyers myself.
+            </Text>
+          </TouchableOpacity>
+        )}
+
+        {parsed && items.length > 0 && (
+          <TouchableOpacity
+            // marginTop trimmed because the confirmation row directly
+            // above already carries the 24 this button used to need.
+            style={[styles.postBtn, { marginTop: 12 }, (posting || !ownItems) && { opacity: 0.45 }]}
             onPress={handlePostAll}
-            disabled={posting}
+            disabled={posting || !ownItems}
           >
             {posting ? (
               <>
@@ -572,6 +643,27 @@ const styles = StyleSheet.create({
   categoryChipActive: { backgroundColor: GOLD, borderColor: GOLD },
   categoryChipText: { color: GREY, fontSize: 12 },
   categoryChipTextActive: { color: BLACK, fontWeight: '700' },
+
+  // Sits above the paste box, before anything has been typed — the
+  // point is to be read BEFORE a group gets pasted, not after.
+  ownershipNote: {
+    backgroundColor: '#3a2800', borderRadius: 12, padding: 14,
+    marginTop: 14, borderWidth: 0.5, borderColor: GOLD,
+  },
+  ownershipNoteText: { color: '#f0dca8', fontSize: 12.5, lineHeight: 19 },
+  ownershipNoteStrong: { fontWeight: '800', color: GOLD },
+
+  ownCheckRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    marginTop: 24, paddingVertical: 4,
+  },
+  ownCheckBox: {
+    width: 24, height: 24, borderRadius: 6, borderWidth: 1.5,
+    borderColor: GREY, alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+  },
+  ownCheckBoxOn: { backgroundColor: GOLD, borderColor: GOLD },
+  ownCheckTick: { color: BLACK, fontSize: 15, fontWeight: '900' },
+  ownCheckText: { color: '#e8e8e8', fontSize: 13, flex: 1, lineHeight: 18 },
 
   postBtn: { backgroundColor: GOLD, borderRadius: 14, paddingVertical: 16, alignItems: 'center', marginTop: 24, flexDirection: 'row', justifyContent: 'center', gap: 10 },
   postBtnText: { color: BLACK, fontSize: 16, fontWeight: '800' },
