@@ -202,7 +202,7 @@ Deno.serve(async (req) => {
 
   const { data: profile } = await supabase
     .from('profiles')
-    .select('full_name, avatar_url, rating, rating_count, dealer_pro_active, dealer_pro_expires_at, is_verified, verified_expires_at')
+    .select('full_name, avatar_url, rating, rating_count, dealer_pro_active, dealer_pro_expires_at, is_verified, verified_expires_at, operator_status, vehicle_type, carries, registration_expires_at')
     .eq('id', id)
     .maybeSingle();
 
@@ -247,7 +247,30 @@ Deno.serve(async (req) => {
     profile.verified_expires_at &&
     new Date(profile.verified_expires_at).getTime() > Date.now()
   );
-  const badges = [isDealerPro ? '⭐ Dealer' : null, isVerified ? '✅ Verified' : null]
+  // TRANSPORT operator, not delivery operator — two different things, and
+  // only one of them is open. Book & Deliver is paused
+  // (DELIVERY_BOOKING_ENABLED is false and delivery_operators holds zero
+  // rows), so a "delivery" badge would advertise a closed feature. The
+  // hirevan flow — requests and quotes — is live, and these six profiles
+  // are the people bidding on it.
+  //
+  // Registration is checked the same way the app checks it: status alone
+  // is not enough, the registration must not have expired. Everyone is
+  // currently on a free registration running to 31 Jan 2027 under the
+  // launch promotion, so registration_paid is deliberately NOT part of
+  // the test — it is false for every real operator.
+  const isOperator = !!(
+    profile.operator_status === 'active' &&
+    profile.registration_expires_at &&
+    new Date(profile.registration_expires_at).getTime() > Date.now()
+  );
+  // The vehicle says more than the label does: "Van" or "3-tonne truck"
+  // tells someone whether this operator can move what they need moving.
+  const operatorBadge = isOperator
+    ? `🚐 ${escapeHtml(profile.vehicle_type || 'Transport operator')}`
+    : null;
+
+  const badges = [operatorBadge, isDealerPro ? '⭐ Dealer' : null, isVerified ? '✅ Verified' : null]
     .filter(Boolean)
     .join(' · ');
 
