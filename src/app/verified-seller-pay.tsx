@@ -48,6 +48,24 @@ const GREY = '#AAAAAA';
 const GREEN = '#4fc96e';
 const RED = '#ff8a8a';
 
+// PAUSED (17 September 2026) — the Paynow merchant account is not
+// configured yet, so create-payment cannot actually take money. This was
+// the ONLY real-money path still reachable in the app: Dealer Pro has
+// had DEALER_PRO_PAUSED since August, and featuring a listing routes
+// through feature-listing-free-promo while the launch promotion runs.
+// Verified Seller had neither guard, and listing.tsx offers it to every
+// unverified seller looking at their own listing — one tap from a normal
+// screen to a pay button that could only fail.
+//
+// Same shape as DEALER_PRO_PAUSED in dealer-pro-pay.tsx: flip this to
+// false and ship an OTA update on the day Paynow is live. Nothing else
+// needs to change.
+//
+// Anyone ALREADY verified, or already paid and waiting on review, still
+// sees their own status — the two early returns for those cases sit
+// above the pause below, deliberately.
+const VERIFIED_SELLER_PAUSED = true;
+
 const PRICE = 15;
 const POLL_INTERVAL_MS = 2000;
 const POLL_MAX_ATTEMPTS = 20; // ~40 seconds total — was 15 (~30s); widened
@@ -117,6 +135,11 @@ export default function VerifiedSellerPayScreen() {
   }
 
   async function handlePay() {
+    // Checked here as well as in the render guard below. The guard is
+    // what people see; this is what makes it true — no route into
+    // create-payment while Paynow is unconfigured.
+    if (VERIFIED_SELLER_PAUSED) return;
+
     setError('');
     setPaying(true);
 
@@ -318,6 +341,31 @@ export default function VerifiedSellerPayScreen() {
               haven't looked at yours within two weeks, we delete the photo and ask you to submit
               again; we won't hold your ID while a queue sits unworked.
             </Text>
+          </View>
+        </ScrollView>
+      </View>
+    );
+  }
+
+  // Placed AFTER the currentlyVerified and pending_review returns above,
+  // so pausing new applications never hides an existing badge or a
+  // submission already waiting on us.
+  if (VERIFIED_SELLER_PAUSED) {
+    return (
+      <View style={styles.container}>
+        <ScrollView contentContainerStyle={styles.content}>
+          <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+            <Text style={styles.backText}><Text style={styles.backArrow}>‹</Text> Back</Text>
+          </TouchableOpacity>
+          <View style={styles.successCard}>
+            <Text style={styles.successEmoji}>✅</Text>
+            <Text style={styles.successTitle}>Coming soon</Text>
+            <Text style={styles.successBody}>
+              Verified Seller applications are not open yet. Check back soon.
+            </Text>
+            <TouchableOpacity style={styles.doneBtn} onPress={() => router.replace('/profile')}>
+              <Text style={styles.doneBtnText}>Back to Profile</Text>
+            </TouchableOpacity>
           </View>
         </ScrollView>
       </View>

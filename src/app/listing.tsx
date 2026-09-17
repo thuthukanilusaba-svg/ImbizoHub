@@ -559,7 +559,13 @@ export default function ListingScreen() {
                   </Text>
                 </View>
               )}
-              {!sellerVerified && (
+              {/* Hidden while VERIFIED_SELLER_PAUSED is true in
+                  verified-seller-pay.tsx — Paynow is not configured, so
+                  this button could only lead to a payment that fails.
+                  The screen itself still guards independently; this just
+                  stops offering a feature we cannot yet deliver.
+                  Restore this block when that flag goes false. */}
+              {false && !sellerVerified && (
                 <TouchableOpacity
                   style={styles.promoBtnSecondary}
                   onPress={() => router.push('/verified-seller-pay')}
