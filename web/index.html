@@ -128,13 +128,15 @@
   .sub-promise strong{color:var(--text);display:block}
   .cta-row{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;align-items:center}
   /* The badge is an image link, not a .btn — no background, border or
-     padding of ours may touch it. Height drives the size; width follows
-     the SVG's own ratio. 53px clears Google's 40px minimum while
-     staying smaller than the wordmark, which their guidelines ask for. */
+     padding of ours may touch it. 53px clears Google's 40px minimum
+     while staying smaller than the wordmark. */
   .badge-link{display:inline-flex;align-items:center;line-height:0}
   .badge-link:hover{text-decoration:none;opacity:.88}
   .badge-img{height:53px;width:auto;display:block}
   .note{margin-top:16px;font-size:14.5px;color:#7C7566}
+  .note + .note{margin-top:10px}
+  .quiet-link{color:var(--muted);font-weight:600}
+  .quiet-link:hover{color:var(--text)}
 
   /* ---------- sections ---------- */
   section{padding:56px 0;border-top:1px solid var(--line)}
@@ -220,8 +222,6 @@
 
   /* ---------- footer ---------- */
   footer{border-top:1px solid var(--line);padding:34px 0;color:#7C7566;font-size:15px}
-  /* Legal attribution, not content — quieter than the copyright line
-     above it, but present on every page that shows the badge. */
   .trademark{font-size:12.5px;color:#918A7B;margin-top:8px;line-height:1.5}
   .fnav{display:flex;gap:22px;flex-wrap:wrap;margin-bottom:16px}
   .fnav a{color:var(--muted)}
@@ -289,9 +289,11 @@
       <a href="#pricing">Pricing</a>
       <a href="#safety">Safety</a>
       <a href="/contact">Contact</a>
-      <!-- Named as Google Play, not "Get the app": it sits beside "Open
-           app" (the web build), and without naming the destination a
-           visitor cannot tell which is which. -->
+      <!-- Named as Google Play rather than "Get the app": this sits next
+           to "Open app" (the web build), and without naming the
+           destination a visitor cannot tell which link is which. It is
+           also the exact wording on Google's own badge, so people
+           recognise it without reading it. -->
       <a href="https://play.google.com/store/apps/details?id=com.imbizohub.app">Get it on Google Play</a>
       <a class="btn" href="/app">Open app</a>
     </nav>
@@ -331,18 +333,21 @@
       <a class="btn" id="cta-web" href="/app">Open ImbizoHub</a>
       <!-- Google's own artwork, unmodified, as their brand guidelines
            require: no recolouring, no cropping, no CSS rebuild. The web
-           badge carries its required clear space inside the SVG, and the
-           margin below adds a little more. Sized by height so the SVG
-           scales on its own aspect ratio (238.96 x 70.87). -->
+           badge carries its required clear space inside the SVG. Sized by
+           height so it scales on its own ratio (238.96 x 70.87). -->
       <a class="badge-link" id="cta-play"
          href="https://play.google.com/store/apps/details?id=com.imbizohub.app"
          aria-label="Get ImbizoHub on Google Play">
         <img class="badge-img" src="/GetItOnGooglePlay_Badge_Web_color_English.svg"
              alt="Get it on Google Play" width="180" height="53">
       </a>
-      <a class="btn btn-ghost" href="#how">See how it works</a>
     </div>
     <p class="note">Built for Zimbabwe · App fees paid with EcoCash and more via Paynow</p>
+    <!-- Demoted from a third button (17 Sep). Three CTAs of equal weight
+         made the row a decision rather than an invitation, and this one
+         only scrolls to a section people reach anyway. Kept as a quiet
+         link so the option survives without competing. -->
+    <p class="note"><a class="quiet-link" href="#how">See how it works ↓</a></p>
   </div>
 
   <!-- FOUR THINGS -->
@@ -598,8 +603,7 @@
       <a href="/data-retention">Data retention</a>
     </nav>
     <div>© 2026 ImbizoHub · Zimbabwe</div>
-    <!-- Required by Google's brand guidelines wherever the Play badge is
-         used. Easy to skip, and skipping it is a guideline breach. -->
+    <!-- Required by Google's brand guidelines wherever the Play badge is used. -->
     <div class="trademark">Google Play and the Google Play logo are trademarks of Google LLC.</div>
   </div>
 </footer>
@@ -613,13 +617,9 @@
 // On an Android phone the native app is the better destination: it gets
 // push notifications, which the web build does not, and notifications
 // are most of what brings someone back to a marketplace. So there the
-// badge moves first and the web app steps back to a ghost button.
-// On iPhone nothing changes — there is no iOS build yet, so sending
-// them to Play would be sending them nowhere useful.
-//
-// The badge itself is never restyled, only reordered: Google's
-// guidelines do not permit altering the artwork, and a class of ours on
-// it would be the start of doing exactly that.
+// Play link becomes the solid button and the web app becomes the ghost.
+// On iPhone nothing changes — there is no iOS build yet, so the Play
+// link stays secondary rather than sending them somewhere useless.
 (function () {
   if (!/Android/i.test(navigator.userAgent)) return;
   var web = document.getElementById('cta-web');
