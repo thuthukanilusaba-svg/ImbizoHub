@@ -279,6 +279,7 @@
       <a href="#pricing">Pricing</a>
       <a href="#safety">Safety</a>
       <a href="/contact">Contact</a>
+      <a href="https://play.google.com/store/apps/details?id=com.imbizohub.app">Get the app</a>
       <a class="btn" href="/app">Open app</a>
     </nav>
   </div>
@@ -304,8 +305,21 @@
       <strong>We only earn when we find you what you asked for.</strong>
       Never for listing, never for chatting, never for doing a deal.
     </p>
+    <!-- Both buttons render at rest, so the page is correct with no
+         JavaScript at all. The script at the end of <body> only swaps
+         which one is emphasised: on an Android phone the download is the
+         action that matters, everywhere else the web app is.
+
+         The Play URL is built from the package name in app.json
+         (com.imbizohub.app) and is therefore already correct — it 404s
+         until the production release publishes, then resolves with no
+         change needed here. -->
     <div class="cta-row">
-      <a class="btn" href="/app">Open ImbizoHub</a>
+      <a class="btn" id="cta-web" href="/app">Open ImbizoHub</a>
+      <a class="btn btn-ghost" id="cta-play"
+         href="https://play.google.com/store/apps/details?id=com.imbizohub.app">
+        Get it on Google Play
+      </a>
       <a class="btn btn-ghost" href="#how">See how it works</a>
     </div>
     <p class="note">Built for Zimbabwe · App fees paid with EcoCash and more via Paynow</p>
@@ -553,6 +567,7 @@
       <a href="#safety">Safety</a>
       <a href="/contact">Contact</a>
       <a href="/app">Open app</a>
+      <a href="https://play.google.com/store/apps/details?id=com.imbizohub.app">Get it on Google Play</a>
       <!-- These live on the imbizohub.app GitHub Pages site (the
            imbizohub-legal repo), NOT on this Vercel deployment.
            Filenames verified against that repo — an earlier guess at
@@ -567,5 +582,26 @@
 </footer>
 
 <script src="/sindie.js" defer></script>
+<script>
+// Emphasis only. Both hero buttons are real links that work without
+// this running at all — if it fails, the page is still correct, just
+// ordered for desktop.
+//
+// On an Android phone the native app is the better destination: it gets
+// push notifications, which the web build does not, and notifications
+// are most of what brings someone back to a marketplace. So there the
+// Play link becomes the solid button and the web app becomes the ghost.
+// On iPhone nothing changes — there is no iOS build yet, so the Play
+// link stays secondary rather than sending them somewhere useless.
+(function () {
+  if (!/Android/i.test(navigator.userAgent)) return;
+  var web = document.getElementById('cta-web');
+  var play = document.getElementById('cta-play');
+  if (!web || !play) return;
+  web.classList.add('btn-ghost');
+  play.classList.remove('btn-ghost');
+  play.parentNode.insertBefore(play, web);
+})();
+</script>
 </body>
 </html>
