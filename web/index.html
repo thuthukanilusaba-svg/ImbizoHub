@@ -39,7 +39,8 @@
   "name": "ImbizoHub",
   "url": "https://imbizohub.com/",
   "description": "Zimbabwean marketplace where buyers post what they want and sellers respond with a price, plus transport hire with operators bidding for the job.",
-  "inLanguage": "en-ZW"
+  "inLanguage": "en-ZW",
+  "sameAs": ["https://www.facebook.com/profile.php?id=61592822361203"]
 }
 </script>
 
@@ -590,8 +591,10 @@
       <a href="#pricing">Pricing</a>
       <a href="#safety">Safety</a>
       <a href="/contact">Contact</a>
-      <a href="/app">Open app</a>
-      <a href="https://play.google.com/store/apps/details?id=com.imbizohub.app">Get it on Google Play</a>
+      <!-- rel="noopener" because target="_blank" without it hands the
+           opened page a handle back to this one. -->
+      <a href="https://www.facebook.com/profile.php?id=61592822361203"
+         target="_blank" rel="noopener">Facebook</a>
       <!-- These live on the imbizohub.app GitHub Pages site (the
            imbizohub-legal repo), NOT on this Vercel deployment.
            Filenames verified against that repo — an earlier guess at
