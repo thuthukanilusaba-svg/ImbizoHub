@@ -72,6 +72,12 @@ const webProfileUrl = (id: string) => `${SITE}/app/seller?id=${encodeURIComponen
 const IOS_APP_LIVE = false;
 const APP_STORE_URL = 'https://apps.apple.com/app/imbizohub/idREPLACE_APP_STORE_ID';
 const PLAY_STORE_URL = 'https://play.google.com/store/apps/details?id=com.imbizohub.app';
+// Google's official badge, served from the marketing site. The web badge
+// carries a white outline inside the artwork, which is why it still reads
+// on this page's near-black background. Never restyle it — Google's brand
+// guidelines forbid recolouring, cropping or rebuilding it, and the
+// trademark line below is required wherever it appears.
+const PLAY_BADGE_URL = `${SITE}/GetItOnGooglePlay_Badge_Web_color_English.svg`;
 
 // Falls back to the site-wide OG image, which genuinely exists at
 // web/og-image.png — the previous default-avatar.png never did, so
@@ -162,6 +168,9 @@ ${headExtra}
   .badges { color:#E8B44A; font-size:13px; margin-bottom:26px; }
   .btn { display:block; background:#B8860B; color:#1A1A18; font-weight:800;
          padding:15px 28px; border-radius:12px; text-decoration:none; margin:10px 0; }
+  .badge-link { display:block; line-height:0; margin:10px 0; }
+  .badge-img { height:52px; width:auto; display:inline-block; }
+  .trademark { color:#6F6F6A; font-size:11.5px; margin-top:18px; line-height:1.5; }
   .btn-outline { display:block; border:1.5px solid #2E2E2A; color:#fff; font-weight:700;
                  padding:14px 28px; border-radius:12px; text-decoration:none; margin:10px 0; }
   .muted { color:#A9A9A4; font-size:14px; }
@@ -269,11 +278,14 @@ Deno.serve(async (req) => {
   <div id="fallback">
     <a class="btn" href="${webUrl}">View this profile on the web</a>
     <p class="muted">Or get the app:</p>
-    <a class="btn-outline" href="${PLAY_STORE_URL}">Download for Android</a>
+    <a class="badge-link" href="${PLAY_STORE_URL}" aria-label="Get ImbizoHub on Google Play">
+      <img class="badge-img" src="${PLAY_BADGE_URL}" alt="Get it on Google Play">
+    </a>
     ${IOS_APP_LIVE ? `<a class="btn-outline" href="${APP_STORE_URL}">Download for iPhone</a>` : ''}
   </div>
 
   <div class="brand">Powered by <a href="${SITE}">ImbizoHub</a> · Zimbabwe</div>
+  <div class="trademark">Google Play and the Google Play logo are trademarks of Google LLC.</div>
 
   <script>
   (function () {
