@@ -226,7 +226,15 @@
   .trademark{font-size:12.5px;color:#918A7B;margin-top:8px;line-height:1.5}
   .fnav{display:flex;gap:22px;flex-wrap:wrap;margin-bottom:16px}
   .fnav a{color:var(--muted)}
-  .social{display:flex;gap:12px;margin-bottom:18px}
+  .social-row{display:flex;gap:12px;padding-bottom:26px}
+  .social-icon{
+    width:40px;height:40px;border-radius:50%;
+    border:1.5px solid var(--line);color:var(--muted);
+    display:inline-flex;align-items:center;justify-content:center;
+    transition:color .15s ease,border-color .15s ease;
+  }
+  .social-icon:hover{color:var(--gold);border-color:var(--gold);text-decoration:none}
+  .social-icon:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
   .social-icon{
     width:40px;height:40px;border-radius:50%;
     border:1.5px solid var(--line);color:var(--muted);
@@ -592,6 +600,19 @@
 
 </main>
 
+<!-- Sits ABOVE the footer's top rule, so the social mark reads as the
+     close of the page rather than another footer link. -->
+<div class="wrap social-row">
+  <a class="social-icon"
+     href="https://www.facebook.com/profile.php?id=61592822361203"
+     target="_blank" rel="noopener"
+     aria-label="ImbizoHub on Facebook" title="ImbizoHub on Facebook">
+    <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" focusable="false">
+      <path fill="currentColor" d="M14 13.5h2.5l1-4H14v-2c0-1.03 0-2 2-2h1.5V2.14c-.33-.04-1.56-.14-2.86-.14C11.93 2 10 3.66 10 6.7v2.8H7v4h3V22h4v-8.5z"/>
+    </svg>
+  </a>
+</div>
+
 <footer>
   <div class="wrap">
     <nav class="fnav">
@@ -609,22 +630,6 @@
       <a href="https://imbizohub.app/terms-of-service.html">Terms</a>
       <a href="/data-retention">Data retention</a>
     </nav>
-    <!-- Inline SVG rather than an icon font: one glyph does not justify a
-         network request, and this site's CSP blocks most external asset
-         hosts anyway. currentColor lets circle and mark change together.
-         rel="noopener" because target="_blank" without it hands the
-         opened page a handle back to this one. -->
-    <div class="social">
-      <a class="social-icon"
-         href="https://www.facebook.com/profile.php?id=61592822361203"
-         target="_blank" rel="noopener"
-         aria-label="ImbizoHub on Facebook" title="ImbizoHub on Facebook">
-        <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" focusable="false">
-          <path fill="currentColor" d="M14 13.5h2.5l1-4H14v-2c0-1.03 0-2 2-2h1.5V2.14c-.33-.04-1.56-.14-2.86-.14C11.93 2 10 3.66 10 6.7v2.8H7v4h3V22h4v-8.5z"/>
-        </svg>
-      </a>
-    </div>
-
     <div>© 2026 ImbizoHub · Zimbabwe</div>
     <!-- Required by Google's brand guidelines wherever the Play badge is
          used. Easy to skip, and skipping it is a guideline breach. -->
