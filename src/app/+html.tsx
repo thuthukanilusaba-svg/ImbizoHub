@@ -42,7 +42,7 @@ const SITE_URL = 'https://imbizohub.com';
 // retired "small app fee" promise after the site had moved on.
 const TITLE = 'ImbizoHub — Ask for it. Sellers come to you.';
 const DESCRIPTION =
-  'Post what you need — a fridge, a van, a builder — and sellers come to you ' +
+  'Post what you need and sellers come to you ' +
   'with their price. Or post a trip and transport operators bid for the job. ' +
   'Free to ask, free to chat, free to do a deal.';
 const OG_IMAGE = `${SITE_URL}/og-image.png`;
