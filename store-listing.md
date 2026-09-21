@@ -143,9 +143,15 @@ first thing a reader sees on the page itself.
 ### Promotional text — max 170 characters
 
 ```
-Ask for it. Sellers come to you. Post what you need — a fridge, a van, a builder — and get prices back. Free to ask, free to chat, free to do a deal.
+Ask for it. Sellers come to you. Post what you need and get prices back. Free to ask, free to chat, free to do a deal.
 ```
-*(147 chars)*
+*(117 chars)*
+
+Matches the Google Play short description and the website hero word for word.
+The fridge/van/builder examples were dropped from all three surfaces on
+21 Sep 2026 — they still earn their place in the full description, where
+there is room to list them as their own sentence, but as a mid-sentence
+aside they broke the line rather than illustrating it.
 
 ### Description
 
