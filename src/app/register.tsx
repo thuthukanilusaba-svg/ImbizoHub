@@ -2,6 +2,8 @@ import { useRouter } from 'expo-router';
 import { useRef, useState } from 'react';
 import { ActivityIndicator, KeyboardAvoidingView, Linking, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { supabase } from '../../lib/supabase';
+import CountryPicker from '../../components/CountryPicker';
+import { DEFAULT_COUNTRY, configFor, useCountryData } from '../../lib/countries';
 import { OAuthProvider, signInWithProvider } from '../../lib/oauth';
 import { DELIVERY_BOOKING_ENABLED } from '../../lib/featureFlags';
 import { checkName } from '../../lib/nameValidation';
@@ -76,6 +78,25 @@ export default function RegisterScreen() {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
+  // Which country this person is in. Defaults to the only live country,
+  // which is what CountryPicker would have them choose anyway — see that
+  // component for why it renders nothing while one country is active.
+  //
+  // This is the field that makes multi-country real. profiles.country
+  // has defaulted to 'ZW' since August, so every row already carries a
+  // country; until now nothing ever set it to anything else, which meant
+  // a user in Gaborone was recorded as Zimbabwean.
+  const [country, setCountry] = useState(DEFAULT_COUNTRY);
+
+  // Country/city reference data. Returns a Zimbabwe-only fallback on the
+  // first render and again if the request fails, so this screen never
+  // blocks on the network and never shows an empty chooser.
+  const countryData = useCountryData();
+  const multiCountry = countryData.countries.length > 1;
+  const phonePlaceholder = `e.g. ${
+    configFor(countryData, country)?.phone_prefix ?? '+263'
+  } 77 123 4567`;
+
   const [accountType, setAccountType] = useState('buyer');
 
   // NEW: real, required Terms acceptance — see TERMS_URL above.
@@ -189,6 +210,7 @@ export default function RegisterScreen() {
         .update({
           full_name: cleanName,
           phone,
+          country,
           account_type: toStoredAccountType(effectiveAccountType),
           // FIX: was accountType === 'operator' ? vehicleType : ...,
           // referencing input fields that no longer exist on this
@@ -285,8 +307,20 @@ export default function RegisterScreen() {
         <TextInput style={styles.input} placeholder="Enter your email" placeholderTextColor="#888"
           value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" />
 
+        {/* Renders nothing while a single country is live, so today's
+            registration form is unchanged. See CountryPicker. */}
+        {multiCountry ? (
+          <>
+            <Text style={styles.label}>Country *</Text>
+            <CountryPicker value={country} onChange={setCountry} />
+          </>
+        ) : null}
+
         <Text style={styles.label}>Phone Number</Text>
-        <TextInput style={styles.input} placeholder="e.g. +263 77 123 4567" placeholderTextColor="#888"
+        {/* Placeholder follows the chosen country rather than hardcoding
+            +263 — a Botswana user prompted with a Zimbabwean number
+            format will enter a Zimbabwean-looking number. */}
+        <TextInput style={styles.input} placeholder={phonePlaceholder} placeholderTextColor="#888"
           value={phone} onChangeText={setPhone} keyboardType="phone-pad" />
 
         <Text style={styles.label}>Password *</Text>

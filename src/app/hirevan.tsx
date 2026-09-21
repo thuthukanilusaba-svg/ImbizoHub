@@ -39,6 +39,7 @@ import {
 } from 'react-native';
 import { supabase } from '../../lib/supabase';
 import CityPicker from '../../components/CityPicker';
+import { useMyCountry } from '../../lib/countries';
 import { reportHandledError } from '../../lib/crashReporter';
 
 const GOLD = '#B8860B';
@@ -81,6 +82,12 @@ const FREE_PROMO_END = new Date('2027-01-31T23:59:59Z');
 const isPromoActive = () => new Date() < FREE_PROMO_END;
 
 export default function HireVanScreen() {
+  // The user's own country. Trip cities are scoped to it because a
+  // cross-border trip is filtered out of every operator's list by
+  // operatorCanSeeTrip() anyway — offering those cities here would
+  // only produce requests nobody can quote, which is exactly the
+  // failure the scope warning in web/transport.html describes.
+  const myCountry = useMyCountry();
   const router = useRouter();
 
   const [pickup, setPickup] = useState('');
@@ -256,6 +263,10 @@ export default function HireVanScreen() {
     }
 
     const { error: insertError } = await supabase.from('requests').insert({
+      // requests.country defaults to 'ZW'. Setting it explicitly is
+      // what lets operatorCanSeeTrip() keep a Gaborone trip out of a
+      // Harare operator's list.
+      country: myCountry,
       user_id: user.id,
       pickup: pickupText,
       destination: destinationText,
@@ -397,7 +408,7 @@ export default function HireVanScreen() {
         />
 
         <Text style={styles.label}>Pickup city *</Text>
-        <CityPicker value={pickupCity} onChange={setPickupCity} placeholder="Select pickup city" />
+        <CityPicker value={pickupCity} onChange={setPickupCity} placeholder="Select pickup city" country={myCountry} />
 
         <Text style={styles.label}>Destination *</Text>
         <TextInput
@@ -409,7 +420,7 @@ export default function HireVanScreen() {
         />
 
         <Text style={styles.label}>Destination city *</Text>
-        <CityPicker value={destinationCity} onChange={setDestinationCity} placeholder="Select destination city" />
+        <CityPicker value={destinationCity} onChange={setDestinationCity} placeholder="Select destination city" country={myCountry} />
         <Text style={styles.cityHint}>
           Operators based in the pickup city will see your trip.
         </Text>

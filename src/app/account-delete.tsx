@@ -23,6 +23,7 @@ import {
   Text, TextInput, TouchableOpacity, View,
 } from 'react-native';
 import { supabase } from '../../lib/supabase';
+import { clearMyCountry } from '../../lib/countries';
 
 const GOLD = '#B8860B';
 const BLACK = '#1A1A18';
@@ -78,6 +79,9 @@ export default function AccountDeleteScreen() {
     }
 
     await supabase.auth.signOut();
+    // Same reason as profile.tsx's handleLogout: drop the cached country
+    // so the next sign-in on this device starts clean.
+    clearMyCountry();
     setDeleting(false);
     setDone(true);
   }

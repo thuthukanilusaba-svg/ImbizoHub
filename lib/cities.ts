@@ -1,30 +1,34 @@
 // lib/cities.ts
 //
-// The single list of Zimbabwean cities and towns used for van-hire trip
-// matching. Shared by hirevan.tsx (posting a trip), become-operator.tsx
-// (an operator's base) and operator-requests.tsx (the filter), so all
-// three are guaranteed to agree on spelling.
+// The OFFLINE FALLBACK list of Zimbabwean cities, plus the trip-matching
+// rule shared by the transport screens.
 //
-// WHY A FIXED LIST RATHER THAN FREE TEXT:
-// The existing pickup/destination fields are free text, and the live
-// data shows what that produces — 'home', 'town', 'mkambo' next to
-// 'Mkambo', 'Egodini', 'Nketha 7'. Inconsistent case, landmarks and
-// suburbs mixed with cities, and some entries carrying no location at
-// all. Matching an operator to a trip on any of that is guesswork, and
-// the failure mode is silent: an operator simply never sees a job.
+// ------------------------------------------------------------------
+// THIS IS NO LONGER THE LIST THE UI READS.
+// ------------------------------------------------------------------
+// As of the multi-country work, CityPicker and LocationPicker read the
+// `cities` table through lib/countries.ts. That table holds Zimbabwe,
+// South Africa and Botswana, and which of them a user sees is decided by
+// country_config.active — one flag, no app release.
 //
-// A picked value can be compared exactly. The free-text fields keep
-// doing what they are good at — 'Mbare Musika', 'Egodini rank' is the
-// detail a driver actually needs — while the city does the matching.
+// The array below is kept because lib/countries.ts falls back to it when
+// the database is unreachable. An empty city picker blocks posting
+// outright and is indistinguishable from a broken app; a stale but
+// correct Zimbabwean list lets every existing user carry on. Keep it in
+// step with the ZW rows in the `cities` table, or an offline user will
+// pick a city that no longer exists.
+//
+// WHY A FIXED LIST RATHER THAN FREE TEXT (unchanged, still true):
+// The pickup/destination fields were free text, and the live data showed
+// what that produces — 'home', 'town', 'mkambo' next to 'Mkambo',
+// 'Egodini', 'Nketha 7'. Inconsistent case, landmarks and suburbs mixed
+// with cities, and some entries carrying no location at all. Matching an
+// operator to a trip on any of that is guesswork, and the failure mode
+// is silent: an operator simply never sees a job.
 //
 // ORDER: the largest centres first, since they will be the overwhelming
 // majority of trips and should need the least scrolling. The remainder
-// are alphabetical.
-//
-// 'Other' is deliberately last and deliberately present. Zimbabwe has
-// far more towns than any list should try to hold, and a customer whose
-// town is missing must still be able to post a trip. See CITY_OTHER
-// below for how it is treated.
+// are alphabetical. 'Other' is deliberately last — see CITY_OTHER.
 
 export const CITIES = [
   'Harare',
@@ -66,12 +70,12 @@ export type City = (typeof CITIES)[number];
 // trip that turned out not to be yours.
 export const CITY_OTHER = 'Other';
 
-// Whether an operator based in `operatorCity` should see a trip.
+// Whether an operator should see a trip.
 //
 // MATCHES ON PICKUP ONLY. The destination is deliberately ignored.
 //
 // An earlier version matched either end, on the theory that a Mutare
-// operator taking a Harare → Mutare fare was doing a useful return leg.
+// operator taking a Harare -> Mutare fare was doing a useful return leg.
 // That was wrong, and the reason is physical: the van has to BE at the
 // pickup point. A Bulawayo operator cannot serve a Harare pickup
 // without driving 440km empty first, so putting that trip in their list
@@ -79,22 +83,39 @@ export const CITY_OTHER = 'Other';
 // is going afterwards has no bearing on whether this operator can pick
 // them up.
 //
-// An operator who genuinely wants work in a second city is really based
-// in two places, and the honest way to express that is a second city on
-// their profile — not a matching rule that quietly guesses for them.
+// COUNTRY (added with the multi-country work):
+// Country is checked BEFORE city, and it is the one filter here that is
+// allowed to be strict. The reason is the same physical one, only more
+// so: a van registered in Gaborone cannot serve a Harare pickup, and
+// unlike an inter-city run it cannot simply drive there — that is a
+// border, a passport and a cross-border permit. Showing those trips to
+// each other would recreate exactly the failure this rule exists to
+// prevent: a request nobody can quote, sitting in a list looking like
+// work.
 //
-// Fails OPEN in three cases, all on purpose:
+// Both country arguments are optional and default to fail-open, so every
+// existing call site keeps its current behaviour until it passes them.
+//
+// Fails OPEN in these cases, all on purpose:
+//   - either side has no country recorded (everything posted before
+//     multi-country existed)
 //   - the operator has not set a base city (every operator registered
-//     before this feature existed)
+//     before city matching existed)
 //   - the trip has no pickup city (every request posted before it did)
-//   - either side is 'Other'
+//   - either city is 'Other'
 // Hiding a real job from a driver costs them income they never learn
 // about; showing one irrelevant trip costs a scroll.
 export function operatorCanSeeTrip(
   operatorCity: string | null | undefined,
   pickupCity: string | null | undefined,
-  _destinationCity?: string | null | undefined
+  _destinationCity?: string | null | undefined,
+  operatorCountry?: string | null | undefined,
+  tripCountry?: string | null | undefined
 ): boolean {
+  // Country first: a mismatch here is decisive, because no amount of
+  // city matching makes a cross-border trip servable.
+  if (operatorCountry && tripCountry && operatorCountry !== tripCountry) return false;
+
   if (!operatorCity || operatorCity === CITY_OTHER) return true;
   if (!pickupCity || pickupCity === CITY_OTHER) return true;
   return pickupCity === operatorCity;

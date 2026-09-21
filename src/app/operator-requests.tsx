@@ -195,6 +195,9 @@ export default function OperatorRequestsScreen() {
   // operatorCanSeeTrip() in lib/cities.ts for why every unknown fails
   // open rather than closed.
   const [baseCity, setBaseCity] = useState<string | null>(null);
+  // The operator's country. Read alongside base_city because the
+  // matching rule now checks country first — see operatorCanSeeTrip().
+  const [baseCountry, setBaseCountry] = useState<string | null>(null);
   // This operator's own capability, used to hide work they cannot do.
   // NULL for anyone who registered before these questions existed, and
   // canServe() treats null as unrestricted so none of them loses work.
@@ -241,11 +244,12 @@ export default function OperatorRequestsScreen() {
 
     const { data: profile } = await supabase
       .from('profiles')
-      .select('operator_status, account_type, registration_expires_at, vehicle_type, base_city, carries, max_load_size')
+      .select('operator_status, account_type, registration_expires_at, vehicle_type, base_city, country, carries, max_load_size')
       .eq('id', user.id)
       .single();
 
     setBaseCity(profile?.base_city ?? null);
+    setBaseCountry(profile?.country ?? null);
     setCarries((profile as any)?.carries ?? null);
     setMaxLoadSize((profile as any)?.max_load_size ?? null);
     setCityChecked(true);
@@ -587,7 +591,13 @@ export default function OperatorRequestsScreen() {
   // here is small — these are open requests, not history — so filtering
   // in JS costs nothing and keeps the rule in one testable function.
   const visibleRequests = requests.filter((r) =>
-    operatorCanSeeTrip(baseCity, r.pickup_city, r.destination_city)
+    // Country is passed last and is the one strict test in this rule:
+    // a van registered in Gaborone cannot serve a Harare pickup, and
+    // unlike an inter-city run it cannot drive there — that is a
+    // border and a cross-border permit. Both sides fail open when
+    // either country is missing, so nothing posted before
+    // multi-country existed disappears from anyone's list.
+    operatorCanSeeTrip(baseCity, r.pickup_city, r.destination_city, baseCountry, r.country)
   );
   return (
     <View style={styles.container}>

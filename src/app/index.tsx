@@ -9,6 +9,7 @@ import { buildListingHref } from '../../lib/listingNav';
 import { useIsDesktopWeb } from '../../lib/responsive';
 import { formatPrice } from '../../lib/money';
 import { supabase } from '../../lib/supabase';
+import { useCountryData, useMyCountry } from '../../lib/countries';
 
 const GOLD = '#B8860B';
 const BLACK = '#1A1A18';
@@ -120,6 +121,28 @@ export default function HomeScreen() {
   // whenever numColumns changes, since it precomputes row layout from
   // that number — this is the standard/documented way to change it at
   // runtime.
+  // ---- Country scoping -------------------------------------------
+  // A DEFAULT, NOT A WALL. The feed opens on the viewer's own country
+  // and one tap widens it to everything.
+  //
+  // Why not a hard split: ImbizoHub's diaspora pitch is explicitly
+  // cross-border — someone in Johannesburg or London asking Zimbabwean
+  // sellers for a price. Partitioning the feed by country would break
+  // the exact use case the marketing leads with. And with a handful of
+  // live listings, three walled markets look emptier than one mixed
+  // pool does.
+  //
+  // While a single country is active this does nothing at all: no
+  // filter is applied and no toggle is rendered, so today's app is
+  // unchanged.
+  const myCountry = useMyCountry();
+  const countryData = useCountryData();
+  const multiCountry = countryData.countries.length > 1;
+  const [showAllCountries, setShowAllCountries] = useState(false);
+
+  const countryName = (code: string) =>
+    countryData.countries.find((c) => c.country === code)?.name ?? code;
+
   const isDesktopWeb = useIsDesktopWeb();
   const numColumns = isDesktopWeb ? 4 : 2;
 
@@ -199,16 +222,26 @@ export default function HomeScreen() {
     setFeaturedListing(data ?? null);
   }
 
-  const fetchListings = async (page: number, append: boolean) => {
+  // scopeAll is passed in rather than read from state: setState is
+  // asynchronous, so a toggle handler that flipped the state and
+  // then fetched would query with the value it just replaced — the
+  // fetch would report success and return the wrong country's rows.
+  const fetchListingsScoped = async (page: number, append: boolean, scopeAll: boolean) => {
     if (append) setLoadingMore(true);
 
     const from = page * PAGE_SIZE;
     const to = from + PAGE_SIZE - 1;
 
-    const { data } = await supabase
+    let query = supabase
       .from('listings')
       .select('*')
-      .eq('status', 'active')
+      .eq('status', 'active');
+
+    // See the country-scoping note above: a default the viewer can undo,
+    // never a filter that hides content without saying so.
+    if (multiCountry && !scopeAll) query = query.eq('country', myCountry);
+
+    const { data } = await query
       .order('created_at', { ascending: false })
       .range(from, to);
 
@@ -234,6 +267,11 @@ export default function HomeScreen() {
     setLoading(false);
     setLoadingMore(false);
   };
+
+  // Existing call sites keep the old name and the old two-argument
+  // shape; only the toggle needs to state its scope explicitly.
+  const fetchListings = (page: number, append: boolean) =>
+    fetchListingsScoped(page, append, showAllCountries);
 
   const loadMore = useCallback(() => {
     if (loadingMore || !hasMore || loading) return;
@@ -261,6 +299,35 @@ export default function HomeScreen() {
   function ListHeader() {
     return (
       <View>
+        {/* Country scope. Rendered only once a second country is
+            live, so this is invisible today. Worded as a widening
+            action rather than a filter: people do not go looking
+            for a filter they never set, so a feed that quietly
+            hides half the marketplace reads as an empty
+            marketplace. */}
+        {multiCountry ? (
+          <View style={styles.countryScopeRow}>
+            <Text style={styles.countryScopeLabel}>
+              {showAllCountries
+                ? 'Showing every country'
+                : `Showing ${countryName(myCountry)}`}
+            </Text>
+            <TouchableOpacity
+              onPress={() => {
+                const next = !showAllCountries;
+                setShowAllCountries(next);
+                // No page state to reset: loadMore() derives the
+                // next page from listings.length, and append=false
+                // replaces the list outright.
+                fetchListingsScoped(0, false, next);
+              }}
+            >
+              <Text style={styles.countryScopeAction}>
+                {showAllCountries ? `Only ${countryName(myCountry)}` : 'Show all'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        ) : null}
         <View style={styles.header}>
           <View>
             <View style={styles.logoRow}>
@@ -639,6 +706,12 @@ export default function HomeScreen() {
 }
 
 const styles = StyleSheet.create({
+  countryScopeRow: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingHorizontal: 16, paddingTop: 12, paddingBottom: 4,
+  },
+  countryScopeLabel: { color: '#AAAAAA', fontSize: 13 },
+  countryScopeAction: { color: '#B8860B', fontSize: 13, fontWeight: '700' },
   container: { flex: 1, backgroundColor: '#111111' },
   header: { backgroundColor: BLACK, padding: 16, paddingTop: 50, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   logoRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },

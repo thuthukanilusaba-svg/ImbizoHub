@@ -8,6 +8,7 @@ import { buildListingHref } from '../../lib/listingNav';
 import { useIsDesktopWeb } from '../../lib/responsive';
 import { formatPrice } from '../../lib/money';
 import { supabase } from '../../lib/supabase';
+import { useCountryData, useMyCountry } from '../../lib/countries';
 
 const GOLD = '#B8860B';
 const BLACK = '#1A1A18';
@@ -81,11 +82,27 @@ export default function ExploreScreen() {
     };
   }, [search]);
 
+  // Country scope. Explore is a SEARCH screen, so it gets the filter
+  // but not a permanent toggle: it already carries a search box and a
+  // category row, and a third always-visible control turns the top of
+  // the screen into a settings panel.
+  //
+  // Instead the way out is offered exactly where it is needed — in the
+  // empty state, at the moment a search returns nothing. Someone who
+  // searched and found nothing is the only person who wants to widen
+  // the net, and the person most likely to give up if the app never
+  // mentions there is a net to widen.
+  const myCountry = useMyCountry();
+  const countryData = useCountryData();
+  const multiCountry = countryData.countries.length > 1;
+  const [showAllCountries, setShowAllCountries] = useState(false);
+
   // Re-fetch from page 0 whenever the actual query criteria change —
-  // either the debounced search text or the selected category.
+  // the debounced search text, the selected category, or the country
+  // scope.
   useEffect(() => {
     fetchPage(0, false);
-  }, [debouncedSearch, selectedCategory]);
+  }, [debouncedSearch, selectedCategory, showAllCountries]);
 
   const fetchPage = async (page: number, append: boolean) => {
     if (append) setLoadingMore(true);
@@ -98,6 +115,11 @@ export default function ExploreScreen() {
       .from('listings')
       .select('*', { count: 'exact' })
       .eq('status', 'active');
+
+    // Read from state rather than passed in, unlike the other two feeds:
+    // here the refetch is driven by the useEffect above, which runs after
+    // the state has settled, so there is no stale-value race to avoid.
+    if (multiCountry && !showAllCountries) query = query.eq('country', myCountry);
 
     if (debouncedSearch) {
       // Matches the original behavior: title OR location containing the
@@ -185,7 +207,7 @@ export default function ExploreScreen() {
     if (loadingMore || !hasMore || loading) return;
     const nextPage = Math.floor(listings.length / PAGE_SIZE);
     fetchPage(nextPage, true);
-  }, [loadingMore, hasMore, loading, listings.length, debouncedSearch, selectedCategory]);
+  }, [loadingMore, hasMore, loading, listings.length, debouncedSearch, selectedCategory, showAllCountries]);
 
   async function loadUserRole() {
     const { data: { user } } = await supabase.auth.getUser();
@@ -294,7 +316,16 @@ export default function ExploreScreen() {
             loading ? (
               <ActivityIndicator color={GOLD} style={{ marginTop: 20 }} />
             ) : (
-              <Text style={{ color: GREY, textAlign: 'center', marginTop: 20 }}>No listings found</Text>
+              <View>
+                <Text style={{ color: GREY, textAlign: 'center', marginTop: 20 }}>No listings found</Text>
+                {multiCountry && !showAllCountries ? (
+                  <TouchableOpacity onPress={() => setShowAllCountries(true)}>
+                    <Text style={{ color: GOLD, textAlign: 'center', marginTop: 10, fontWeight: '700' }}>
+                      Search every country
+                    </Text>
+                  </TouchableOpacity>
+                ) : null}
+              </View>
             )
           }
           renderItem={({ item }) => (

@@ -42,6 +42,7 @@ import { prepareUpload } from '../../lib/uploadHelpers';
 import { reportHandledError } from '../../lib/crashReporter';
 import { checkListingContent } from '../../lib/contentSafety';
 import LocationPicker from '../../components/LocationPicker';
+import { useMyCountry } from '../../lib/countries';
 
 const GOLD = '#B8860B';
 const BLACK = '#1A1A18';
@@ -79,6 +80,9 @@ function getAspectRatio(uri: string): Promise<number> {
 const MAX_PRICE = 10000000;
 
 export default function PostScreen() {
+  // The poster's own country, from their profile. Drives both the
+  // city list shown below and the country stamped on the row.
+  const myCountry = useMyCountry();
   const router = useRouter();
 
   const [title, setTitle] = useState('');
@@ -287,6 +291,12 @@ export default function PostScreen() {
 
     const { error: insertError } = await supabase.from('listings').insert({
       user_id: user.id,
+      // listings.country is NOT NULL DEFAULT 'ZW'. Relying on that
+      // default was correct while Zimbabwe was the only country and
+      // wrong the moment it is not: a seller in Gaborone would have
+      // their fridge filed as Zimbabwean, and no feed filter could ever
+      // recover it. Set it explicitly from the poster's profile.
+      country: myCountry,
       title: title.trim(),
       description: description.trim(),
       price: priceNum,
@@ -442,6 +452,7 @@ export default function PostScreen() {
             value={location}
             onChange={setLocation}
             placeholder="Select your city"
+            country={myCountry}
           />
 
           <Text style={styles.label}>Category</Text>

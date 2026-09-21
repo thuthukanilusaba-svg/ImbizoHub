@@ -49,6 +49,7 @@ import {
 } from 'react-native';
 import { supabase } from '../../lib/supabase';
 import CityPicker from '../../components/CityPicker';
+import { useMyCountry } from '../../lib/countries';
 import {
   DELIVERY_BOOKING_ENABLED,
   DELIVERY_OPERATOR_SIGNUP_PAUSED_MESSAGE,
@@ -61,6 +62,12 @@ const DARK = '#2a2a2a';
 const GREY = '#AAAAAA';
 
 export default function BecomeOperatorScreen() {
+  // The user's own country. Trip cities are scoped to it because a
+  // cross-border trip is filtered out of every operator's list by
+  // operatorCanSeeTrip() anyway — offering those cities here would
+  // only produce requests nobody can quote, which is exactly the
+  // failure the scope warning in web/transport.html describes.
+  const myCountry = useMyCountry();
   const router = useRouter();
   const { type } = useLocalSearchParams<{ type: 'delivery' | 'operator' }>();
   const isDelivery = type === 'delivery';
@@ -422,7 +429,7 @@ export default function BecomeOperatorScreen() {
               </>
             ) : null}
             <Text style={styles.label}>Your base city *</Text>
-            <CityPicker value={baseCity} onChange={setBaseCity} placeholder="Select your city" />
+            <CityPicker value={baseCity} onChange={setBaseCity} placeholder="Select your city" country={myCountry} />
             <Text style={styles.hint}>
               You&apos;ll see trips starting in this city, and customers see it on your quote.
             </Text>

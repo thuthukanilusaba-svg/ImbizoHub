@@ -69,6 +69,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { normalizeImageOrientation } from '../../lib/imageOrientation';
 import { formatPrice } from '../../lib/money';
 import { supabase } from '../../lib/supabase';
+import { useCountryData, useMyCountry } from '../../lib/countries';
 import { prepareUpload } from '../../lib/uploadHelpers';
 
 const GOLD = '#B8860B';
@@ -104,6 +105,16 @@ export default function BrowseWantedScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const [requests, setRequests] = useState<ItemRequest[]>([]);
+
+  // Country scope. Same rule as the listings feed: a default the
+  // viewer can widen, never a hidden filter. Inert while one country
+  // is live. See the long note in src/app/index.tsx.
+  const myCountry = useMyCountry();
+  const countryData = useCountryData();
+  const multiCountry = countryData.countries.length > 1;
+  const [showAllCountries, setShowAllCountries] = useState(false);
+  const countryName = (code: string) =>
+    countryData.countries.find((c) => c.country === code)?.name ?? code;
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [myId, setMyId] = useState('');
@@ -167,13 +178,19 @@ export default function BrowseWantedScreen() {
     await fetchRequests(user?.id);
   }
 
-  async function fetchRequests(uid?: string) {
+  // scopeAll is an argument, not read from state: setState is async, so
+  // a toggle that flipped state then fetched would query with the value
+  // it just replaced.
+  async function fetchRequests(uid?: string, scopeAll: boolean = showAllCountries) {
     setLoading(true);
-    const { data } = await supabase
+    let query = supabase
       .from('item_requests')
       .select('*')
-      .eq('status', 'open')
-      .order('created_at', { ascending: false });
+      .eq('status', 'open');
+
+    if (multiCountry && !scopeAll) query = query.eq('country', myCountry);
+
+    const { data } = await query.order('created_at', { ascending: false });
     setRequests(data ?? []);
 
     const currentUid = uid ?? myId;
@@ -406,14 +423,36 @@ export default function BrowseWantedScreen() {
         contentContainerStyle={[styles.list, { paddingBottom: 16 + insets.bottom }]}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={GOLD} />}
         ListHeaderComponent={
-          goneNotice ? (
+          <>
+            {multiCountry ? (
+              <View style={styles.countryScopeRow}>
+                <Text style={styles.countryScopeLabel}>
+                  {showAllCountries
+                    ? 'Showing every country'
+                    : `Showing ${countryName(myCountry)}`}
+                </Text>
+                <TouchableOpacity
+                  onPress={() => {
+                    const next = !showAllCountries;
+                    setShowAllCountries(next);
+                    fetchRequests(undefined, next);
+                  }}
+                >
+                  <Text style={styles.countryScopeAction}>
+                    {showAllCountries ? `Only ${countryName(myCountry)}` : 'Show all'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            ) : null}
+            {goneNotice ? (
             <View style={styles.goneNotice}>
               <Text style={styles.goneNoticeText}>{goneNotice}</Text>
               <TouchableOpacity onPress={() => setGoneNotice('')}>
                 <Text style={styles.goneNoticeDismiss}>Dismiss</Text>
               </TouchableOpacity>
             </View>
-          ) : null
+            ) : null}
+          </>
         }
         ListEmptyComponent={
           <View style={styles.empty}>
@@ -662,6 +701,12 @@ function Chip({ label }: { label: string }) {
 }
 
 const styles = StyleSheet.create({
+  countryScopeRow: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingHorizontal: 4, paddingTop: 4, paddingBottom: 10,
+  },
+  countryScopeLabel: { color: '#AAAAAA', fontSize: 13 },
+  countryScopeAction: { color: GOLD, fontSize: 13, fontWeight: '700' },
   container: { flex: 1, backgroundColor: '#111111' },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#111111' },
 

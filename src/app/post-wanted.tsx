@@ -59,6 +59,7 @@ import { supabase } from '../../lib/supabase';
 import { reportHandledError } from '../../lib/crashReporter';
 import { checkListingContent } from '../../lib/contentSafety';
 import LocationPicker from '../../components/LocationPicker';
+import { useMyCountry } from '../../lib/countries';
 
 const GOLD = '#B8860B';
 const BLACK = '#1A1A18';
@@ -68,6 +69,9 @@ const GREY = '#AAAAAA';
 const categories = ['Phones', 'Vehicles', 'Furniture', 'Clothing', 'Appliances', 'Building', 'Baby', 'Other'];
 
 export default function PostWantedScreen() {
+  // The poster's own country, from their profile. Drives both the
+  // city list shown below and the country stamped on the row.
+  const myCountry = useMyCountry();
   const router = useRouter();
 
   const [title, setTitle] = useState('');
@@ -128,6 +132,9 @@ export default function PostWantedScreen() {
       .from('item_requests')
       .insert({
         user_id: user.id,
+        // See the note in post.tsx: item_requests.country defaults to
+        // 'ZW', which silently mislabels every post from anywhere else.
+        country: myCountry,
         title: title.trim(),
         description: description.trim(),
         category,
@@ -280,6 +287,7 @@ export default function PostWantedScreen() {
             value={location}
             onChange={setLocation}
             placeholder="Select your city"
+            country={myCountry}
           />
         </View>
 

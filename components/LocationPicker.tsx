@@ -1,9 +1,9 @@
 // components/LocationPicker.tsx
 //
 // The location field for listings (post.tsx) and Wanted posts
-// (post-wanted.tsx). Wraps the existing CityPicker and adds the one
-// thing a marketplace needs that trip-matching does not: a real town
-// name behind 'Other'.
+// (post-wanted.tsx). Wraps CityPicker and adds the one thing a
+// marketplace needs that trip-matching does not: a real town name behind
+// 'Other'.
 //
 // WHY: both screens were free text with placeholder "e.g. Harare", and
 // the live data shows exactly what free text produces —
@@ -13,9 +13,7 @@
 //     Gweru      1      Burbank    2      <- a browser autofilled a US city
 //
 // Nothing in the app can group 'Bulawayo' with 'bulawayo', so a buyer
-// filtering for one silently misses the other. lib/cities.ts made this
-// argument for the transport side back in August and CityPicker has
-// existed since; these two screens were simply never wired to it.
+// filtering for one silently misses the other.
 //
 // WHY 'OTHER' IS HANDLED HERE AND NOT IN CityPicker:
 // For trip matching, storing the literal string 'Other' is correct and
@@ -30,36 +28,54 @@
 // exactly that and had to be rebuilt: on desktop web there is no swipe,
 // the scroll indicator was hidden, and a mouse wheel scrolls the page
 // instead — so the cities past the right-hand edge were unreachable.
-// CityPicker's tap-to-open sheet with a vertical list has none of that
-// problem on either platform.
+//
+// MULTI-COUNTRY:
+// A listing belongs to one place, so this picker is scoped to the
+// poster's own country rather than showing every live country. A seller
+// in Gaborone picking "Harare" from a global list would be describing
+// where their fridge is not.
+//
+// The 'Other' test now asks the loaded city list rather than the
+// hardcoded constant, so a Botswana seller typing "Gumare" is correctly
+// treated as a custom town instead of being silently compared against
+// Zimbabwe's list.
 
 import { useState } from 'react';
 import { StyleSheet, Text, TextInput, View } from 'react-native';
-import { CITIES, CITY_OTHER } from '../lib/cities';
+import { CITY_OTHER } from '../lib/cities';
+import { citiesFor, useCountryData } from '../lib/countries';
 import CityPicker from './CityPicker';
 
 const DARK = '#2a2a2a';
 const GREY = '#AAAAAA';
 
-function isNamedCity(v: string): boolean {
-  return v !== CITY_OTHER && (CITIES as readonly string[]).includes(v);
-}
-
 export default function LocationPicker({
   value,
   onChange,
   placeholder = 'Select your city',
+  country,
 }: {
   value: string;
   onChange: (location: string) => void;
   placeholder?: string;
+  // The poster's country. Undefined falls back to the default country
+  // inside citiesFor(), which keeps every existing caller working
+  // unchanged until it starts passing this.
+  country?: string | null;
 }) {
+  const snap = useCountryData();
+  const named = citiesFor(snap, country);
+
+  function isNamedCity(v: string): boolean {
+    return v !== CITY_OTHER && named.some((c) => !c.is_other && c.name === v);
+  }
+
   // Held as state rather than derived from `value` on every render.
   // Derived would work until someone typed a town whose name happens to
   // be on the list — the field would flip back to a chip mid-word and
   // take the keyboard with it. Editing an older post whose location is
-  // free text (everything created before today) opens straight into
-  // Other, which is correct: that IS a custom value.
+  // free text opens straight into Other, which is correct: that IS a
+  // custom value.
   const [otherMode, setOtherMode] = useState(() => !!value && !isNamedCity(value));
 
   function handlePick(city: string) {
@@ -82,6 +98,7 @@ export default function LocationPicker({
         value={otherMode ? CITY_OTHER : value}
         onChange={handlePick}
         placeholder={placeholder}
+        country={country}
       />
 
       {otherMode ? (

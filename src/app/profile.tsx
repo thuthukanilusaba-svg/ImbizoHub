@@ -86,6 +86,7 @@ import { DELIVERY_BOOKING_ENABLED, DELIVERY_OPERATOR_SIGNUP_PAUSED_MESSAGE, DELI
 import { normalizeImageOrientation } from '../../lib/imageOrientation';
 import { supabase } from '../../lib/supabase';
 import CityPicker from '../../components/CityPicker';
+import { clearMyCountry, useMyCountry } from '../../lib/countries';
 import { prepareUpload } from '../../lib/uploadHelpers';
 import { checkName } from '../../lib/nameValidation';
 
@@ -113,6 +114,8 @@ const NEGATIVE_TAG_LABELS: Record<string, true> = {
 };
 
 export default function ProfileScreen() {
+  // Scopes the base-city picker below to this operator's own country.
+  const myCountry = useMyCountry();
   const router = useRouter();
   const insets = useSafeAreaInsets();
 
@@ -501,6 +504,13 @@ export default function ProfileScreen() {
 
   async function handleLogout() {
     await supabase.auth.signOut();
+    // The profile country is cached in module scope for the session, so
+    // signing out has to drop it. Without this, the next person to sign
+    // in on a shared handset — which in this market is common — inherits
+    // the previous user's country, and every listing they post is filed
+    // under it. The failure is silent: the app looks right and the data
+    // is wrong.
+    clearMyCountry();
     router.replace('/login');
   }
 
@@ -736,6 +746,7 @@ export default function ProfileScreen() {
                       value={draftBaseCity}
                       onChange={setDraftBaseCity}
                       placeholder="Select your city"
+                      country={myCountry}
                     />
                     <Text style={styles.baseCityHint}>
                       You&apos;ll see trips starting in this city. Change it if you move.
