@@ -249,10 +249,17 @@
   .form-wrap{max-width:620px;margin:0 auto}
   label{display:block;font-weight:600;font-size:15px;margin:20px 0 7px}
   label .opt{color:var(--muted);font-weight:400}
+  /* color was #fff against --panel (#FFFFFF) — white on white. Everything
+     anyone typed into this form was invisible, which reads as a form that
+     does not accept input at all. Left over from when these fields sat on
+     a dark panel; the page went light and the text colour did not follow.
+     Placeholder is set explicitly so it stays a shade lighter than real
+     input rather than inheriting whatever the browser fancies. */
   input,select,textarea{
-    width:100%;background:var(--panel);color:#fff;border:1px solid var(--line);
+    width:100%;background:var(--panel);color:var(--text);border:1px solid var(--line);
     border-radius:10px;padding:13px 14px;font-size:16px;font-family:inherit;
   }
+  input::placeholder,textarea::placeholder{color:#9A9384;opacity:1}
   input:focus,select:focus,textarea:focus{
     outline:none;border-color:var(--gold);box-shadow:0 0 0 3px rgba(184,134,11,.18);
   }
@@ -307,8 +314,7 @@
              Zimbabwe, and a "+263 …" hint quietly tells everyone else
              they are on the wrong form. Asking for the country code
              also gets us a number we can actually dial back. -->
-        <input id="phone" name="phone" type="tel" autocomplete="tel" maxlength="40"
-               placeholder="Include your country code, e.g. +263, +27, +353">
+        <input id="phone" name="phone" type="tel" autocomplete="tel" maxlength="40">
 
         <label for="topic">What is it about?</label>
         <select id="topic" name="topic">
