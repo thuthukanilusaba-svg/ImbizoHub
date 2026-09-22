@@ -110,7 +110,14 @@
       'box-shadow:0 8px 26px -8px rgba(60,50,20,.35)}',
     '.sd-launch:hover{background:#3D3A33}',
     '.sd-launch:focus-visible{outline:2px solid #8A6608;outline-offset:3px}',
-    '.sd-launch .sd-dot{width:9px;height:9px;border-radius:50%;background:#fff;opacity:.7}',
+    // Green, at full opacity, and it means "the help is here" — not
+    // "an agent is online". Sindie is a fixed set of answers and a
+    // message form; nobody is sitting waiting. Kept small and with no
+    // pulse animation for that reason: a throbbing green dot reads as
+    // a live person and would be the one place this widget overstates
+    // itself. #3FA45B is dark enough to hold its own against the
+    // near-black pill without glowing.
+    '.sd-launch .sd-dot{width:9px;height:9px;border-radius:50%;background:#3FA45B;opacity:1}',
     '.sd-panel{position:fixed;right:20px;bottom:20px;z-index:9999;width:min(380px,calc(100vw - 32px));',
       'max-height:min(620px,calc(100vh - 40px));display:none;flex-direction:column;overflow:hidden;',
       'background:#FFFFFF;border:1px solid #E4DCCB;border-radius:18px;',
