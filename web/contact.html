@@ -302,7 +302,13 @@
         <input id="email" name="email" type="email" autocomplete="email" maxlength="200" required>
 
         <label for="phone">Phone number <span class="opt">(optional)</span></label>
-        <input id="phone" name="phone" type="tel" autocomplete="tel" maxlength="40" placeholder="+263 …">
+        <!-- Country-neutral on purpose. Enquiries come from wherever the
+             diaspora is — South Africa, the UK, Ireland — not only
+             Zimbabwe, and a "+263 …" hint quietly tells everyone else
+             they are on the wrong form. Asking for the country code
+             also gets us a number we can actually dial back. -->
+        <input id="phone" name="phone" type="tel" autocomplete="tel" maxlength="40"
+               placeholder="Include your country code, e.g. +263, +27, +353">
 
         <label for="topic">What is it about?</label>
         <select id="topic" name="topic">
