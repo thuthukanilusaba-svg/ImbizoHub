@@ -135,12 +135,6 @@
   .badge-link{display:inline-flex;align-items:center;line-height:0}
   .badge-link:hover{text-decoration:none;opacity:.88}
   .badge-img{height:53px;width:auto;display:block}
-  /* Nav copy of the badge. 40px is Google's stated minimum height
-     for the web badge, and it is also as tall as a 68px bar can
-     carry without the header growing. Width follows the SVG's own
-     238.96 x 70.87 ratio — the artwork is scaled, never redrawn,
-     which is the one thing their guidelines are strict about. */
-  .badge-img-nav{height:40px;width:auto;display:block}
   .note{margin-top:16px;font-size:14.5px;color:#7C7566}
 
   /* ---------- sections ---------- */
@@ -313,28 +307,20 @@
       <a href="#pricing">Pricing</a>
       <a href="#safety">Safety</a>
       <a href="/contact">Contact</a>
-      <!-- The official badge rather than a text link: the artwork names
-           its own destination better than any wording could, which was
-           the job the old "Get it on Google Play" text was doing.
+      <!-- A TEXT LINK, not the badge artwork. The badge was tried here on
+           22 Sep 2026 and taken out again: at 40px it sat as a second
+           image-weight block right beside the "Open app" pill, and the
+           header stopped reading as navigation. The hero carries the
+           real badge, at full size, where it has room.
 
-           It sits beside "Open app" deliberately. The two are not
-           competing — they are the two ways in, and a visitor on a
-           desktop without an Android phone needs the second one to be
-           visible rather than buried further down the page. Removing it
-           was tried on 22 Sep 2026 and put straight back.
+           Named as Google Play rather than "Get the app": it sits beside
+           "Open app" (the web build), and without naming the destination
+           a visitor cannot tell which is which.
 
-           Hidden below 700px by the .nav-links rule above, which is
-           correct: the hero carries its own badge, and two on one phone
-           screen is one too many.
-
-           The trademark line in the footer is required wherever this
-           appears. It is already there — do not remove it if this badge
-           is ever removed from the hero. -->
-      <a class="badge-link" href="https://play.google.com/store/apps/details?id=com.imbizohub.app"
-         aria-label="Get ImbizoHub on Google Play">
-        <img class="badge-img-nav" src="/GetItOnGooglePlay_Badge_Web_color_English.svg"
-             alt="Get it on Google Play" width="135" height="40">
-      </a>
+           The trademark line in the footer is still required — the hero
+           badge is still there. Do not remove it on account of this
+           link changing. -->
+      <a href="https://play.google.com/store/apps/details?id=com.imbizohub.app">Get it on Google Play</a>
       <a class="btn" href="/app">Open app</a>
     </nav>
   </div>
