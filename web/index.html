@@ -1,70 +1,685 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>ImbizoHub</title>
-<meta name="theme-color" content="#FCF9F2" />
-<meta name="description" content="Buy and sell with confidence in Zimbabwe. Chat, meet, and pay — backed by PIN-confirmed handovers and ratings from real completed deals." />
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+
+<title>ImbizoHub — Ask for it. Sellers come to you.</title>
+<meta name="description" content="Ask for it and sellers come to you. Post what you need and sellers reply with their price. Free to ask, free to chat, free to do a deal.">
+<link rel="canonical" href="https://imbizohub.com/">
+<meta name="theme-color" content="#FCF9F2">
+
+<!-- Open Graph — this is what WhatsApp, Facebook and Twitter read when
+     someone shares the link. Without these the preview comes up blank. -->
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="ImbizoHub">
+<meta property="og:url" content="https://imbizohub.com/">
+<meta property="og:title" content="ImbizoHub — Ask for it. Sellers come to you.">
+<meta property="og:description" content="Post what you need and sellers come to you with their price. Free to ask, free to chat, free to do a deal.">
+<meta property="og:image" content="https://imbizohub.com/og-image.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:locale" content="en_ZW">
+
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="ImbizoHub — Ask for it. Sellers come to you.">
+<meta name="twitter:description" content="Post what you need and sellers come to you with their price. Free to ask, free to chat, free to do a deal.">
+<meta name="twitter:image" content="https://imbizohub.com/og-image.png">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;800&display=swap" rel="stylesheet">
+
+<link rel="icon" href="/favicon.png">
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "WebSite",
+  "name": "ImbizoHub",
+  "url": "https://imbizohub.com/",
+  "description": "Zimbabwean marketplace where buyers post what they want and sellers respond with a price, plus transport hire with operators bidding for the job.",
+  "inLanguage": "en-ZW",
+  "sameAs": ["https://www.facebook.com/profile.php?id=61592822361203"]
+}
+</script>
+
 <style>
   :root{
-    --bg:#FCF9F2; --panel:#FFFFFF; --panel-2:#F4EFE3; --line:#E4DCCB;
-    --gold:#8A6608; --text:#1A1A18; --muted:#5C574B;
+    --bg:#FCF9F2;
+    --panel:#FFFFFF;
+    --panel-2:#F4EFE3;
+    --line:#E4DCCB;
+    --gold:#8A6608;
+    --gold-bright:#7A5A07;
+    --text:#1A1A18;
+    --muted:#5C574B;
+    --maxw:1080px;
   }
+
   *{box-sizing:border-box}
+  html{-webkit-text-size-adjust:100%}
   body{
     margin:0;
-    font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;
-    background:var(--bg); color:var(--text);
-    display:flex; align-items:center; justify-content:center;
-    min-height:100vh; padding:20px; line-height:1.6;
+    background:var(--bg);
+    color:var(--text);
+    font-family:"Inter",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    font-size:18px;
+    line-height:1.7;
+    letter-spacing:.005em;
     -webkit-font-smoothing:antialiased;
   }
+  a{color:var(--gold-bright);text-decoration:none}
+  a:hover{text-decoration:underline}
+  .wrap{max-width:var(--maxw);margin:0 auto;padding:0 20px}
+
+  /* ---------- header ---------- */
+  header{
+    position:sticky;top:0;z-index:20;
+    background:rgba(252,249,242,.92);
+    backdrop-filter:saturate(140%) blur(10px);
+    border-bottom:1px solid var(--line);
+  }
+  .nav{display:flex;align-items:center;justify-content:space-between;height:68px}
+  /* ImbizoHub is ONE word — deliberately a single colour so it cannot
+     read as "Imbizo Hub". The logo supplies the gold. */
+  .brand{display:flex;align-items:center;gap:11px;font-weight:800;font-size:20px;
+         color:var(--text);letter-spacing:-.01em}
+  .brand:hover{text-decoration:none}
+  .mark{width:34px;height:34px;border-radius:9px;display:block}
+  .nav-links{display:flex;align-items:center;gap:24px;font-size:15px}
+  .nav-links a{color:var(--muted)}
+  .nav-links a:hover{color:var(--text);text-decoration:none}
+  .nav-links a.btn{color:var(--bg)}
+  .btn{
+    display:inline-block;background:var(--text);color:var(--bg);
+    font-weight:800;border-radius:10px;padding:11px 20px;font-size:15px;
+    border:0;cursor:pointer;
+  }
+  .btn:hover{background:#3D3A33;text-decoration:none}
+  .btn-ghost{
+    background:transparent;color:var(--text);border:1px solid var(--line);
+  }
+  .btn-ghost:hover{background:var(--panel-2);border-color:#CFC4AE}
+  @media(max-width:700px){ .nav-links a:not(.btn){display:none} }
+
+  /* ---------- hero ---------- */
+  .hero{padding:72px 0 56px;text-align:center}
+  .pill{
+    display:inline-block;font-size:12.5px;font-weight:700;letter-spacing:.02em;
+    color:var(--muted);background:var(--panel-2);border:1px solid var(--line);
+    padding:6px 13px;border-radius:999px;margin-bottom:22px;
+  }
+  h1{
+    font-size:clamp(34px,5.6vw,56px);line-height:1.12;margin:0 0 20px;
+    font-weight:800;letter-spacing:-.025em;
+  }
+  h1 em{font-style:normal;color:var(--gold)}
+  .sub{
+    font-size:clamp(17px,2.2vw,20px);color:var(--muted);
+    max-width:620px;margin:0 auto 30px;
+  }
+  /* The fee promise, answering a competitor whose homepage leads with
+     "no fees, no middlemen". Slightly smaller than .sub and set apart so
+     it reads as a commitment rather than more description — the bold
+     clause is the sentence people should carry away. */
+  .sub-promise{
+    font-size:clamp(15px,1.9vw,17px);margin-bottom:30px;
+  }
+  .sub-promise strong{color:var(--text);display:block}
+  .cta-row{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;align-items:center}
+  /* The badge is an image link, not a .btn — no background, border or
+     padding of ours may touch it. Height drives the size; width follows
+     the SVG's own ratio. 53px clears Google's 40px minimum while
+     staying smaller than the wordmark, which their guidelines ask for. */
+  .badge-link{display:inline-flex;align-items:center;line-height:0}
+  .badge-link:hover{text-decoration:none;opacity:.88}
+  .badge-img{height:53px;width:auto;display:block}
+  /* Nav copy of the badge. 40px is Google's stated minimum height
+     for the web badge, and it is also as tall as a 68px bar can
+     carry without the header growing. Width follows the SVG's own
+     238.96 x 70.87 ratio — the artwork is scaled, never redrawn,
+     which is the one thing their guidelines are strict about. */
+  .badge-img-nav{height:40px;width:auto;display:block}
+  .note{margin-top:16px;font-size:14.5px;color:#7C7566}
+
+  /* ---------- sections ---------- */
+  section{padding:56px 0;border-top:1px solid var(--line)}
+  h2{font-size:clamp(23px,3.2vw,31px);margin:0 0 10px;font-weight:800;letter-spacing:-.01em}
+  .lede{color:var(--muted);margin:0 0 34px;max-width:660px;font-size:18px;line-height:1.7}
+
+  /* ---------- four cards ---------- */
+  .cards{display:grid;grid-template-columns:repeat(2,1fr);gap:16px}
+  @media(max-width:760px){ .cards{grid-template-columns:1fr} }
   .card{
-    background:var(--panel); border:1px solid var(--line);
-    border-radius:16px; box-shadow:0 2px 20px rgba(26,26,24,.06);
-    padding:44px 36px; max-width:430px; width:100%; text-align:center;
+    background:var(--panel);border:1px solid var(--line);border-radius:16px;
+    padding:24px;display:flex;gap:16px;align-items:flex-start;
   }
-  h1{font-size:31px; margin:0 0 10px; color:var(--gold); letter-spacing:-.02em}
-  p.subtitle{color:var(--muted); font-size:15px; margin:0 0 30px}
-  a.button{
-    display:block; width:100%; padding:14px;
-    background:var(--gold); color:#fff; text-decoration:none;
-    border-radius:12px; font-size:15px; font-weight:700; margin-bottom:12px;
+  .card .ico{font-size:26px;line-height:1;flex:0 0 auto;margin-top:2px}
+  .card h3{margin:0 0 7px;font-size:18.5px;font-weight:800}
+  .card p{margin:0;color:var(--muted);font-size:16px;line-height:1.65;font-weight:400}
+  .card.a{border-color:#BEDCC6}
+  .card.b{border-color:#E2CE9A}
+  .card.c{border-color:#BDC9DE}
+  .card.d{border-color:#BAD9C6}
+
+  /* ---------- steps ---------- */
+  .steps{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;counter-reset:s}
+  @media(max-width:760px){ .steps{grid-template-columns:1fr} }
+  .step{
+    background:var(--panel);border:1px solid var(--line);
+    border-radius:14px;padding:22px;
   }
-  a.button:hover{background:#6f5206}
-  .note{color:var(--muted); font-size:13px; margin:0}
-  .links{
-    margin-top:28px; padding-top:20px; border-top:1px solid var(--line);
-    font-size:13px; color:var(--muted);
+  .step .n{
+    width:28px;height:28px;border-radius:50%;background:var(--gold);color:#fff;
+    display:grid;place-items:center;font-weight:900;font-size:14px;margin-bottom:12px;
   }
-  .links a{color:var(--muted); text-decoration:none; margin:0 7px}
-  .links a:hover{color:var(--gold)}
+  .step h3{margin:0 0 7px;font-size:17px;font-weight:800}
+  .step p{margin:0;color:var(--muted);font-size:16px;line-height:1.65}
+
+  /* ---------- pricing ---------- */
+  .promo{
+    background:var(--panel-2);border:1px solid var(--line);border-radius:14px;
+    padding:18px 20px;margin-bottom:24px;
+  }
+  .promo strong{color:var(--text)}
+  .promo p{margin:7px 0 0;color:var(--muted);font-size:15.5px}
+  /* Pricing table.
+     FIX: the COST header was text-align:left while its values were
+     text-align:right, so the column header never sat above its own
+     numbers. Both are now right-aligned and the column has a fixed
+     width, so the prices form a clean edge. */
+  table{width:100%;border-collapse:collapse;font-size:16px;table-layout:fixed}
+  th,td{text-align:left;padding:16px 0;border-bottom:1px solid var(--line);vertical-align:top}
+  th{color:var(--muted);font-weight:600;font-size:13px;text-transform:uppercase;
+     letter-spacing:.04em;padding-bottom:10px}
+  th:last-child,td:last-child{text-align:right;width:30%}
+  td:last-child{white-space:nowrap;font-weight:700;color:var(--gold-bright)}
+  td .d{display:block;color:var(--muted);font-size:15px;font-weight:400;margin-top:5px;line-height:1.6}
+
+  /* FIX: on narrow screens the price used to drop BELOW the description,
+     which separated each item from its own cost. Now the row becomes a
+     flex pair — label left, price right, on the same line — so the two
+     stay visually joined however narrow the screen gets. */
+  @media(max-width:620px){
+    thead{display:none}
+    table,tbody{display:block;width:100%}
+    tr{display:flex;justify-content:space-between;align-items:flex-start;gap:18px;
+       border-bottom:1px solid var(--line);padding:14px 0}
+    td{border-bottom:none;padding:0}
+    td:first-child{flex:1 1 auto;min-width:0}
+    td:last-child{flex:0 0 auto;width:auto;text-align:right}
+  }
+
+  /* ---------- trust ---------- */
+  .trust{display:grid;grid-template-columns:repeat(2,1fr);gap:16px}
+  @media(max-width:760px){ .trust{grid-template-columns:1fr} }
+  .t{display:flex;gap:14px;align-items:flex-start;
+     background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:20px}
+  .t .ico{font-size:21px;line-height:1;margin-top:2px}
+  .t h3{margin:0 0 6px;font-size:16.5px;font-weight:800}
+  .t p{margin:0;color:var(--muted);font-size:16px;line-height:1.65}
+
+  /* ---------- closing ---------- */
+  .close{text-align:center;background:var(--panel);border-radius:20px;padding:48px 24px;margin:56px 0}
+  .close h2{margin-bottom:12px}
+  .close p{color:var(--muted);margin:0 0 26px}
+
+  /* ---------- footer ---------- */
+  footer{border-top:1px solid var(--line);padding:34px 0;color:#7C7566;font-size:15px}
+  /* Legal attribution, not content — quieter than the copyright line
+     above it, but present on every page that shows the badge. */
+  .trademark{font-size:12.5px;color:#918A7B;margin-top:8px;line-height:1.5}
+  .fnav{display:flex;gap:22px;flex-wrap:wrap;margin-bottom:16px}
+  .fnav a{color:var(--muted)}
+  .social-row{display:flex;gap:12px;padding-bottom:26px}
+  .social-icon{
+    width:40px;height:40px;border-radius:50%;
+    border:1.5px solid var(--line);color:var(--muted);
+    display:inline-flex;align-items:center;justify-content:center;
+    transition:color .15s ease,border-color .15s ease;
+  }
+  .social-icon:hover{color:var(--gold);border-color:var(--gold);text-decoration:none}
+  .social-icon:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
+  .social-icon{
+    width:40px;height:40px;border-radius:50%;
+    border:1.5px solid var(--line);color:var(--muted);
+    display:inline-flex;align-items:center;justify-content:center;
+    transition:color .15s ease,border-color .15s ease;
+  }
+  .social-icon:hover{color:var(--gold);border-color:var(--gold);text-decoration:none}
+  .social-icon:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
+
+  /* ---------- theme ---------- */
+  /* The pattern lives BEHIND THE HERO ONLY, on a pseudo-element.
+     It used to be a `background-attachment: fixed` image on <body>, which
+     was wrong twice over:
+       - iOS Safari effectively ignores `fixed`, so on an iPhone the
+         pattern jumped instead of sticking; on low-end Android it forced
+         a full-page repaint every scroll frame. Desktop-first effect,
+         mobile-first audience.
+       - `cover` scaled a 1600x1200 image to the FULL document height
+         (4,400px+ on the home page), so below the fold the pattern was
+         stretched almost 4x — soft and oversized, nothing like the
+         artwork. It only ever looked correct in the hero.
+     A fixed-height pseudo-element gives the artwork a box close to its
+     own proportions, scrolls normally at no repaint cost, and is masked
+     to dissolve into the flat ground instead of ending on a hard line. */
+  html{background:var(--bg)}
+  body{background-color:transparent;position:relative}
+  body::before{
+    content:'';
+    position:absolute;
+    top:0;left:0;right:0;
+    height:820px;
+    z-index:-1;
+    pointer-events:none;
+    /* theme-hub-light.png, not theme-hub.png. The original is a
+       dark-on-dark texture with a luminance range of 17-26 out of
+       255 — invisible on cream at any opacity, because there is
+       almost nothing there to reveal. This is the same artwork
+       rebuilt for a light ground: the pattern restored to full
+       contrast and used as an alpha channel over a warm ink, so
+       the nodes and lines print and the flat ground drops out.
+       Keep theme-hub.png for the app, which is still dark. */
+    background-image:url('/theme-hub-light.png');
+    opacity:.30;
+    background-size:cover;
+    background-position:top center;
+    background-repeat:no-repeat;
+    -webkit-mask-image:linear-gradient(to bottom,#000 55%,transparent 100%);
+    mask-image:linear-gradient(to bottom,#000 55%,transparent 100%);
+  }
+  /* Panels keep a near-opaque backing. Most now sit below the pattern
+     entirely, but the hero box can overlap the first section on a tall
+     phone where the headline wraps — this is the insurance for that. */
+  .card,.step,.t,.close{background:rgba(255,255,255,.93)}
+  header{background:rgba(252,249,242,.94)}
+  .promo{background:rgba(244,239,227,.94)}
+  /* Hero text gets a soft shadow purely for separation from the glow. */
+  /* Reading measure — long lines are tiring regardless of contrast. */
+  .lede,.card p,.step p,.t p{max-width:62ch}
 </style>
 </head>
+
 <body>
-  <div class="card">
-    <h1>ImbizoHub</h1>
-    <p class="subtitle">
-      Buy and sell with confidence in Zimbabwe. Chat, meet, and pay — backed by
-      PIN-confirmed handovers and ratings from real completed deals.
+
+<header>
+  <div class="wrap nav">
+    <a class="brand" href="/"><img class="mark" src="/logo.png" alt="ImbizoHub" width="34" height="34">ImbizoHub</a>
+    <nav class="nav-links">
+      <a href="#how">How it works</a>
+      <a href="/transport">Transport</a>
+      <a href="#pricing">Pricing</a>
+      <a href="#safety">Safety</a>
+      <a href="/contact">Contact</a>
+      <!-- The official badge rather than a text link. It sits beside
+           "Open app" (the web build), and the artwork names its own
+           destination better than any wording could — which was the
+           job the old "Get it on Google Play" text was doing.
+
+           Hidden below 700px by the .nav-links rule above, which is
+           correct: the hero carries its own badge, and two on one
+           phone screen is one too many.
+
+           The trademark line in the footer is required wherever
+           this appears. It is already there — do not remove it if
+           this badge is ever removed from the hero. -->
+      <a class="badge-link" href="https://play.google.com/store/apps/details?id=com.imbizohub.app"
+         aria-label="Get ImbizoHub on Google Play">
+        <img class="badge-img-nav" src="/GetItOnGooglePlay_Badge_Web_color_English.svg"
+             alt="Get it on Google Play" width="135" height="40">
+      </a>
+      <a class="btn" href="/app">Open app</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+
+  <!-- HERO -->
+  <div class="wrap hero">
+    <span class="pill">Free to list · Free to chat · Free to deal</span>
+    <!-- The line, chosen 2 Sep 2026, and it is the same line everywhere:
+         here, the <title>, the OG tags and the app-store listing. A
+         positioning line only compounds if it is never paraphrased —
+         someone who sees the store listing and then lands here must read
+         the identical sentence, or it registers as two different products.
+         Do not "freshen" this copy independently of the store listing. -->
+    <h1>Ask for it.<br><em>Sellers come to you.</em></h1>
+    <p class="sub">
+      Post what you need and sellers reply with their price.
+      Compare, chat, pick one.
     </p>
+    <p class="sub sub-promise">
+      <strong>We only earn when we find you what you asked for.</strong>
+      Never for listing, never for chatting, never for doing a deal.
+    </p>
+    <!-- Both buttons render at rest, so the page is correct with no
+         JavaScript at all. The script at the end of <body> only swaps
+         which one is emphasised: on an Android phone the download is the
+         action that matters, everywhere else the web app is.
 
-    <!-- The Play Store URL is built from the package name in app.json
-         (com.imbizohub.app), so it is fixed and correct before publication.
-         It 404s until the production release goes live, then resolves with
-         no change needed here. -->
-    <a class="button" href="https://play.google.com/store/apps/details?id=com.imbizohub.app">
-      Get it on Google Play
-    </a>
-    <p class="note">Free to download. Free to buy and sell.</p>
+         The Play URL is built from the package name in app.json
+         (com.imbizohub.app) and is therefore already correct — it 404s
+         until the production release publishes, then resolves with no
+         change needed here. -->
+    <div class="cta-row">
+      <a class="btn" id="cta-web" href="/app">Open ImbizoHub</a>
+      <!-- Google's own artwork, unmodified, as their brand guidelines
+           require: no recolouring, no cropping, no CSS rebuild. The web
+           badge carries its required clear space inside the SVG, and the
+           margin below adds a little more. Sized by height so the SVG
+           scales on its own aspect ratio (238.96 x 70.87). -->
+      <a class="badge-link" id="cta-play"
+         href="https://play.google.com/store/apps/details?id=com.imbizohub.app"
+         aria-label="Get ImbizoHub on Google Play">
+        <img class="badge-img" src="/GetItOnGooglePlay_Badge_Web_color_English.svg"
+             alt="Get it on Google Play" width="180" height="53">
+      </a>
+    </div>
+    <p class="note">App fees paid with EcoCash and more via Paynow</p>
+    <!-- Demoted from a third button: three equal CTAs made the row a
+         decision rather than an invitation, and this one only scrolls to
+         a section people reach anyway. Inline style deliberately, to keep
+         this a two-line change. -->
+    <p class="note" style="margin-top:10px"><a href="#how" style="color:#5C574B;font-weight:600">See how it works &#8595;</a></p>
+  </div>
 
-    <div class="links">
-      <a href="https://imbizohub.com/">Website</a> ·
-      <a href="privacy-policy.html">Privacy Policy</a> ·
-      <a href="terms-of-service.html">Terms</a> ·
-      <a href="delete-account.html">Delete Account</a>
+  <!-- FOUR THINGS -->
+  <section id="how">
+    <div class="wrap">
+      <h2>Four ways to use ImbizoHub</h2>
+      <p class="lede">
+        Most marketplaces make you hunt through listings. ImbizoHub works in both
+        directions — you can search, or you can let people come to you.
+      </p>
+
+      <div class="cards">
+        <div class="card a">
+          <div class="ico">🔍</div>
+          <div>
+            <h3>Looking for something specific?</h3>
+            <p>Post what you need and sellers respond with a price. No hunting through
+               listings that were sold last month.</p>
+          </div>
+        </div>
+
+        <div class="card b">
+          <div class="ico">🛍️</div>
+          <div>
+            <h3>See what people want</h3>
+            <p>Browse open requests from real buyers and reply with your price.
+               Responding is free — you only pay if they choose you.</p>
+          </div>
+        </div>
+
+        <div class="card c">
+          <div class="ico">🚐</div>
+          <div>
+            <h3>Hire transport</h3>
+            <p>Moving boxes, one big item, or a group of people? Post the trip and
+               registered van operators bid for it. Compare prices, pick one.
+               Operators keep 100% of what they quote.
+               <a href="/transport">See how transport works →</a></p>
+          </div>
+        </div>
+
+        <div class="card d">
+          <div class="ico">💬</div>
+          <div>
+            <h3>Already selling on WhatsApp?</h3>
+            <p>Paste your whole catalogue in one go and import it. No re-typing
+               every item you've already listed elsewhere.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- MEET & PAY -->
+  <section>
+    <div class="wrap">
+      <h2>Meet &amp; Pay — inspect it before money changes hands</h2>
+      <p class="lede">
+        You're not sending money to a stranger and hoping. You meet, you check the
+        item, and only then do you confirm.
+      </p>
+      <p class="lede">
+        <strong>You pay the seller directly.</strong> ImbizoHub never holds your
+        money and never takes payment for the item — that's between you and the
+        person you're buying from, in whatever way you both agree. The only thing
+        you ever pay us is the app fee below.
+      </p>
+
+      <div class="steps">
+        <div class="step">
+          <div class="n">1</div>
+          <h3>Chat first, free</h3>
+          <p>Message the seller as much as you like. No message limits and nothing
+             to pay while you're still deciding.</p>
+        </div>
+        <div class="step">
+          <div class="n">2</div>
+          <h3>Agree and meet</h3>
+          <p>When you're both ready, arrange the deal in the app and meet up to
+             inspect the item in person.</p>
+        </div>
+        <div class="step">
+          <div class="n">3</div>
+          <h3>Confirm with a PIN</h3>
+          <p>Happy with it? Pay the seller however you've agreed, and they generate
+             a handover PIN to record that the deal is done. Then you both rate each
+             other.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- PRICING -->
+  <section id="pricing">
+    <div class="wrap">
+      <h2>What it costs</h2>
+      <p class="lede">
+        Buying on a listing is free — permanently. Browsing, posting, chatting and
+        arranging a deal cost you nothing. Where we do charge, the fee is capped.
+      </p>
+
+      <div class="promo">
+        <strong>We only earn when we find you what you asked for.</strong>
+        <p>Listing is free. Chatting is free. Doing a deal on a listing is free — now and
+          permanently. The only fees on this page are on a match we made for you: a seller
+          who answered your Wanted post, or an operator who bid for your trip. Sellers and
+          operators keep 100% of their price, and there are no ads to watch to post
+          anything.</p>
+        <!-- "every fee below" used to include the two rows that read Free,
+             so the box promised permanent free and an expiry date in the
+             same breath. Named explicitly instead. -->
+        <p>🎁 <strong>Launch promotion:</strong> the <em>paid</em> rows below — accepting a
+          Wanted-post response and accepting a transport quote — are free for everyone
+          until 31 January 2027. The prices shown are what applies once it ends.
+          Browsing, posting, chatting and doing a deal on a listing are free permanently,
+          promotion or no promotion.</p>
+      </div>
+
+      <table>
+        <thead>
+          <tr><th>What</th><th>Cost</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Browsing, posting and chatting
+                <span class="d">No limits, no account needed to look around</span></td>
+            <td>Free</td>
+          </tr>
+          <tr>
+            <td>Buying on a listing
+                <span class="d">Chat to the seller and arrange Meet &amp; Pay — no fee, now or
+                later. You pay the seller directly for the item</span></td>
+            <td>Free</td>
+          </tr>
+          <tr>
+            <td>Accepting a response to a Wanted post
+                <span class="d">Paid by the buyer who posted the want — 5% of the agreed price,
+                minimum $1.50, never more than $15. The seller keeps 100% of their price</span></td>
+            <td>5%</td>
+          </tr>
+          <tr>
+            <td>Transport platform fee
+                <span class="d">Paid by the customer — 7% of the quote, capped at $15.
+                The operator keeps 100% of their quoted price</span></td>
+            <td>7%</td>
+          </tr>
+          <tr>
+            <td>Transport operator registration
+                <span class="d">Register once to start bidding on trips</span></td>
+            <td>$10 / year</td>
+          </tr>
+          <tr>
+            <td>Verified Seller badge
+                <span class="d">Submit your national ID to get verified</span></td>
+            <td>$15 / year</td>
+          </tr>
+          <tr>
+            <td>Feature a listing
+                <span class="d">Push one listing to the top</span></td>
+            <td>$5 / 7 days</td>
+          </tr>
+          <tr>
+            <td>Dealer Pro
+                <span class="d">For sellers listing at volume</span></td>
+            <td>$30 / 6 months</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- SAFETY -->
+  <section id="safety">
+    <div class="wrap">
+      <h2>Staying safe</h2>
+      <p class="lede">
+        Trust is the hard part of any marketplace. Here's what's actually in place.
+      </p>
+
+      <div class="trust">
+        <div class="t">
+          <div class="ico">🪪</div>
+          <div>
+            <h3>What we can confirm</h3>
+            <p>Every seller profile shows only what we can actually check: whether their
+               national ID is verified, how long they've been here, deals completed, and
+               how many different people they've dealt with. Facts, not badges we invented.</p>
+          </div>
+        </div>
+        <div class="t">
+          <div class="ico">🔐</div>
+          <div>
+            <h3>PIN-confirmed handover</h3>
+            <p>A sale is only confirmed once you've met and inspected the item and a
+               handover PIN is generated. Nothing is confirmed remotely.</p>
+          </div>
+        </div>
+        <div class="t">
+          <div class="ico">⭐</div>
+          <div>
+            <h3>Sealed ratings</h3>
+            <!-- "Nobody can trade a five for a five" was an overclaim:
+                 blinding removes the INCENTIVE to reciprocate, it cannot
+                 stop two people agreeing offline to swap fives. Every
+                 other claim in this section is checkable against the
+                 code, and this one now is too — it describes exactly
+                 what ratings.published_at enforces. -->
+            <p>Buyers rate sellers and sellers rate buyers — and neither side sees the
+               other's until both are in. Nobody can wait to see what you said before
+               deciding what to say about you.</p>
+          </div>
+        </div>
+        <div class="t">
+          <div class="ico">🚩</div>
+          <div>
+            <h3>Report anyone</h3>
+            <p>Every profile and conversation can be reported. Accounts can be suspended,
+               or blocked for good — and a blocked account's listings come down with it.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- CLOSE -->
+  <div class="wrap">
+    <div class="close">
+      <h2>Tell us what you're looking for</h2>
+      <p>It takes a minute, and it's free.</p>
+      <a class="btn" href="/app">Open ImbizoHub</a>
     </div>
   </div>
+
+</main>
+
+<!-- Sits ABOVE the footer's top rule, so the social mark reads as the
+     close of the page rather than another footer link. -->
+<div class="wrap social-row">
+  <a class="social-icon"
+     href="https://www.facebook.com/profile.php?id=61592822361203"
+     target="_blank" rel="noopener"
+     aria-label="ImbizoHub on Facebook" title="ImbizoHub on Facebook">
+    <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" focusable="false">
+      <path fill="currentColor" d="M14 13.5h2.5l1-4H14v-2c0-1.03 0-2 2-2h1.5V2.14c-.33-.04-1.56-.14-2.86-.14C11.93 2 10 3.66 10 6.7v2.8H7v4h3V22h4v-8.5z"/>
+    </svg>
+  </a>
+</div>
+
+<footer>
+  <div class="wrap">
+    <nav class="fnav">
+      <a href="#how">How it works</a>
+      <a href="/transport">Transport</a>
+      <a href="#pricing">Pricing</a>
+      <a href="#safety">Safety</a>
+      <a href="/contact">Contact</a>
+      <!-- These live on the imbizohub.app GitHub Pages site (the
+           imbizohub-legal repo), NOT on this Vercel deployment.
+           Filenames verified against that repo — an earlier guess at
+           /privacy and /terms 404'd in production. Do not "tidy" these
+           to shorter paths without checking the repo first. -->
+      <a href="https://imbizohub.app/privacy-policy.html">Privacy</a>
+      <a href="https://imbizohub.app/terms-of-service.html">Terms</a>
+      <a href="/data-retention">Data retention</a>
+    </nav>
+    <div>© 2026 ImbizoHub</div>
+    <!-- Required by Google's brand guidelines wherever the Play badge is
+         used. Easy to skip, and skipping it is a guideline breach. -->
+    <div class="trademark">Google Play and the Google Play logo are trademarks of Google LLC.</div>
+  </div>
+</footer>
+
+<script src="/sindie.js" defer></script>
+<script>
+// Emphasis only. Both hero buttons are real links that work without
+// this running at all — if it fails, the page is still correct, just
+// ordered for desktop.
+//
+// On an Android phone the native app is the better destination: it gets
+// push notifications, which the web build does not, and notifications
+// are most of what brings someone back to a marketplace. So there the
+// badge moves first and the web app steps back to a ghost button.
+// On iPhone nothing changes — there is no iOS build yet, so sending
+// them to Play would be sending them nowhere useful.
+//
+// The badge itself is never restyled, only reordered: Google's
+// guidelines do not permit altering the artwork, and a class of ours on
+// it would be the start of doing exactly that.
+(function () {
+  if (!/Android/i.test(navigator.userAgent)) return;
+  var web = document.getElementById('cta-web');
+  var play = document.getElementById('cta-play');
+  if (!web || !play) return;
+  web.classList.add('btn-ghost');
+  play.parentNode.insertBefore(play, web);
+})();
+</script>
 </body>
 </html>
