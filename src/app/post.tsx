@@ -23,8 +23,8 @@
 //      session state changed between opening this screen and submitting.
 
 import * as ImagePicker from 'expo-image-picker';
-import { useRouter } from 'expo-router';
-import { useState } from 'react';
+import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Image,
@@ -92,8 +92,69 @@ export default function PostScreen() {
   const [category, setCategory] = useState('Phones');
   const [images, setImages] = useState<{ uri: string; uploading: boolean; url?: string; aspectRatio: number }[]>([]);
   const [posting, setPosting] = useState(false);
+
+  // ---- EDIT MODE -------------------------------------------------------
+  //
+  // Reached as /post?edit=<id> from my-listings.tsx. Same screen as
+  // posting, for the same reason post-wanted.tsx reuses its own: a second
+  // copy of the price parsing, the content-safety check and the photo
+  // pipeline would eventually disagree with this one about what a valid
+  // listing is.
+  const { edit: editId } = useLocalSearchParams<{ edit?: string }>();
+  const isEditing = !!editId;
+  const [loadingExisting, setLoadingExisting] = useState(!!editId);
+  const [loadError, setLoadError] = useState('');
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
+
+  // Existing photos come back as URLs that are already uploaded, so they
+  // enter the same images array with uploading:false and url set — which
+  // is exactly the shape the submit path already filters on. Nothing is
+  // re-uploaded, and removing one here simply drops it from the array
+  // that gets written back.
+  //
+  // aspectRatio has to be measured, same as it is for a freshly picked
+  // photo: the column does not store it, and a wrong ratio makes the
+  // carousel jump.
+  useEffect(() => {
+    if (!editId) return;
+    let alive = true;
+    (async () => {
+      const { data, error: fetchError } = await supabase
+        .from('listings')
+        .select('title, description, price, location, category, image_urls, image_url')
+        .eq('id', editId)
+        .maybeSingle();
+      if (!alive) return;
+      if (fetchError || !data) {
+        setLoadError('Could not load that listing. It may have been deleted.');
+        setLoadingExisting(false);
+        return;
+      }
+      setTitle(data.title ?? '');
+      setDescription(data.description ?? '');
+      setPrice(data.price == null ? '' : String(data.price));
+      setLocation(data.location ?? '');
+      if (data.category) setCategory(data.category);
+
+      const urls: string[] = (data.image_urls && data.image_urls.length
+        ? data.image_urls
+        : (data.image_url ? [data.image_url] : [])) as string[];
+
+      const existing = await Promise.all(
+        urls.map(async (url) => ({
+          uri: url,
+          uploading: false,
+          url,
+          aspectRatio: await getAspectRatio(url),
+        }))
+      );
+      if (!alive) return;
+      setImages(existing);
+      setLoadingExisting(false);
+    })();
+    return () => { alive = false; };
+  }, [editId]);
 
   async function requireRealAccount(): Promise<boolean> {
     const { data: { user } } = await supabase.auth.getUser();
@@ -289,8 +350,12 @@ export default function PostScreen() {
       new Date(posterProfile.dealer_pro_expires_at).getTime() > Date.now()
     );
 
-    const { error: insertError } = await supabase.from('listings').insert({
-      user_id: user.id,
+    // Shared by both paths. badge and status are deliberately absent on
+    // the update: badge records what the seller was WHEN THEY POSTED, and
+    // rewriting it on every edit would quietly relabel old listings as a
+    // subscription came and went. status belongs to "mark as sold", not
+    // to editing the description.
+    const fields = {
       title: title.trim(),
       description: description.trim(),
       price: priceNum,
@@ -298,6 +363,29 @@ export default function PostScreen() {
       category,
       image_url: imageUrls[0] || null,
       image_urls: imageUrls,
+    };
+
+    if (isEditing) {
+      const { error: updateError } = await supabase
+        .from('listings')
+        .update(fields)
+        .eq('id', editId);
+
+      setPosting(false);
+
+      if (updateError) {
+        reportHandledError('post.edit', updateError, { id: editId });
+        setError(updateError.message);
+        return;
+      }
+
+      router.back();
+      return;
+    }
+
+    const { error: insertError } = await supabase.from('listings').insert({
+      user_id: user.id,
+      ...fields,
       badge: posterIsDealerPro ? 'Dealer' : 'New',
     });
 
@@ -310,6 +398,14 @@ export default function PostScreen() {
     }
 
     setSuccess(true);
+  }
+
+  if (loadingExisting) {
+    return (
+      <View style={styles.loadingScreen}>
+        <ActivityIndicator size="large" color={GOLD} />
+      </View>
+    );
   }
 
   if (success) {
@@ -345,8 +441,14 @@ export default function PostScreen() {
           <Text style={styles.backText}><Text style={styles.backArrow}>‹</Text> Back</Text>
         </TouchableOpacity>
 
-        <Text style={styles.heading}>Post a listing</Text>
-        <Text style={styles.subheading}>Add photos and details to attract buyers.</Text>
+        <Text style={styles.heading}>{isEditing ? 'Edit listing' : 'Post a listing'}</Text>
+        <Text style={styles.subheading}>
+          {isEditing
+            ? 'Change the details and save. Buyers see the updated version straight away.'
+            : 'Add photos and details to attract buyers.'}
+        </Text>
+
+        {loadError ? <Text style={styles.errorText}>{loadError}</Text> : null}
 
         {/* NEW: elevated from a small plain-text link into a genuinely
             prominent card — leaning harder into WhatsApp import as the
@@ -494,7 +596,7 @@ export default function PostScreen() {
           onPress={handlePost}
           disabled={posting}
         >
-          {posting ? <ActivityIndicator color="#fff" /> : <Text style={styles.postBtnText}>Post listing</Text>}
+          {posting ? <ActivityIndicator color="#fff" /> : <Text style={styles.postBtnText}>{isEditing ? 'Save changes' : 'Post listing'}</Text>}
         </TouchableOpacity>
       </ScrollView>
     </KeyboardAvoidingView>
@@ -503,6 +605,7 @@ export default function PostScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#111111' },
+  loadingScreen: { flex: 1, backgroundColor: '#111111', alignItems: 'center', justifyContent: 'center' },
   // paddingBottom raised from 60 — extra scroll headroom below the last
   // field/submit button so nothing sits right against the keyboard's
   // edge, same reasoning as hirevan.tsx's matching change.

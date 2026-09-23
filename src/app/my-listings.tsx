@@ -24,6 +24,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { buildListingHref } from '../../lib/listingNav';
 import { formatPrice } from '../../lib/money';
 import { supabase } from '../../lib/supabase';
+import { reportHandledError } from '../../lib/crashReporter';
 
 const GOLD = '#B8860B';
 const BLACK = '#1A1A18';
@@ -35,6 +36,36 @@ export default function MyListingsScreen() {
   const insets = useSafeAreaInsets();
   const [listings, setListings] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  // Keyed by listing id so two cards can never share a state, and a slow
+  // request cannot leave the wrong card spinning. Same shape as
+  // my-wanted-posts.tsx.
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [confirmId, setConfirmId] = useState<string | null>(null);
+  const [actionError, setActionError] = useState('');
+
+  // NO Alert.alert — react-native-web ignores its buttons array outright
+  // (see the note in chat.tsx), and this screen is used from a desktop
+  // browser too. The confirmation is inline on the card instead.
+  //
+  // Deleting is safe for other people's work here, unlike a Wanted post:
+  // every foreign key pointing at listings is ON DELETE SET NULL, so
+  // messages, ratings and delivery bookings survive and simply detach.
+  // A buyer mid-conversation keeps the thread; they just lose the item
+  // card in it. That is why this is offered without the no-responses
+  // guard that Wanted posts need.
+  async function deleteListing(id: string) {
+    setBusyId(id);
+    const { error } = await supabase.from('listings').delete().eq('id', id);
+    setBusyId(null);
+    setConfirmId(null);
+    if (error) {
+      reportHandledError('my-listings.delete', error, { id });
+      setActionError('Could not delete that listing: ' + error.message);
+      return;
+    }
+    setActionError('');
+    loadMyListings();
+  }
 
   useEffect(() => {
     loadMyListings();
@@ -96,6 +127,12 @@ export default function MyListingsScreen() {
         <ActivityIndicator color={GOLD} style={{ marginTop: 40 }} />
       ) : (
         <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 40 + insets.bottom }}>
+          {actionError ? (
+            <View style={styles.errorBanner}>
+              <Text style={styles.errorBannerText}>{actionError}</Text>
+            </View>
+          ) : null}
+
           {listings.length === 0 && (
             <View style={styles.emptyState}>
               <Text style={styles.emptyEmoji}>📦</Text>
@@ -110,8 +147,8 @@ export default function MyListingsScreen() {
             const isSold = item.status === 'sold';
             const isRemoved = item.status === 'removed_by_admin';
             return (
+              <View key={item.id}>
               <TouchableOpacity
-                key={item.id}
                 style={[styles.card, (isSold || isRemoved) && styles.cardSold]}
                 // NEW: swipe-through-postings context — see lib/listingNav.ts.
                 onPress={() => router.push(buildListingHref(item.id, listings.map((l) => l.id)))}
@@ -147,6 +184,42 @@ export default function MyListingsScreen() {
                   <Text style={styles.location}>{item.location}</Text>
                 </View>
               </TouchableOpacity>
+
+              {/* Actions sit OUTSIDE the card's TouchableOpacity rather
+                  than inside it. The card is a row — image beside body —
+                  so a third child would land next to the text, and any
+                  control nested in a navigating parent has to fight it
+                  for the tap. */}
+              {isRemoved ? null : confirmId === item.id ? (
+                <View style={styles.confirmRow}>
+                  <Text style={styles.confirmText}>
+                    Delete this listing? Chats about it stay, but buyers will no longer see the item.
+                  </Text>
+                  <View style={styles.confirmBtns}>
+                    <TouchableOpacity onPress={() => setConfirmId(null)} disabled={busyId === item.id}>
+                      <Text style={styles.confirmCancel}>Cancel</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity onPress={() => deleteListing(item.id)} disabled={busyId === item.id}>
+                      <Text style={styles.confirmGo}>{busyId === item.id ? 'Deleting…' : 'Delete'}</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              ) : (
+                <View style={styles.actionRow}>
+                  {/* Editing a sold listing would change what a completed
+                      deal was for, so it stops at 'active'. Deleting one
+                      is still allowed — it is the seller's own record. */}
+                  {item.status === 'active' ? (
+                    <TouchableOpacity onPress={() => router.push(`/post?edit=${item.id}`)}>
+                      <Text style={styles.actionLink}>Edit</Text>
+                    </TouchableOpacity>
+                  ) : null}
+                  <TouchableOpacity onPress={() => { setActionError(''); setConfirmId(item.id); }}>
+                    <Text style={styles.actionDanger}>Delete</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+              </View>
             );
           })}
         </ScrollView>
@@ -176,6 +249,19 @@ const styles = StyleSheet.create({
     borderWidth: 0.5, borderColor: '#333',
   },
   cardSold: { opacity: 0.6 },
+
+  actionRow: { flexDirection: 'row', gap: 20, marginTop: -4, marginBottom: 14, paddingHorizontal: 4 },
+  actionLink: { color: GREY, fontSize: 12, fontWeight: '700' },
+  actionDanger: { color: '#ff8a8a', fontSize: 12, fontWeight: '700' },
+
+  confirmRow: { marginTop: -4, marginBottom: 14, paddingHorizontal: 4 },
+  confirmText: { color: '#ddd', fontSize: 12, marginBottom: 8, lineHeight: 17 },
+  confirmBtns: { flexDirection: 'row', gap: 22 },
+  confirmCancel: { color: GREY, fontSize: 12, fontWeight: '700' },
+  confirmGo: { color: '#ff8a8a', fontSize: 12, fontWeight: '800' },
+
+  errorBanner: { backgroundColor: '#3a1f1f', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, marginBottom: 12 },
+  errorBannerText: { color: '#ff8a8a', fontSize: 12.5 },
   imageWrap: { position: 'relative' },
   image: { width: 80, height: 80, borderRadius: 10 },
   imageSold: { opacity: 0.7 },
