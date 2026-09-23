@@ -44,6 +44,16 @@
               "scheme": "https",
               "host": "imbizohub.app",
               "pathPrefix": "/seller"
+            },
+            {
+              "scheme": "https",
+              "host": "imbizohub.com",
+              "pathPrefix": "/s"
+            },
+            {
+              "scheme": "https",
+              "host": "imbizohub.app",
+              "pathPrefix": "/s"
             }
           ],
           "category": [
