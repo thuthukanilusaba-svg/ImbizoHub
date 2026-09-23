@@ -44,7 +44,7 @@
     {
       q: 'What does ImbizoHub cost?',
       k: 'free fee fees price charge commission percent cheap',
-      a: 'Listing is free. Chatting is free. Doing a deal on a listing is free — permanently, not as a promotion.\n\nWe only earn when we find you what you asked for: 5% when you accept a seller\'s response to a Wanted post (at least $1.50, never more than $15), and 7% when you accept a transport quote (never more than $15).\n\nAnd during our launch promotion, even those are free for everyone until 31 January 2027.'
+      a: 'Listing is free. Chatting is free. Doing a deal on a listing is free — permanently, not as a promotion.\n\nWe only earn when we find you what you asked for: 5% when you accept a seller\'s response to a Wanted post (at least $1.50, never more than $15), and 7% when you accept a transport quote (never more than $15).\n\nAnd during our launch promotion, even those are free for everyone until 31 January 2027.\n\nSellers can buy optional extras — featuring a listing, a Verified badge, Dealer Pro — but nothing is required to sell.'
     },
     {
       q: 'What is a Wanted post?',
@@ -55,6 +55,11 @@
       q: 'Who pays the fee — the buyer or the seller?',
       k: 'fee who pays seller buyer commission keep 100 percent',
       a: 'The buyer. Sellers and transport operators keep 100% of the price they quote.\n\nResponding to a Wanted post costs a seller nothing at all, whether or not they win it.'
+    },
+    {
+      q: 'What is Dealer Pro?',
+      k: 'dealer pro dealers volume bulk business trader shop link badge subscription 30 six months',
+      a: 'Dealer Pro is for people selling at volume rather than clearing out a spare room. It opens in February 2027 and costs $30 for six months.\n\nIt gives you a Dealer badge on every listing you post, your own short link — imbizohub.com/s/yourname — to put on your status or your van instead of a long address, and real figures on how your listings are doing.\n\nMost of what a dealer needs is free and already works: listing as much as you like, importing your whole catalogue from a WhatsApp broadcast, and one page showing everything you have for sale that you can share with anybody. Dealer Pro is the extra on top, not the way in.\n\nYou can open it in the app today to read what is included. It is not taking payments yet.'
     },
     {
       q: 'What is Meet & Pay?',
