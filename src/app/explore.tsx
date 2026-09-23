@@ -1,5 +1,5 @@
 import { Image } from 'expo-image';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, FlatList, KeyboardAvoidingView, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -8,7 +8,7 @@ import { buildListingHref } from '../../lib/listingNav';
 import { useIsDesktopWeb } from '../../lib/responsive';
 import { formatPrice } from '../../lib/money';
 import { supabase } from '../../lib/supabase';
-import { CATEGORIES } from '../../lib/categories';
+import { CATEGORIES, isKnownCategory } from '../../lib/categories';
 
 const GOLD = '#B8860B';
 const BLACK = '#1A1A18';
@@ -53,7 +53,31 @@ export default function ExploreScreen() {
   // debounce delay — `search` itself updates on every keystroke (so the
   // input feels instant), `debouncedSearch` is what triggers a fetch.
   const [debouncedSearch, setDebouncedSearch] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState('');
+  // REAL BUG (reported 23 Sep 2026: "I click Building and still see the
+  // laptop"). index.tsx's category tiles navigate here with
+  // ?category=<label>, and NOTHING read that param — selectedCategory
+  // started empty, no filter was applied, and every listing came back.
+  // The home grid has been decorative since it was built: it moved you
+  // to Explore and silently dropped what you asked for.
+  //
+  // Nothing errored, which is why it survived. An unfiltered list looks
+  // exactly like a filter that matched everything.
+  //
+  // Unknown values are ignored rather than passed to the query. A junk
+  // ?category=xyz would otherwise return nothing and read as "there are
+  // no listings", which is a worse lie than showing them all.
+  const { category: categoryParam } = useLocalSearchParams<{ category?: string }>();
+  const initialCategory = isKnownCategory(categoryParam) ? String(categoryParam) : '';
+  const [selectedCategory, setSelectedCategory] = useState(initialCategory);
+
+  // useState's initial value is only read on first mount, and expo-router
+  // reuses this screen — tapping Phones, going back, then tapping
+  // Building would keep showing Phones. Syncing on param change fixes
+  // that without fighting the user's own chip taps, because the effect
+  // only runs when the URL itself changes.
+  useEffect(() => {
+    if (isKnownCategory(categoryParam)) setSelectedCategory(String(categoryParam));
+  }, [categoryParam]);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(true);
