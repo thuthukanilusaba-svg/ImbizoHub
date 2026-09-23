@@ -59,7 +59,7 @@
     {
       q: 'What is Dealer Pro?',
       k: 'dealer pro dealers volume bulk business trader shop link badge subscription 30 six months',
-      a: 'Dealer Pro is for people selling at volume rather than clearing out a spare room. It opens in February 2027 and costs $30 for six months.\n\nIt gives you a Dealer badge on every listing you post, your own short link — imbizohub.com/s/yourname — to put on your status or your van instead of a long address, and real figures on how your listings are doing.\n\nMost of what a dealer needs is free and already works: listing as much as you like, importing your whole catalogue from a WhatsApp broadcast, and one page showing everything you have for sale that you can share with anybody. Dealer Pro is the extra on top, not the way in.\n\nYou can open it in the app today to read what is included. It is not taking payments yet.'
+      a: 'Dealer Pro is for people selling at volume rather than clearing out a spare room. It opens in February 2027 and costs $30 for six months.\n\nIt gives you a Dealer badge on every listing you post, your own short link — imbizohub.com/s/yourname — to put on your status or your van instead of a long address, and real figures on how your listings are doing.\n\nMost of what a dealer needs is free and already works: listing as much as you like, importing your whole catalogue from a WhatsApp broadcast, and one page showing everything you have for sale that you can share with anybody. Dealer Pro is the extra on top, not the way in.\n\nYou can open it in the app today to read what is included.'
     },
     {
       q: 'What is Meet & Pay?',
