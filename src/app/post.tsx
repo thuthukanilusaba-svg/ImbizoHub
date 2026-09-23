@@ -454,14 +454,15 @@ export default function PostScreen() {
               that's fine — you swipe. On desktop web there is no swipe,
               the scrollbar is explicitly hidden, and a mouse wheel
               scrolls vertically, so there was NO WAY to reach the chips
-              past the visible edge. Of the eight categories only about
-              four and a half fitted, which left Building, Baby and
-              Other permanently unreachable — including the catch-all
-              people need when nothing else fits.
-              Wrapping rather than making the scroll usable: all eight
-              fit in two rows with no interaction required, which is
-              also better on mobile since nothing is hidden there
-              either. */}
+              past the visible edge. Only about four and a half of the
+              categories fitted, which left the last few — including
+              Other, the catch-all people need when nothing else fits —
+              permanently unreachable.
+              Wrapping rather than making the scroll usable: the whole
+              list fits in two or three rows with no interaction
+              required, and nothing is hidden on mobile either. Written
+              without a count on purpose, since the list lives in
+              lib/categories.ts and grows. */}
           <View style={styles.categoryWrap}>
             {categories.map((cat) => (
               <TouchableOpacity

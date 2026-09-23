@@ -347,7 +347,16 @@ const styles = StyleSheet.create({
   // same grid — see the fuller comment there. Padding is vertical-only
   // so the label gets the tile's full width; numberOfLines={1} at the
   // call site backstops it on narrower devices.
-  catItem: { backgroundColor: DARK, borderRadius: 10, paddingVertical: 10, paddingHorizontal: 2, width: '22%', alignItems: 'center', borderWidth: 0.5, borderColor: '#333' },
+  // THREE PER ROW, not four. At 22% this was four across, which was a
+  // clean 2x4 while there were eight categories and became 4+4+1 the
+  // moment a ninth was added — a lone tile on its own row reads as a
+  // rendering fault rather than a category. 30% gives 3x3, and the
+  // wider tile also stops longer labels like 'Electronics' from
+  // having to shrink.
+  //
+  // index.tsx deliberately stays at 22%: its grid is a seven-item
+  // shortcut plus More, which is exactly two rows of four.
+  catItem: { backgroundColor: DARK, borderRadius: 10, paddingVertical: 10, paddingHorizontal: 2, width: '30%', alignItems: 'center', borderWidth: 0.5, borderColor: '#333' },
   catItemActive: { borderColor: GOLD },
   catIcon: { fontSize: 20, marginBottom: 4 },
   catLabel: { color: '#ccc', fontSize: 10 },
