@@ -42,8 +42,8 @@
 // exactly mirroring how a regular listing's unlock fee protects
 // contact info the same way. The note now describes that accurately.
 
-import { useRouter } from 'expo-router';
-import { useState } from 'react';
+import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -85,6 +85,53 @@ export default function PostWantedScreen() {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
   const [newRequestId, setNewRequestId] = useState<string | null>(null);
+
+  // ---- EDIT MODE -------------------------------------------------------
+  //
+  // Same screen, same form, reached as /post-wanted?edit=<id> from
+  // my-wanted-posts.tsx. A second screen would have meant a second copy
+  // of the validation, the content-safety check and the budget parsing,
+  // and those are exactly the things that drift apart and then disagree
+  // about what a valid post is.
+  //
+  // Editing is only OFFERED while a post has no responses — see the note
+  // in my-wanted-posts.tsx. This screen does not re-check that: RLS
+  // allows the owner to update their own row at any time, so a
+  // hand-typed URL could edit a post that has been replied to. That is
+  // an accepted limit, not an oversight: the row is still the owner's,
+  // and the worst case is a buyer amending their own ask.
+  const { edit: editId } = useLocalSearchParams<{ edit?: string }>();
+  const isEditing = !!editId;
+  const [loadingExisting, setLoadingExisting] = useState(!!editId);
+  const [loadError, setLoadError] = useState('');
+
+  useEffect(() => {
+    if (!editId) return;
+    let alive = true;
+    (async () => {
+      const { data, error: fetchError } = await supabase
+        .from('item_requests')
+        .select('title, description, category, budget_min, budget_max, location')
+        .eq('id', editId)
+        .maybeSingle();
+      if (!alive) return;
+      if (fetchError || !data) {
+        setLoadError('Could not load that post. It may have been deleted.');
+        setLoadingExisting(false);
+        return;
+      }
+      setTitle(data.title ?? '');
+      setDescription(data.description ?? '');
+      setCategory(data.category ?? '');
+      // Numbers back to the strings the inputs hold. String(null) is
+      // the literal 'null', which would show up in the field.
+      setBudgetMin(data.budget_min == null ? '' : String(data.budget_min));
+      setBudgetMax(data.budget_max == null ? '' : String(data.budget_max));
+      setLocation(data.location ?? '');
+      setLoadingExisting(false);
+    })();
+    return () => { alive = false; };
+  }, [editId]);
 
   async function handleSubmit() {
     setError('');
@@ -128,18 +175,42 @@ export default function PostWantedScreen() {
       return;
     }
 
+    // Shared by both paths so the two can never disagree about what a
+    // valid post looks like. status is NOT included on update: closing a
+    // post is my-wanted-posts.tsx's job, and sending 'open' here would
+    // quietly reopen a post the owner had closed.
+    const fields = {
+      title: title.trim(),
+      description: description.trim(),
+      category,
+      budget_min: min,
+      budget_max: max,
+      location: location.trim(),
+    };
+
+    if (isEditing) {
+      const { error: updateError } = await supabase
+        .from('item_requests')
+        .update(fields)
+        .eq('id', editId);
+
+      setLoading(false);
+
+      if (updateError) {
+        reportHandledError('post-wanted.edit', updateError, { id: editId });
+        setError(updateError.message);
+        return;
+      }
+
+      // Straight back to the list rather than the success screen, which
+      // congratulates you on posting something you did not just post.
+      router.back();
+      return;
+    }
+
     const { data: inserted, error: insertError } = await supabase
       .from('item_requests')
-      .insert({
-        user_id: user.id,
-        title: title.trim(),
-        description: description.trim(),
-        category,
-        budget_min: min,
-        budget_max: max,
-        location: location.trim(),
-        status: 'open',
-      })
+      .insert({ user_id: user.id, ...fields, status: 'open' })
       .select('id')
       .single();
 
@@ -153,6 +224,18 @@ export default function PostWantedScreen() {
 
     setNewRequestId(inserted?.id ?? null);
     setSuccess(true);
+  }
+
+  // Editing opens on an empty form for as long as the fetch takes, and
+  // an empty form is indistinguishable from "this post had no title".
+  // Show a spinner instead of letting someone start typing over values
+  // that are about to overwrite them.
+  if (loadingExisting) {
+    return (
+      <View style={styles.loadingScreen}>
+        <ActivityIndicator size="large" color={GOLD} />
+      </View>
+    );
   }
 
   if (success) {
@@ -195,14 +278,25 @@ export default function PostWantedScreen() {
           <Text style={styles.backText}><Text style={styles.backArrow}>‹</Text> Back</Text>
         </TouchableOpacity>
 
-        <Text style={styles.heading}>Post what you're looking for</Text>
+        <Text style={styles.heading}>
+          {isEditing ? 'Edit what you\'re looking for' : 'Post what you\'re looking for'}
+        </Text>
         <Text style={styles.subheading}>
-          Tell sellers what you want — they'll respond with a price. Posting is always free.
+          {isEditing
+            ? 'Change the details and save. Sellers will see the updated version.'
+            : 'Tell sellers what you want — they\'ll respond with a price. Posting is always free.'}
         </Text>
 
-        <TouchableOpacity onPress={() => router.push('/browse-wanted')} style={styles.browseLinkRow}>
-          <Text style={styles.browseLinkText}>Have something to sell?</Text>
-        </TouchableOpacity>
+        {loadError ? <Text style={styles.errorText}>{loadError}</Text> : null}
+
+        {/* Hidden while editing: this is a prompt to switch sides, and
+            someone already in the middle of amending their own post is
+            not looking for it. */}
+        {isEditing ? null : (
+          <TouchableOpacity onPress={() => router.push('/browse-wanted')} style={styles.browseLinkRow}>
+            <Text style={styles.browseLinkText}>Have something to sell?</Text>
+          </TouchableOpacity>
+        )}
 
         {error ? (
           <View style={styles.errorBox}>
@@ -307,7 +401,9 @@ export default function PostWantedScreen() {
           {loading ? (
             <ActivityIndicator color={BLACK} />
           ) : (
-            <Text style={styles.submitText}>Post what I'm looking for</Text>
+            <Text style={styles.submitText}>
+              {isEditing ? 'Save changes' : 'Post what I\'m looking for'}
+            </Text>
           )}
         </TouchableOpacity>
       </ScrollView>
@@ -317,6 +413,7 @@ export default function PostWantedScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#111111' },
+  loadingScreen: { flex: 1, backgroundColor: '#111111', alignItems: 'center', justifyContent: 'center' },
   content: { padding: 20, paddingTop: Platform.OS === 'ios' ? 56 : 40, paddingBottom: 48 },
 
   backBtn: { marginBottom: 16 },

@@ -49,6 +49,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { formatPrice } from '../../lib/money';
 import { supabase } from '../../lib/supabase';
+import { reportHandledError } from '../../lib/crashReporter';
 
 const GOLD = '#B8860B';
 const BLACK = '#1A1A18';
@@ -83,6 +84,12 @@ export default function MyWantedPostsScreen() {
   const [posts, setPosts] = useState<WantedPost[]>([]);
   // NEW: matches messages.tsx's own pattern — see top-of-file comment.
   const [needsAccount, setNeedsAccount] = useState(false);
+  // Which card is mid-request, and which card is asking "are you sure".
+  // Both keyed by post id so two cards can never be in the same state at
+  // once, and so a slow network cannot leave the wrong card spinning.
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [confirm, setConfirm] = useState<{ id: string; action: 'close' | 'delete' } | null>(null);
+  const [actionError, setActionError] = useState('');
 
   useEffect(() => { fetchMyPosts(); }, []);
 
@@ -129,14 +136,22 @@ export default function MyWantedPostsScreen() {
     setRefreshing(false);
   }
 
+  // Every value item_requests_status_check permits gets a label here.
+  // The fallthrough returns the raw column value, which renders as
+  // lowercase 'cancelled' beside a properly cased 'Matched' — the same
+  // bug already fixed once for 'expired'.
   function statusLabel(status: string) {
     if (status === 'matched') return 'Matched';
     if (status === 'open') return 'Open';
     // Set by notify-stale-wants when a buyer leaves offers unanswered
-    // for 14 days. Without this line the fallthrough renders the raw
-    // lowercase 'expired' in the badge, beside properly cased Matched
-    // and Open.
+    // for 14 days.
     if (status === 'expired') return 'Expired';
+    // What "Close this post" writes. Called Closed rather than
+    // Cancelled because nothing was cancelled — the person simply
+    // stopped looking, and 'Cancelled' reads like a deal fell through.
+    if (status === 'cancelled') return 'Closed';
+    if (status === 'fulfilled') return 'Fulfilled';
+    if (status === 'withdrawn_by_admin') return 'Removed';
     return status;
   }
 
@@ -144,6 +159,61 @@ export default function MyWantedPostsScreen() {
     if (status === 'matched') return GREEN;
     if (status === 'open') return GOLD;
     return GREY;
+  }
+
+  // A post is still the owner's to act on while it is live. Once it is
+  // closed, fulfilled, expired or pulled by an admin there is nothing
+  // left to do to it, and offering buttons that only ever fail is worse
+  // than offering none.
+  function isLive(status: string) {
+    return status === 'open' || status === 'matched';
+  }
+
+  // ---- Owner actions --------------------------------------------------
+  //
+  // NO Alert.alert. react-native-web ignores its buttons array entirely
+  // (the bug that made the chat attachment menu look dead), and this
+  // screen is used from a desktop browser as well as a phone. The
+  // confirmation is an inline strip on the card instead — two taps,
+  // identical on both platforms. Same reasoning as DeclineControl in
+  // chat.tsx.
+  async function closePost(id: string) {
+    setBusyId(id);
+    const { error } = await supabase
+      .from('item_requests')
+      .update({ status: 'cancelled' })
+      .eq('id', id);
+    setBusyId(null);
+    setConfirm(null);
+    if (error) {
+      reportHandledError('my-wanted-posts.close', error, { id });
+      setActionError('Could not close that post: ' + error.message);
+      return;
+    }
+    setActionError('');
+    fetchMyPosts();
+  }
+
+  // DELETE IS ONLY OFFERED WHILE THERE ARE NO RESPONSES, and the reason
+  // is in the schema: item_responses has ON DELETE CASCADE on this row.
+  // Deleting a post that sellers have replied to destroys their replies
+  // with no warning to them — someone who rang a supplier for a quote
+  // would find their work simply gone. Closing keeps the history and
+  // costs the owner nothing, so a post with responses can only be
+  // closed. The count is re-checked on the server side of this call by
+  // nothing at all, so the guard below is the only one — keep it.
+  async function deletePost(id: string) {
+    setBusyId(id);
+    const { error } = await supabase.from('item_requests').delete().eq('id', id);
+    setBusyId(null);
+    setConfirm(null);
+    if (error) {
+      reportHandledError('my-wanted-posts.delete', error, { id });
+      setActionError('Could not delete that post: ' + error.message);
+      return;
+    }
+    setActionError('');
+    fetchMyPosts();
   }
 
   if (loading) {
@@ -195,6 +265,12 @@ export default function MyWantedPostsScreen() {
         </Text>
       </View>
 
+      {actionError ? (
+        <View style={styles.errorBanner}>
+          <Text style={styles.errorBannerText}>{actionError}</Text>
+        </View>
+      ) : null}
+
       <FlatList
         data={posts}
         keyExtractor={(item) => item.id}
@@ -213,6 +289,7 @@ export default function MyWantedPostsScreen() {
         }
         renderItem={({ item }) => {
           const budget = budgetLabel(item.budget_min, item.budget_max);
+          const confirming = confirm;
           return (
             <TouchableOpacity
               style={styles.card}
@@ -242,6 +319,78 @@ export default function MyWantedPostsScreen() {
                 </Text>
                 <Text style={styles.viewArrow}>View →</Text>
               </View>
+
+              {/* Owner actions. The whole card is a TouchableOpacity that
+                  navigates, so every control here has to stopPropagation
+                  on press or tapping Delete would open the responses
+                  screen on the way past. */}
+              {isLive(item.status) ? (
+                confirming?.id === item.id ? (
+                  <View style={styles.confirmRow}>
+                    <Text style={styles.confirmText}>
+                      {confirming.action === 'delete'
+                        ? 'Delete this post? This cannot be undone.'
+                        : 'Close this post? Sellers can no longer respond.'}
+                    </Text>
+                    <View style={styles.confirmBtns}>
+                      <TouchableOpacity
+                        onPress={(e) => { e.stopPropagation(); setConfirm(null); }}
+                        disabled={busyId === item.id}
+                      >
+                        <Text style={styles.confirmCancel}>Cancel</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        onPress={(e) => {
+                          e.stopPropagation();
+                          if (confirming.action === 'delete') deletePost(item.id);
+                          else closePost(item.id);
+                        }}
+                        disabled={busyId === item.id}
+                      >
+                        <Text style={styles.confirmGo}>
+                          {busyId === item.id
+                            ? 'Working…'
+                            : confirming.action === 'delete' ? 'Delete' : 'Close post'}
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                ) : (
+                  <View style={styles.actionRow}>
+                    {/* Edit and Delete are offered only while nobody has
+                        replied. Changing the ask after sellers have priced
+                        it moves the goalposts under them, and deleting it
+                        destroys their replies outright — item_responses
+                        cascades on this row. Closing stays available in
+                        every live state, so there is always a way out. */}
+                    {item.responseCount === 0 ? (
+                      <TouchableOpacity
+                        onPress={(e) => {
+                          e.stopPropagation();
+                          router.push(`/post-wanted?edit=${item.id}`);
+                        }}
+                      >
+                        <Text style={styles.actionLink}>Edit</Text>
+                      </TouchableOpacity>
+                    ) : null}
+
+                    <TouchableOpacity
+                      onPress={(e) => { e.stopPropagation(); setActionError(''); setConfirm({ id: item.id, action: 'close' }); }}
+                    >
+                      <Text style={styles.actionLink}>Close</Text>
+                    </TouchableOpacity>
+
+                    {item.responseCount === 0 ? (
+                      <TouchableOpacity
+                        onPress={(e) => { e.stopPropagation(); setActionError(''); setConfirm({ id: item.id, action: 'delete' }); }}
+                      >
+                        <Text style={styles.actionDanger}>Delete</Text>
+                      </TouchableOpacity>
+                    ) : null}
+                  </View>
+                )
+              ) : null}
+
             </TouchableOpacity>
           );
         }}
@@ -308,6 +457,21 @@ const styles = StyleSheet.create({
   chipText: { fontSize: 12, color: GREY },
 
   cardFooter: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingTop: 10, borderTopWidth: 0.5, borderTopColor: '#2a2a2a' },
+
+  actionRow: { flexDirection: 'row', gap: 20, paddingTop: 12, marginTop: 2, borderTopWidth: 0.5, borderTopColor: '#2a2a2a' },
+  actionLink: { color: GREY, fontSize: 12, fontWeight: '700' },
+  // Red rather than grey: the only control on this card that destroys
+  // something should not look like the ones that do not.
+  actionDanger: { color: '#ff8a8a', fontSize: 12, fontWeight: '700' },
+
+  confirmRow: { paddingTop: 12, marginTop: 2, borderTopWidth: 0.5, borderTopColor: '#2a2a2a' },
+  confirmText: { color: '#ddd', fontSize: 12, marginBottom: 10, lineHeight: 17 },
+  confirmBtns: { flexDirection: 'row', gap: 22 },
+  confirmCancel: { color: GREY, fontSize: 12, fontWeight: '700' },
+  confirmGo: { color: '#ff8a8a', fontSize: 12, fontWeight: '800' },
+
+  errorBanner: { backgroundColor: '#3a1f1f', borderBottomWidth: 0.5, borderBottomColor: '#5a2a2a', paddingHorizontal: 16, paddingVertical: 10 },
+  errorBannerText: { color: '#ff8a8a', fontSize: 12.5 },
   responseCountText: { color: GREY, fontSize: 12 },
   viewArrow: { color: GOLD, fontSize: 12, fontWeight: '700' },
 
