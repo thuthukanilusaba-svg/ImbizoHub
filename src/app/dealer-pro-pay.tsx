@@ -66,8 +66,10 @@
 //
 // TO OPEN PAYMENT IN FEBRUARY: put one real payment through yourself
 // first, confirm a paid row lands in transactions, and only then set
-// DEALER_PRO_PAYMENT_OPEN to true. Also build the short shop link the
-// feature list advertises, or take that line out — see below.
+// DEALER_PRO_PAYMENT_OPEN to true. The short shop link the feature list
+// advertises was the other blocker and is now built (app/shop-link.tsx,
+// lib/slug.ts, profiles.slug) — nothing on this list is a promise any
+// more.
 const DEALER_PRO_HIDDEN = false;
 const DEALER_PRO_PAYMENT_OPEN = false;
 
@@ -226,6 +228,13 @@ export default function DealerProPayScreen() {
             <TouchableOpacity style={styles.analyticsLinkBtn} onPress={() => router.push('/analytics')}>
               <Text style={styles.analyticsLinkBtnText}>📊 View my listing analytics</Text>
             </TouchableOpacity>
+            {/* The one Pro benefit that needs an action before it does
+                anything. Analytics works the moment you subscribe; a
+                shop link does nothing until you have claimed a name,
+                so the moment right after subscribing is when to ask. */}
+            <TouchableOpacity style={styles.analyticsLinkBtn} onPress={() => router.push('/shop-link')}>
+              <Text style={styles.analyticsLinkBtnText}>🔗 Claim my short shop link</Text>
+            </TouchableOpacity>
             <TouchableOpacity style={styles.doneBtn} onPress={() => router.replace('/dealer')}>
               <Text style={styles.doneBtnText}>Back to Dashboard</Text>
             </TouchableOpacity>
@@ -325,15 +334,18 @@ export default function DealerProPayScreen() {
               status. It costs nothing to withhold and costs no shares
               to withhold it.
 
-              NOT BUILT YET — needs a slug column on profiles. Safe to
-              advertise here only because this whole list is unreachable
-              while payment is shut — nobody can buy Pro on the strength
-              of it. BUILD IT BEFORE DEALER_PRO_PAYMENT_OPEN GOES TRUE,
-              or take this line out. Charging for it as it stands would
-              be selling something that does not exist. */}
+              BUILT 23 Sep 2026 and tappable below — profiles.slug, the
+              enforce_slug_requires_dealer_pro trigger, /s/:slug through
+              Vercel to the seller-preview function, and app/shop-link.tsx
+              to claim one. This line now advertises something that
+              exists, which is what had to be true before
+              DEALER_PRO_PAYMENT_OPEN could ever go true. */}
           <Feature text="Your items come up first when buyers search" />
           <Feature text="Dealer badge on every listing, including bulk imports" />
-          <Feature text="Your own short shop link — imbizohub.com/s/yourname" />
+          <Feature
+            text="Your own short shop link — imbizohub.com/s/yourname"
+            onPress={() => router.push('/shop-link')}
+          />
           {/* Tappable, matching what the top-of-file comment claims.
               Routes to the real, correctly-gated analytics screen. */}
           <Feature text="Full listing performance analytics" onPress={() => router.push('/analytics')} />

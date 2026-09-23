@@ -79,6 +79,7 @@ import { useEffect, useState } from 'react';
 import { ActivityIndicator, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import BottomNav from '../../components/BottomNav';
+import { shopLinkDisplay } from '../../lib/slug';
 import { supabase } from '../../lib/supabase';
 import {
   DELIVERY_BOOKING_ENABLED,
@@ -110,6 +111,10 @@ export default function DealerScreen() {
   const [pinErrors, setPinErrors] = useState<Record<string, string>>({});
   const [dealerProActive, setDealerProActive] = useState(false);
   const [dealerProExpiresAt, setDealerProExpiresAt] = useState<string | null>(null);
+  // The short shop link (imbizohub.com/s/<slug>). Null for almost
+  // everyone: writing one requires an unexpired Dealer Pro, enforced by
+  // the enforce_slug_requires_dealer_pro trigger, not by this screen.
+  const [mySlug, setMySlug] = useState<string | null>(null);
   const [pendingConfirmations, setPendingConfirmations] = useState<any[]>([]);
 
   useEffect(() => {
@@ -124,12 +129,13 @@ export default function DealerScreen() {
 
     const { data: profile } = await supabase
       .from('profiles')
-      .select('full_name, dealer_pro_active, dealer_pro_expires_at')
+      .select('full_name, slug, dealer_pro_active, dealer_pro_expires_at')
       .eq('id', user.id)
       .maybeSingle();
 
     if (profile) {
       setMyFullName(profile.full_name ?? '');
+      setMySlug(profile.slug ?? null);
       setDealerProActive(!!(
         profile.dealer_pro_active &&
         profile.dealer_pro_expires_at &&
@@ -793,6 +799,29 @@ export default function DealerScreen() {
                       {dealerProActive
                         ? 'Real numbers from your listings'
                         : 'Dealer Pro benefit — see what\'s included'}
+                    </Text>
+                  </View>
+                  <Text style={styles.analyticsTeaserArrow}>›</Text>
+                </TouchableOpacity>
+              </View>
+
+              {/* The shop link sits with analytics rather than in QUICK
+                  ACTIONS on purpose: quick actions are things you do
+                  every day, and you claim a link once. It is shown to
+                  every seller, not only Dealer Pro ones — a benefit
+                  nobody can see is a benefit nobody buys, and the screen
+                  it opens explains the gate honestly rather than
+                  pretending the feature does not exist. */}
+              <View style={styles.section}>
+                <TouchableOpacity style={styles.analyticsTeaser} onPress={() => router.push('/shop-link')}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.analyticsTeaserTitle}>🔗 My shop link</Text>
+                    <Text style={styles.analyticsTeaserSub}>
+                      {mySlug
+                        ? shopLinkDisplay(mySlug)
+                        : dealerProActive
+                          ? 'Claim your short link'
+                          : 'Dealer Pro benefit — one short link for everything you sell'}
                     </Text>
                   </View>
                   <Text style={styles.analyticsTeaserArrow}>›</Text>

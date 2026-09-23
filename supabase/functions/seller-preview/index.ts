@@ -120,14 +120,39 @@ function initialsFor(fullName: string): string {
 // this, any junk path segment became a database lookup.
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-function extractId(url: URL): string | null {
-  const q = url.searchParams.get('id');
-  if (q && UUID_RE.test(q)) return q;
+// Mirrors the CHECK constraint on profiles.slug exactly (migration
+// add_profile_slug_for_shop_links): lowercase letters, digits and
+// hyphens, 3-30 characters, never starting or ending with a hyphen.
+// Kept in sync BY HAND. If the constraint is ever relaxed and this is
+// not, the newly-valid slugs save fine and 404 here — the failure shows
+// up only on the shared link, which is the one place nobody tests.
+const SLUG_RE = /^[a-z0-9][a-z0-9-]{1,28}[a-z0-9]$/;
 
-  // Backwards compatibility with /seller/<id> style links.
-  const last = url.pathname.split('/').filter(Boolean).pop() ?? '';
+type Lookup = { by: 'id' | 'slug'; value: string };
+
+// A profile can be addressed two ways and they are NOT interchangeable
+// to the caller: the uuid form is what the app shares, the slug form is
+// what a Dealer Pro hands out on a flyer. Both resolve to one page.
+//
+// Slug wins when both are present. A link carrying both is a link that
+// was built wrong, and silently preferring the uuid would make the
+// dealer's own short link render somebody else's shop.
+function extractLookup(url: URL): Lookup | null {
+  const slugParam = (url.searchParams.get('slug') ?? '').trim().toLowerCase();
+  if (slugParam && SLUG_RE.test(slugParam)) return { by: 'slug', value: slugParam };
+
+  const q = url.searchParams.get('id');
+  if (q && UUID_RE.test(q)) return { by: 'id', value: q };
+
+  // Path forms: /s/<slug> for short links, /seller/<id> for older ones.
+  const parts = url.pathname.split('/').filter(Boolean);
+  const last = parts[parts.length - 1] ?? '';
+  const prev = parts[parts.length - 2] ?? '';
+  if (prev === 's' && SLUG_RE.test(last.toLowerCase())) {
+    return { by: 'slug', value: last.toLowerCase() };
+  }
   if (last && last !== 'seller-preview' && last !== 'seller' && UUID_RE.test(last)) {
-    return last;
+    return { by: 'id', value: last };
   }
   return null;
 }
@@ -209,9 +234,9 @@ ${headExtra}
 
 Deno.serve(async (req) => {
   const url = new URL(req.url);
-  const id = extractId(url);
+  const lookup = extractLookup(url);
 
-  if (!id) {
+  if (!lookup) {
     return page(
       shell(
         'Seller not found — ImbizoHub',
@@ -226,8 +251,8 @@ Deno.serve(async (req) => {
 
   const { data: profile } = await supabase
     .from('profiles')
-    .select('full_name, avatar_url, rating, rating_count, dealer_pro_active, dealer_pro_expires_at, is_verified, verified_expires_at, operator_status, vehicle_type, carries, registration_expires_at')
-    .eq('id', id)
+    .select('id, slug, full_name, avatar_url, rating, rating_count, dealer_pro_active, dealer_pro_expires_at, is_verified, verified_expires_at, operator_status, vehicle_type, carries, registration_expires_at')
+    .eq(lookup.by, lookup.value)
     .maybeSingle();
 
   if (!profile) {
@@ -242,6 +267,13 @@ Deno.serve(async (req) => {
       404
     );
   }
+
+  // From here down everything keys off the REAL id — the listings query,
+  // the deep link, the web fallback. On a slug lookup the value we were
+  // given is not an id, and using it anywhere below returns an empty
+  // shop for a profile that plainly exists. Resolve it once, here.
+  const id: string = profile.id as string;
+  const slug: string | null = (profile.slug as string | null) ?? null;
 
   // The catalogue. THIS is what makes the page worth sharing — without
   // it the link is a business card, and nobody forwards a business card.
@@ -286,7 +318,13 @@ Deno.serve(async (req) => {
   const avatarBlock = hasAvatar
     ? `<img class="avatar" src="${ogImage}" alt="${name}">`
     : `<div class="avatar-initials">${escapeHtml(initialsFor(profile.full_name))}</div>`;
-  const canonical = `${SITE}/seller?id=${encodeURIComponent(id)}`;
+  // Prefer the short link when the seller has claimed one. It is the URL
+  // they actually hand out, and a canonical that disagrees with the
+  // shared address splits the preview card's cache across two URLs —
+  // WhatsApp then shows a stale card for one of them.
+  const canonical = slug
+    ? `${SITE}/s/${slug}`
+    : `${SITE}/seller?id=${encodeURIComponent(id)}`;
   const deepLink = appDeepLink(id);
   const webUrl = webProfileUrl(id);
 

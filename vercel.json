@@ -25,6 +25,10 @@
       "destination": "/api/seller?id=:id"
     },
     {
+      "source": "/s/:slug",
+      "destination": "/api/seller?slug=:slug"
+    },
+    {
       "source": "/app/:path*",
       "destination": "/app/index.html"
     }
