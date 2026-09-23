@@ -27,11 +27,11 @@
 // gated behind Pro at all — that's a different surface, fixed
 // separately, not the same thing as this real dedicated screen.
 //
-// DEALER_PRO_PAUSED stays true until "Priority placement" specifically
-// is genuinely built — that's the one remaining real gap. Same guard
-// mechanism as before (checked in both handlePay() and the render
-// branch below), so this is a clean toggle back to false once that
-// feature exists, not a rewrite. Already-active subscribers are
+// The single DEALER_PRO_PAUSED flag was split into two on 23 Sep 2026 —
+// see DEALER_PRO_HIDDEN and DEALER_PRO_PAYMENT_OPEN below. The offer is
+// now visible while payment stays shut, because "can people see it" and
+// "can people be charged" were never the same question. Already-active
+// subscribers are
 // completely unaffected either way (see the `success || currentlyActive`
 // branch below) — this only blocks NEW purchases while paused, never
 // blocks managing/renewing an existing one.
@@ -49,7 +49,27 @@
 //
 // Usage: router.push('/dealer-pro-pay')
 
-const DEALER_PRO_PAUSED = true;
+// TWO FLAGS, not one, because "can people see it" and "can people be
+// charged" are different questions and were previously the same switch.
+//
+// DEALER_PRO_HIDDEN false  -> the offer is visible: feature list, price,
+//                             everything. Dealers can read what Pro is.
+// DEALER_PRO_PAYMENT_OPEN false -> nothing can take money. The button
+//                             states the opening date instead of calling
+//                             Paynow.
+//
+// Held shut on purpose (product decision, 23 Sep 2026): payment_intents
+// and transactions are both EMPTY — not one payment has ever completed
+// on this system. Opening a $30 button would make the first stranger who
+// taps it the person who tests Paynow for us. Verified Seller is paused
+// for the same reason.
+//
+// TO OPEN PAYMENT IN FEBRUARY: put one real payment through yourself
+// first, confirm a paid row lands in transactions, and only then set
+// DEALER_PRO_PAYMENT_OPEN to true. Also build the short shop link the
+// feature list advertises, or take that line out — see below.
+const DEALER_PRO_HIDDEN = false;
+const DEALER_PRO_PAYMENT_OPEN = false;
 
 import { useRouter } from 'expo-router';
 import * as WebBrowser from 'expo-web-browser';
@@ -115,7 +135,10 @@ export default function DealerProPayScreen() {
   }
 
   async function handlePay() {
-    if (DEALER_PRO_PAUSED && !currentlyActive) return;
+    // Defence in depth. The button above is not rendered while payment is
+    // closed, but this function is also reachable from a retry path, and
+    // a payment screen is the wrong place to rely on the UI alone.
+    if (!DEALER_PRO_PAYMENT_OPEN) return;
 
     setError('');
     setPaying(true);
@@ -212,7 +235,7 @@ export default function DealerProPayScreen() {
     );
   }
 
-  if (DEALER_PRO_PAUSED && !currentlyActive) {
+  if (DEALER_PRO_HIDDEN && !currentlyActive) {
     return (
       <View style={styles.container}>
         <ScrollView contentContainerStyle={styles.content}>
@@ -270,8 +293,8 @@ export default function DealerProPayScreen() {
 
             What is left is what genuinely costs nothing to give and only
             matters to someone selling at volume. Pro is still paused
-            (DEALER_PRO_PAUSED), so this is honesty in the shop window
-            rather than a live pricing change. */}
+            (payment is still shut), so this is honesty in the
+              shop window rather than a live pricing change. */}
         <View style={styles.card}>
           {/* REWRITTEN 23 Sep 2026, after auditing what Pro actually does
               in code rather than what this screen claimed.
@@ -304,8 +327,10 @@ export default function DealerProPayScreen() {
 
               NOT BUILT YET — needs a slug column on profiles. Safe to
               advertise here only because this whole list is unreachable
-              while DEALER_PRO_PAUSED is true. Build it before the flag
-              comes off, or this becomes a promise. */}
+              while payment is shut — nobody can buy Pro on the strength
+              of it. BUILD IT BEFORE DEALER_PRO_PAYMENT_OPEN GOES TRUE,
+              or take this line out. Charging for it as it stands would
+              be selling something that does not exist. */}
           <Feature text="Your items come up first when buyers search" />
           <Feature text="Dealer badge on every listing, including bulk imports" />
           <Feature text="Your own short shop link — imbizohub.com/s/yourname" />
@@ -324,16 +349,31 @@ export default function DealerProPayScreen() {
           <View style={styles.errorBox}><Text style={styles.errorText}>⚠️ {error}</Text></View>
         ) : null}
 
-        <TouchableOpacity
-          style={[styles.payBtn, (paying || verifying) && { opacity: 0.6 }]}
-          onPress={handlePay}
-          disabled={paying || verifying}
-        >
-          {paying || verifying
-            ? <ActivityIndicator color={BLACK} />
-            : <Text style={styles.payBtnText}>Pay ${PRICE.toFixed(2)} with Paynow</Text>
-          }
-        </TouchableOpacity>
+        {/* Deliberately not a disabled-looking version of the real
+            button. A greyed-out "Pay" reads as something that is broken
+            or that you are not allowed to use; a plain statement of when
+            it opens reads as a plan. Nothing here can reach Paynow. */}
+        {DEALER_PRO_PAYMENT_OPEN ? (
+          <TouchableOpacity
+            style={[styles.payBtn, (paying || verifying) && { opacity: 0.6 }]}
+            onPress={handlePay}
+            disabled={paying || verifying}
+          >
+            {paying || verifying
+              ? <ActivityIndicator color={BLACK} />
+              : <Text style={styles.payBtnText}>Pay ${PRICE.toFixed(2)} with Paynow</Text>
+            }
+          </TouchableOpacity>
+        ) : (
+          <View style={styles.notOpenBox}>
+            <Text style={styles.notOpenTitle}>Opens February 2027</Text>
+            <Text style={styles.notOpenBody}>
+              Dealer Pro isn&apos;t taking payments yet. Everything you can do on
+              ImbizoHub today — listing, importing your catalogue, chatting,
+              doing deals — stays free either way.
+            </Text>
+          </View>
+        )}
         {verifying && (
           <Text style={styles.verifyingNote}>Waiting for payment confirmation...</Text>
         )}
@@ -367,6 +407,9 @@ function Feature({ text, onPress }: { text: string; onPress?: () => void }) {
 }
 
 const styles = StyleSheet.create({
+  notOpenBox: { backgroundColor: DARK, borderRadius: 14, padding: 18, borderWidth: 1, borderColor: '#3a3a36', marginTop: 4 },
+  notOpenTitle: { color: GOLD, fontSize: 15, fontWeight: '800', marginBottom: 6 },
+  notOpenBody: { color: GREY, fontSize: 13, lineHeight: 19 },
   container: { flex: 1, backgroundColor: '#111111' },
   content: { padding: 20, paddingTop: Platform.OS === 'ios' ? 56 : 40 },
   center: { flex: 1, backgroundColor: '#111', alignItems: 'center', justifyContent: 'center' },

@@ -190,6 +190,10 @@
   th:last-child,td:last-child{text-align:right;width:30%}
   td:last-child{white-space:nowrap;font-weight:700;color:var(--gold-bright)}
   td .d{display:block;color:var(--muted);font-size:15px;font-weight:400;margin-top:5px;line-height:1.6}
+  /* Reads as a status, not as an offer. Deliberately not gold —
+     gold is the price colour on this table, and a not-yet-open
+     feature should not look like the thing you can buy. */
+  td .d .soon{color:#7C7566;font-weight:700}
 
   /* FIX: on narrow screens the price used to drop BELOW the description,
      which separated each item from its own cost. Now the row becomes a
@@ -491,6 +495,17 @@
           until 31 January 2027. The prices shown are what applies once it ends.
           Browsing, posting, chatting and doing a deal on a listing are free permanently,
           promotion or no promotion.</p>
+        <!-- Free and not-yet-built are different claims, and the table was
+             blurring them: two rows carried a price for something the app
+             does not currently offer at all. A seller who came for the
+             Verified badge — the one trust signal that matters on a
+             marketplace nobody has heard of — downloaded the app, found
+             "Coming soon", and concluded the product was thinner than
+             advertised. Said plainly here and marked on the rows
+             themselves. -->
+        <p>⏳ <strong>Not open yet:</strong> the Verified Seller badge and Dealer Pro
+          are still being finished and open in February 2027. Everything else on this
+          page works today.</p>
       </div>
 
       <table>
@@ -528,7 +543,9 @@
           </tr>
           <tr>
             <td>Verified Seller badge
-                <span class="d">Submit your national ID to get verified</span></td>
+                <span class="d">Submit your national ID to get verified.
+                  <strong class="soon">Opens February 2027</strong> — not available in
+                  the app yet.</span></td>
             <td>$15 / year</td>
           </tr>
           <tr>
@@ -538,7 +555,9 @@
           </tr>
           <tr>
             <td>Dealer Pro
-                <span class="d">For sellers listing at volume</span></td>
+                <span class="d">For sellers listing at volume.
+                  <strong class="soon">Opens February 2027</strong> — not available in
+                  the app yet.</span></td>
             <td>$30 / 6 months</td>
           </tr>
         </tbody>
