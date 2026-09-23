@@ -9,6 +9,7 @@ import { buildListingHref } from '../../lib/listingNav';
 import { useIsDesktopWeb } from '../../lib/responsive';
 import { formatPrice } from '../../lib/money';
 import { supabase } from '../../lib/supabase';
+import { CATEGORIES, CATEGORY_OTHER } from '../../lib/categories';
 
 const GOLD = '#B8860B';
 const BLACK = '#1A1A18';
@@ -84,14 +85,20 @@ function groupFeed(rows: any[]): FeedRow[] {
 }
 
 
+// A SHORTCUT ROW, not the full taxonomy — it has always omitted
+// 'Other', and 'More' is a link to /explore rather than a category.
+//
+// Seven plus More, because catItem is width:'22%' in a wrapping row:
+// eight tiles fill two rows exactly, and a ninth starts a third row
+// holding a single orphan.
+//
+// Taken from the head of the shared list, so reordering
+// lib/categories.ts reorders this grid. Anything past the seventh is
+// still reachable through More, still offered in full when posting,
+// and still filterable in /explore.
+const HOME_CATEGORY_COUNT = 7;
 const categories = [
-  { icon: '📱', label: 'Phones' },
-  { icon: '🚗', label: 'Vehicles' },
-  { icon: '🛋️', label: 'Furniture' },
-  { icon: '👕', label: 'Clothing' },
-  { icon: '🏠', label: 'Appliances' },
-  { icon: '🧱', label: 'Building' },
-  { icon: '👶', label: 'Baby' },
+  ...CATEGORIES.filter((c) => c.label !== CATEGORY_OTHER).slice(0, HOME_CATEGORY_COUNT),
   { icon: '⋯', label: 'More' },
 ];
 

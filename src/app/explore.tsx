@@ -8,6 +8,7 @@ import { buildListingHref } from '../../lib/listingNav';
 import { useIsDesktopWeb } from '../../lib/responsive';
 import { formatPrice } from '../../lib/money';
 import { supabase } from '../../lib/supabase';
+import { CATEGORIES } from '../../lib/categories';
 
 const GOLD = '#B8860B';
 const BLACK = '#1A1A18';
@@ -30,16 +31,11 @@ const PAGE_SIZE = 20;
 // requests occasionally resolve after faster later ones.
 const SEARCH_DEBOUNCE_MS = 350;
 
-const categories = [
-  { icon: '📱', label: 'Phones' },
-  { icon: '🚗', label: 'Vehicles' },
-  { icon: '🪑', label: 'Furniture' },
-  { icon: '👕', label: 'Clothing' },
-  { icon: '🏠', label: 'Appliances' },
-  { icon: '🧱', label: 'Building' },
-  { icon: '🧸', label: 'Baby' },
-  { icon: '📦', label: 'Other' },
-];
+// The full list, including 'Other' — this is the screen where someone
+// is filtering rather than glancing, so nothing is hidden. Icons come
+// from the shared list: this file and index.tsx had drifted to
+// different emoji for Furniture and Baby.
+const categories = CATEGORIES;
 
 export default function ExploreScreen() {
   const router = useRouter();

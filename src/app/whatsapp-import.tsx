@@ -75,10 +75,15 @@ const GOLD = '#B8860B';
 const BLACK = '#1A1A18';
 const DARK = '#2a2a2a';
 const GREY = '#AAAAAA';
+import { CATEGORY_LABELS } from '../../lib/categories';
+
 const GREEN = '#4fc96e';
 const RED = '#ff8a8a';
 
-const categories = ['Phones', 'Vehicles', 'Furniture', 'Clothing', 'Appliances', 'Building', 'Baby', 'Other'];
+// Labels only — these chips carry no icon. Shared so a category added
+// here cannot go missing from the browse filters, which would leave
+// posts that nobody can filter their way to.
+const categories = CATEGORY_LABELS;
 
 // NEW: splits a pasted block of text into separate items, for bulk
 // catalog imports. Two heuristics, tried in order:

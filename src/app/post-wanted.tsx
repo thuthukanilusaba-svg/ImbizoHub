@@ -59,13 +59,17 @@ import { supabase } from '../../lib/supabase';
 import { reportHandledError } from '../../lib/crashReporter';
 import { checkListingContent } from '../../lib/contentSafety';
 import LocationPicker from '../../components/LocationPicker';
+import { CATEGORY_LABELS } from '../../lib/categories';
 
 const GOLD = '#B8860B';
 const BLACK = '#1A1A18';
 const DARK = '#2a2a2a';
 const GREY = '#AAAAAA';
 
-const categories = ['Phones', 'Vehicles', 'Furniture', 'Clothing', 'Appliances', 'Building', 'Baby', 'Other'];
+// Labels only — these chips carry no icon. Shared so a category added
+// here cannot go missing from the browse filters, which would leave
+// posts that nobody can filter their way to.
+const categories = CATEGORY_LABELS;
 
 export default function PostWantedScreen() {
   const router = useRouter();

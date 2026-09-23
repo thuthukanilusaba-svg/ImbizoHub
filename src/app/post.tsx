@@ -42,6 +42,7 @@ import { prepareUpload } from '../../lib/uploadHelpers';
 import { reportHandledError } from '../../lib/crashReporter';
 import { checkListingContent } from '../../lib/contentSafety';
 import LocationPicker from '../../components/LocationPicker';
+import { CATEGORY_LABELS } from '../../lib/categories';
 
 const GOLD = '#B8860B';
 const BLACK = '#1A1A18';
@@ -57,7 +58,10 @@ const PHOTO_THUMB_HEIGHT = 90;
 const PHOTO_THUMB_MIN_WIDTH = 55;
 const PHOTO_THUMB_MAX_WIDTH = 160;
 
-const categories = ['Phones', 'Vehicles', 'Furniture', 'Clothing', 'Appliances', 'Building', 'Baby', 'Other'];
+// Labels only — these chips carry no icon. Shared so a category added
+// here cannot go missing from the browse filters, which would leave
+// posts that nobody can filter their way to.
+const categories = CATEGORY_LABELS;
 
 // Real dimensions aren't known synchronously for either a freshly-picked
 // local file or a normalized/rotated copy of one — read them the same
