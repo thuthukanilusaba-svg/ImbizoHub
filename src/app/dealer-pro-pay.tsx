@@ -222,9 +222,16 @@ export default function DealerProPayScreen() {
           <View style={styles.successCard}>
             <Text style={styles.successEmoji}>⭐</Text>
             <Text style={styles.successTitle}>Coming soon</Text>
+            {/* Names a date rather than "soon". Every fee on ImbizoHub is
+                free until 31 January 2027, so a dealer reading this is
+                not being kept waiting for a product — they already have
+                the promotion. Saying so is more honest than an open-ended
+                "check back", and it sets the moment Pro starts mattering
+                instead of leaving it vague. */}
             <Text style={styles.successBody}>
-              Dealer Pro is on its way — priority placement in search
-              results is still being built. Check back soon.
+              Dealer Pro opens in February 2027. Until 31 January
+              everything on ImbizoHub is free anyway — list as much as you
+              like, and we&apos;ll tell you before anything changes.
             </Text>
             <TouchableOpacity style={styles.doneBtn} onPress={() => router.replace('/dealer')}>
               <Text style={styles.doneBtnText}>Back to Dashboard</Text>
@@ -266,11 +273,44 @@ export default function DealerProPayScreen() {
             (DEALER_PRO_PAUSED), so this is honesty in the shop window
             rather than a live pricing change. */}
         <View style={styles.card}>
-          <Feature text="Dealer badge on all your listings" />
-          <Feature text="Bulk-import your whole catalogue at once" onPress={() => router.push('/whatsapp-import')} />
-          {/* FIX: now genuinely tappable, matching what the top-of-file
-              comment already claimed. Routes straight to the real,
-              correctly-gated analytics.tsx screen. */}
+          {/* REWRITTEN 23 Sep 2026, after auditing what Pro actually does
+              in code rather than what this screen claimed.
+
+              REMOVED: "Bulk-import your whole catalogue at once."
+              whatsapp-import.tsx has NO Pro check — every user already
+              has it, and it should stay that way, because bulk import is
+              how inventory arrives. Selling something the buyer already
+              has for free is the same mistake that killed the old
+              "buyers message you free" line, and a dealer who discovers
+              it trusts nothing else on this list.
+
+              ADDED: priority placement. It is the one benefit that is
+              both real and commercially worth money — explore.tsx sorts
+              Pro sellers above everyone else in search results — and it
+              appeared nowhere except the paused notice.
+
+              ADDED: the short shop link. NOT the catalogue itself — the
+              catalogue went live for EVERY seller on 23 Sep 2026 and
+              stays free. A catalogue only Pro sellers have is a
+              catalogue nobody has while nobody is subscribed, and every
+              seller who shares their page puts ImbizoHub in front of
+              someone who does not have it.
+
+              What Pro sells is the readable address:
+              imbizohub.com/s/kombi-spares rather than
+              /seller?id=be32a5f4-... Nobody puts a UUID in a WhatsApp
+              status. It costs nothing to withhold and costs no shares
+              to withhold it.
+
+              NOT BUILT YET — needs a slug column on profiles. Safe to
+              advertise here only because this whole list is unreachable
+              while DEALER_PRO_PAUSED is true. Build it before the flag
+              comes off, or this becomes a promise. */}
+          <Feature text="Your items come up first when buyers search" />
+          <Feature text="Dealer badge on every listing, including bulk imports" />
+          <Feature text="Your own short shop link — imbizohub.com/s/yourname" />
+          {/* Tappable, matching what the top-of-file comment claims.
+              Routes to the real, correctly-gated analytics screen. */}
           <Feature text="Full listing performance analytics" onPress={() => router.push('/analytics')} />
         </View>
 

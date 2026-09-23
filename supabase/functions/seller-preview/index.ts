@@ -177,6 +177,30 @@ ${headExtra}
   .brand { color:#A9A9A4; font-size:13px; margin-top:34px; }
   .brand a { color:#E8B44A; text-decoration:none; }
   #fallback { display:none; }
+
+  /* ---- Storefront catalogue ----
+     Left-aligned inside a centred card: prices and titles in a grid read
+     as a shop when they line up and as a poster when they do not. */
+  .cat-head { display:flex; align-items:baseline; justify-content:space-between;
+              text-align:left; margin:30px 0 12px; padding-top:22px;
+              border-top:1px solid #2E2E2A; }
+  .cat-title { font-size:13px; font-weight:800; letter-spacing:.06em;
+               text-transform:uppercase; color:#A9A9A4; }
+  .cat-count { font-size:12px; color:#A9A9A4; }
+  .grid { display:grid; grid-template-columns:1fr 1fr; gap:10px; text-align:left; }
+  .item { background:#1A1A18; border:1px solid #2a2a2a; border-radius:12px;
+          overflow:hidden; text-decoration:none; color:inherit; display:block; }
+  .thumb { aspect-ratio:1/1; background:#232320; display:block;
+           width:100%; object-fit:cover; }
+  .thumb-empty { aspect-ratio:1/1; background:linear-gradient(140deg,#2a2a28,#1f1f1d);
+                 display:grid; place-items:center; color:#5d5d57; font-size:26px; }
+  .item-body { padding:9px 10px 11px; }
+  .item-title { font-size:12.5px; font-weight:700; margin:0 0 3px;
+                white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .item-price { font-size:13px; font-weight:800; color:#E8B44A; margin:0; }
+  .more { display:block; margin-top:12px; text-align:center; color:#A9A9A4;
+          font-size:12.5px; text-decoration:none; padding:11px;
+          border:1px solid #2E2E2A; border-radius:10px; }
 </style>
 </head>
 <body><div class="card">${bodyInner}</div></body>
@@ -219,11 +243,40 @@ Deno.serve(async (req) => {
     );
   }
 
+  // The catalogue. THIS is what makes the page worth sharing — without
+  // it the link is a business card, and nobody forwards a business card.
+  //
+  // Only 'active' rows: a shopfront showing sold and removed stock
+  // advertises things the visitor cannot buy.
+  //
+  // count:'exact' with a small limit so the header can say "24 items"
+  // while the grid renders 6. Fetching all 24 to count them would make a
+  // dealer with 300 listings pay for a 300-row query on every share.
+  const CATALOGUE_PREVIEW = 6;
+  const { data: listings, count: listingCount } = await supabase
+    .from('listings')
+    .select('id, title, price, image_url', { count: 'exact' })
+    .eq('user_id', id)
+    .eq('status', 'active')
+    .order('created_at', { ascending: false })
+    .limit(CATALOGUE_PREVIEW);
+
+  const items = listings ?? [];
+  const totalItems = listingCount ?? items.length;
+
   const name = escapeHtml(profile.full_name || 'ImbizoHub Seller');
   const ratingText =
     profile.rating_count > 0
       ? `${Number(profile.rating).toFixed(1)}★ (${profile.rating_count} review${profile.rating_count === 1 ? '' : 's'}) on ImbizoHub`
       : 'A seller on ImbizoHub';
+
+  // What WhatsApp and Facebook show under the link. The item count goes
+  // FIRST because it is the only part that says there is something to
+  // look at — "4.8★ (23 reviews)" describes a person, "24 items for
+  // sale" describes a shop.
+  const shareText = totalItems > 0
+    ? `${totalItems} item${totalItems === 1 ? '' : 's'} for sale · ${ratingText}`
+    : ratingText;
 
   // og:image still falls back to the site banner — that IS the right
   // image for a WhatsApp card. Only the on-page avatar differs, because
@@ -274,20 +327,50 @@ Deno.serve(async (req) => {
     .filter(Boolean)
     .join(' · ');
 
+  // Whole dollars when whole, two places otherwise — matching
+  // lib/money.ts so the same item does not read $85 here and $85.00 in
+  // the app.
+  const priceText = (v: unknown) => {
+    const n = Number(v);
+    if (!isFinite(n)) return '';
+    return '$' + (Number.isInteger(n) ? String(n) : n.toFixed(2));
+  };
+
+  const catalogue = items.length === 0 ? '' : `
+  <div class="cat-head">
+    <span class="cat-title">Catalogue</span>
+    <span class="cat-count">${totalItems} item${totalItems === 1 ? '' : 's'}</span>
+  </div>
+  <div class="grid">
+    ${items.map((it: any) => `
+    <a class="item" href="${webUrl}">
+      ${it.image_url
+        ? `<img class="thumb" src="${escapeHtml(it.image_url)}" alt="${escapeHtml(it.title || '')}" loading="lazy">`
+        : `<div class="thumb-empty">\u{1F4E6}</div>`}
+      <div class="item-body">
+        <p class="item-title">${escapeHtml(it.title || 'Item')}</p>
+        <p class="item-price">${priceText(it.price)}</p>
+      </div>
+    </a>`).join('')}
+  </div>
+  ${totalItems > items.length
+    ? `<a class="more" href="${webUrl}">See all ${totalItems} items \u2192</a>`
+    : ''}`;
+
   const head = `
 <link rel="canonical" href="${canonical}">
-<meta name="description" content="${escapeHtml(ratingText)}">
+<meta name="description" content="${escapeHtml(shareText)}">
 
 <meta property="og:type" content="profile">
 <meta property="og:site_name" content="ImbizoHub">
 <meta property="og:title" content="${name} on ImbizoHub">
-<meta property="og:description" content="${escapeHtml(ratingText)}">
+<meta property="og:description" content="${escapeHtml(shareText)}">
 <meta property="og:image" content="${ogImage}">
 <meta property="og:url" content="${canonical}">
 
 <meta name="twitter:card" content="summary">
 <meta name="twitter:title" content="${name} on ImbizoHub">
-<meta name="twitter:description" content="${escapeHtml(ratingText)}">
+<meta name="twitter:description" content="${escapeHtml(shareText)}">
 <meta name="twitter:image" content="${ogImage}">`;
 
   const body = `
@@ -296,6 +379,12 @@ Deno.serve(async (req) => {
   <div class="rating">${escapeHtml(ratingText)}</div>
   ${badges ? `<div class="badges">${badges}</div>` : ''}
 
+  ${catalogue}
+
+  <!-- ABOVE the app prompt deliberately. That prompt hides itself for
+       1.5s while it tries to deep-link, and someone arriving from a
+       dealer's WhatsApp status should be looking at stock in that time,
+       not a spinner. -->
   <div id="opening" class="muted"><p>Opening in the ImbizoHub app…</p></div>
 
   <div id="fallback">

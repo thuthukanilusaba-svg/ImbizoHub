@@ -325,6 +325,27 @@ export default function WhatsAppImportScreen() {
       return;
     }
 
+    // BADGE FIX (23 Sep 2026). This screen hardcoded badge:'New' for every
+    // imported row, while post.tsx reads Dealer Pro status and stamps
+    // 'Dealer'. The result was backwards: a Pro seller's BULK catalogue —
+    // the largest part of their inventory, and the reason they bought Pro
+    // — carried no badge, while the handful posted by hand did.
+    //
+    // Fetched once before the loop: a sixty-item import would otherwise
+    // make sixty identical profile queries, and the answer cannot change
+    // halfway through.
+    const { data: posterProfile } = await supabase
+      .from('profiles')
+      .select('dealer_pro_active, dealer_pro_expires_at')
+      .eq('id', user.id)
+      .maybeSingle();
+
+    const posterIsDealerPro = !!(
+      posterProfile?.dealer_pro_active &&
+      posterProfile?.dealer_pro_expires_at &&
+      new Date(posterProfile.dealer_pro_expires_at).getTime() > Date.now()
+    );
+
     let completed = 0;
     for (const it of toPost) {
       const loc = it.location.trim() || sharedLocation.trim();
@@ -337,7 +358,7 @@ export default function WhatsAppImportScreen() {
         category: it.category,
         image_url: null,
         image_urls: [],
-        badge: 'New',
+        badge: posterIsDealerPro ? 'Dealer' : 'New',
       });
 
       if (insertError) {
