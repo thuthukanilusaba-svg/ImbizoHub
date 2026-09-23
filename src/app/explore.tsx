@@ -9,6 +9,7 @@ import { useIsDesktopWeb } from '../../lib/responsive';
 import { formatPrice } from '../../lib/money';
 import { supabase } from '../../lib/supabase';
 import { CATEGORIES, isKnownCategory } from '../../lib/categories';
+import { BADGE_PROFILE_COLUMNS, isProNow, listingBadge } from '../../lib/badges';
 
 const GOLD = '#B8860B';
 const BLACK = '#1A1A18';
@@ -148,24 +149,27 @@ export default function ExploreScreen() {
       if (typeof count === 'number') setTotalCount(count);
 
       if (data.length > 0) {
+        // WIDENED 23 Sep 2026: this used to fetch Dealer Pro alone, for
+        // the sort. It now fetches everything a badge depends on, because
+        // the chip on the card is computed here too — it used to come
+        // from listings.badge, which was frozen at post time and so kept
+        // saying "New" after a seller subscribed and "Dealer" after their
+        // subscription lapsed. See lib/badges.ts.
+        //
+        // No extra round trip: same query, more columns.
         const userIds = [...new Set(data.map((l: any) => l.user_id).filter(Boolean))];
-        let proIds = new Set<string>();
+        const sellerById = new Map<string, any>();
         if (userIds.length > 0) {
-          const { data: proProfiles } = await supabase
+          const { data: sellerRows } = await supabase
             .from('profiles')
-            .select('id, dealer_pro_active, dealer_pro_expires_at')
+            .select(`id, ${BADGE_PROFILE_COLUMNS}`)
             .in('id', userIds);
 
-          proIds = new Set(
-            (proProfiles ?? [])
-              .filter((p: any) =>
-                p.dealer_pro_active &&
-                p.dealer_pro_expires_at &&
-                new Date(p.dealer_pro_expires_at).getTime() > Date.now()
-              )
-              .map((p: any) => p.id)
-          );
+          for (const p of sellerRows ?? []) sellerById.set(p.id, p);
         }
+        const proIds = new Set(
+          [...sellerById.values()].filter((p: any) => isProNow(p)).map((p: any) => p.id)
+        );
 
         // NOTE: Pro-seller sorting is now applied PER PAGE rather than
         // across the entire result set — an honest tradeoff of moving to
@@ -191,7 +195,17 @@ export default function ExploreScreen() {
         // LOCAL proIds from this specific page fetch; the accumulated
         // state variable was pure overhead with no consumer. Confirmed
         // genuinely unused before removing, not just unused right now.
-        setListings((prev) => (append ? [...prev, ...sortedPage] : sortedPage));
+        // The chip is attached to the row here rather than looked up at
+        // render time, because the seller rows are fetched per page and
+        // are not kept anywhere. Attaching it means an appended page
+        // carries its own badges and no cross-page state is needed —
+        // which is what the removed proSellerIds Set was reaching for.
+        const withBadges = sortedPage.map((l: any) => ({
+          ...l,
+          computedBadge: listingBadge(sellerById.get(l.user_id), l.created_at),
+        }));
+
+        setListings((prev) => (append ? [...prev, ...withBadges] : withBadges));
       } else {
         setListings((prev) => (append ? prev : []));
       }
@@ -341,9 +355,16 @@ export default function ExploreScreen() {
                 <Text style={styles.listingPrice}>${formatPrice(item.price)}</Text>
                 <View style={styles.listingMeta}>
                   <Text style={styles.listingLoc}>{item.location}</Text>
-                  {item.badge ? (
-                    <View style={item.badge === 'Verified' ? styles.badgeVerified : styles.badgeDealer}>
-                      <Text style={item.badge === 'Verified' ? styles.badgeVerifiedText : styles.badgeDealerText}>{item.badge}</Text>
+                  {/* computedBadge, not item.badge. The column is a
+                      record of what the seller was when they posted; this
+                      is what they are now. The Verified branch below was
+                      unreachable before — nothing ever wrote 'Verified'
+                      into that column, so a verified seller's listings
+                      showed the chip on Home and on the listing page but
+                      never here. */}
+                  {item.computedBadge ? (
+                    <View style={item.computedBadge === 'Verified' ? styles.badgeVerified : styles.badgeDealer}>
+                      <Text style={item.computedBadge === 'Verified' ? styles.badgeVerifiedText : styles.badgeDealerText}>{item.computedBadge}</Text>
                     </View>
                   ) : null}
                 </View>

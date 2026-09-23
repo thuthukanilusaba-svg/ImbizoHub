@@ -80,6 +80,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import PhotoZoomViewer from '../../components/PhotoZoomViewer';
 import { buildListingHref, parseListingContext } from '../../lib/listingNav';
 import { formatPrice } from '../../lib/money';
+import { BADGE_PROFILE_COLUMNS, BadgeSeller, isVerifiedNow, listingBadge } from '../../lib/badges';
 import { supabase } from '../../lib/supabase';
 
 const GOLD = '#B8860B';
@@ -124,6 +125,10 @@ export default function ListingScreen() {
   const [markingAsSold, setMarkingAsSold] = useState(false);
   const [statusError, setStatusError] = useState('');
   const [sellerVerified, setSellerVerified] = useState(false);
+  // Kept whole rather than flattened into booleans: lib/badges.ts decides
+  // which chip wins, and it can only do that if it can see every field
+  // the decision depends on.
+  const [badgeSeller, setBadgeSeller] = useState<BadgeSeller | null>(null);
   const [zoomVisible, setZoomVisible] = useState(false);
   // NEW: width/height ratio (w/h) for each photo, keyed by its index in
   // the carousel — fetched once per photo via Image.getSize() below,
@@ -216,14 +221,13 @@ export default function ListingScreen() {
     if (data?.user_id) {
       const { data: seller } = await supabase
         .from('profiles')
-        .select('is_verified, verified_expires_at')
+        .select(BADGE_PROFILE_COLUMNS)
         .eq('id', data.user_id)
         .maybeSingle();
-      setSellerVerified(!!(
-        seller?.is_verified &&
-        seller?.verified_expires_at &&
-        new Date(seller.verified_expires_at).getTime() > Date.now()
-      ));
+      setBadgeSeller(seller ?? null);
+      // Same check as before, written once in lib/badges.ts instead of
+      // by hand in each of the screens that needed it.
+      setSellerVerified(isVerifiedNow(seller));
     }
 
     setLoading(false);
@@ -513,11 +517,18 @@ export default function ListingScreen() {
               <View style={styles.badgeVerified}>
                 <Text style={styles.badgeVerifiedText}>Verified</Text>
               </View>
-            ) : listing.badge && listing.badge !== 'Verified' ? (
-              <View style={styles.badgeNew}>
-                <Text style={styles.badgeNewText}>{listing.badge}</Text>
-              </View>
-            ) : null}
+            ) : (() => {
+              // Computed, not read from listings.badge — that column was
+              // frozen at post time, so it kept saying "New" after the
+              // seller subscribed and "Dealer" after they lapsed.
+              // Verified is already handled by the branch above.
+              const chip = listingBadge(badgeSeller, listing.created_at);
+              return chip && chip !== 'Verified' ? (
+                <View style={styles.badgeNew}>
+                  <Text style={styles.badgeNewText}>{chip}</Text>
+                </View>
+              ) : null;
+            })()}
           </View>
 
           <Text style={[styles.price, isSold && { color: GREY }]}>${formatPrice(listing.price)}</Text>

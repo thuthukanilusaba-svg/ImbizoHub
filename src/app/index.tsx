@@ -10,6 +10,7 @@ import { useIsDesktopWeb } from '../../lib/responsive';
 import { formatPrice } from '../../lib/money';
 import { supabase } from '../../lib/supabase';
 import { CATEGORIES, CATEGORY_OTHER } from '../../lib/categories';
+import { BADGE_PROFILE_COLUMNS, listingBadge } from '../../lib/badges';
 
 const GOLD = '#B8860B';
 const BLACK = '#1A1A18';
@@ -227,7 +228,12 @@ export default function HomeScreen() {
         const userIds = [...new Set(data.map((l: any) => l.user_id).filter(Boolean))];
         const { data: profiles } = await supabase
           .from('profiles')
-          .select('id, rating, rating_count, full_name, is_verified, verified_expires_at')
+          // BADGE_PROFILE_COLUMNS carries the Dealer Pro fields as well
+          // as the Verified ones. Both are needed now that the chip is
+          // computed from the seller's CURRENT state instead of read out
+          // of listings.badge, which was written once at post time and
+          // never updated. See lib/badges.ts.
+          .select(`id, rating, rating_count, full_name, ${BADGE_PROFILE_COLUMNS}`)
           .in('id', userIds);
 
         if (profiles) {
@@ -247,11 +253,6 @@ export default function HomeScreen() {
     const nextPage = Math.floor(listings.length / PAGE_SIZE);
     fetchListings(nextPage, true);
   }, [loadingMore, hasMore, loading, listings.length]);
-
-  function isSellerVerified(userId: string): boolean {
-    const p = sellerProfiles[userId];
-    return !!(p?.is_verified && p?.verified_expires_at && new Date(p.verified_expires_at).getTime() > Date.now());
-  }
 
   function renderStarRating(rating: number, count: number) {
     if (!count || count === 0) return null;
@@ -624,15 +625,23 @@ export default function HomeScreen() {
                 {seller && seller.rating_count > 0 && renderStarRating(seller.rating, seller.rating_count)}
                 <View style={styles.listingMeta}>
                   <Text style={styles.listingLoc}>{item.location}</Text>
-                  {isSellerVerified(item.user_id) ? (
-                    <View style={styles.badgeVerified}>
-                      <Text style={styles.badgeVerifiedText}>Verified</Text>
-                    </View>
-                  ) : item.badge && item.badge !== 'Verified' ? (
-                    <View style={styles.badgeDealer}>
-                      <Text style={styles.badgeDealerText}>{item.badge}</Text>
-                    </View>
-                  ) : null}
+                  {/* One chip, chosen by lib/badges.ts: Verified beats
+                      Dealer beats New, and "New" now means posted in the
+                      last NEW_LISTING_DAYS rather than "was new once".
+                      Nothing here reads listings.badge any more. */}
+                  {(() => {
+                    const chip = listingBadge(sellerProfiles[item.user_id], item.created_at);
+                    if (!chip) return null;
+                    return chip === 'Verified' ? (
+                      <View style={styles.badgeVerified}>
+                        <Text style={styles.badgeVerifiedText}>Verified</Text>
+                      </View>
+                    ) : (
+                      <View style={styles.badgeDealer}>
+                        <Text style={styles.badgeDealerText}>{chip}</Text>
+                      </View>
+                    );
+                  })()}
                 </View>
               </View>
             </TouchableOpacity>

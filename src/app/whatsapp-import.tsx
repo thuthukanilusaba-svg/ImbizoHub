@@ -358,7 +358,13 @@ export default function WhatsAppImportScreen() {
         category: it.category,
         image_url: null,
         image_urls: [],
-        badge: posterIsDealerPro ? 'Dealer' : 'New',
+        // HISTORICAL RECORD ONLY as of 23 Sep 2026. Nothing renders from
+      // listings.badge any more — the chip on a card is computed live in
+      // lib/badges.ts from the seller's current Dealer Pro status and the
+      // listing's age. This column is still written because "what was the
+      // seller when they posted this" is a real and different question,
+      // but do not read it to decide what to display. See lib/badges.ts.
+      badge: posterIsDealerPro ? 'Dealer' : 'New',
       });
 
       if (insertError) {
