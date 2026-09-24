@@ -434,7 +434,7 @@ Deno.serve(async (req) => {
     ${IOS_APP_LIVE ? `<a class="btn-outline" href="${APP_STORE_URL}">Download for iPhone</a>` : ''}
   </div>
 
-  <div class="brand">Powered by <a href="${SITE}">ImbizoHub</a> · Zimbabwe</div>
+  <div class="brand">Powered by <a href="${SITE}">ImbizoHub</a></div>
   <div class="trademark">Google Play and the Google Play logo are trademarks of Google LLC.</div>
 
   <script>
