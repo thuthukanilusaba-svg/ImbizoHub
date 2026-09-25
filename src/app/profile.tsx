@@ -84,6 +84,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import BottomNav from '../../components/BottomNav';
 import { DELIVERY_BOOKING_ENABLED, DELIVERY_OPERATOR_SIGNUP_PAUSED_MESSAGE, DELIVERY_PAUSED_TITLE } from '../../lib/featureFlags';
 import { normalizeImageOrientation } from '../../lib/imageOrientation';
+import { isProNow } from '../../lib/badges';
 import { supabase } from '../../lib/supabase';
 import CityPicker from '../../components/CityPicker';
 import { prepareUpload } from '../../lib/uploadHelpers';
@@ -131,6 +132,9 @@ export default function ProfileScreen() {
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const [createdAt, setCreatedAt] = useState('');
   const [listingCount, setListingCount] = useState(0);
+  // Dealer Pro, checked against its expiry rather than the flag alone —
+  // isProNow() in lib/badges.ts is the single copy of that test.
+  const [dealerProActive, setDealerProActive] = useState(false);
   const [rating, setRating] = useState(0);
   const [ratingCount, setRatingCount] = useState(0);
   // Ratings earned on the other side of a transaction — as a buyer or a
@@ -213,6 +217,9 @@ export default function ProfileScreen() {
       setRatingCount(profile.rating_count ?? 0);
       setBuyerRating(profile.buyer_rating ?? 0);
       setBuyerRatingCount(profile.buyer_rating_count ?? 0);
+      // my_profile() returns the caller's whole row, so the Dealer Pro
+      // columns are already here — nothing extra to fetch.
+      setDealerProActive(isProNow(profile));
       // Drafts are deliberately NOT set here. startEditing() seeds them
       // from these same values at the moment the form opens, which is the
       // only time they should change. Setting them on every load meant a
@@ -711,6 +718,25 @@ export default function ProfileScreen() {
                 highlighted
               />
             )}
+            {/* NEW (25 Sep 2026). Dealer Pro had no entry point on this
+                screen at all, and its only other one — the Dashboard —
+                is itself gated behind having posted a listing. So the
+                paid tier was invisible to 18 of the 26 accounts on the
+                app, including everyone who had not sold anything yet,
+                which is exactly who it needs to reach.
+
+                Shown to everyone here, and greyed until it is active.
+                `dimmed` is de-emphasis only, never a disabled state (see
+                MenuRow) — the row still opens dealer-pro-pay.tsx so
+                somebody can read what is included and when it opens.
+                It goes gold once the subscription is really live. */}
+            <MenuRow
+              icon="⭐"
+              label="Dealer Pro"
+              dimmed={!dealerProActive}
+              highlighted={dealerProActive}
+              onPress={() => router.push('/dealer-pro-pay')}
+            />
           </View>
 
           {/* Editable info */}
