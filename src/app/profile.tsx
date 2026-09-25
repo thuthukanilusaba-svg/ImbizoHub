@@ -634,10 +634,18 @@ export default function ProfileScreen() {
                 profile — leaning into today's strategy work turning
                 the ratings system into real lock-in. */}
             <MenuRow icon="🔗" label="View my public profile" onPress={() => router.push(`/seller?id=${userId}`)} />
-            <MenuRow icon="🏷️" label="My listings" dimmed={listingCount === 0} onPress={() => router.push('/my-listings')} />
-            <MenuRow icon="📥" label="Deliveries to me" dimmed={deliveriesToMeCount === 0} onPress={() => router.push('/buyer-deliveries')} />
-            <MenuRow icon="📤" label="Deliveries from my listings" dimmed={deliveriesFromMeCount === 0} onPress={() => router.push('/seller-deliveries')} />
-            <MenuRow icon="🚐" label="My trip requests" dimmed={tripRequestCount === 0} onPress={() => router.push('/quotes')} />
+            <MenuRow icon="🏷️" label="My listings" dimmed={listingCount === 0}
+              badge={listingCount > 0 ? listingCount : undefined}
+              onPress={() => router.push('/my-listings')} />
+            <MenuRow icon="📥" label="Deliveries to me" dimmed={deliveriesToMeCount === 0}
+              badge={deliveriesToMeCount > 0 ? deliveriesToMeCount : undefined}
+              onPress={() => router.push('/buyer-deliveries')} />
+            <MenuRow icon="📤" label="Deliveries from my listings" dimmed={deliveriesFromMeCount === 0}
+              badge={deliveriesFromMeCount > 0 ? deliveriesFromMeCount : undefined}
+              onPress={() => router.push('/seller-deliveries')} />
+            <MenuRow icon="🚐" label="My trip requests" dimmed={tripRequestCount === 0}
+              badge={tripRequestCount > 0 ? tripRequestCount : undefined}
+              onPress={() => router.push('/quotes')} />
             <MenuRow
               icon="🔍"
               label="What I'm looking for"
@@ -655,9 +663,12 @@ export default function ProfileScreen() {
               icon="🏷️"
               label="Prices I've offered"
               dimmed={myResponseCount === 0}
+              badge={myResponseCount > 0 ? myResponseCount : undefined}
               onPress={() => router.push('/my-responses')}
             />
-            <MenuRow icon="💬" label="Messages" dimmed={messageCount === 0} onPress={() => router.push('/messages')} />
+            <MenuRow icon="💬" label="Messages" dimmed={messageCount === 0}
+              badge={messageCount > 0 ? messageCount : undefined}
+              onPress={() => router.push('/messages')} />
             {accountType === 'transport_operator' && (
               // RENAMED: was "Browse trip requests" — shortened and made
               // more explicit about the actual action taken on this
