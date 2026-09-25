@@ -411,6 +411,36 @@ Deno.serve(async (req) => {
       }
       const ownErr = requireOwn(buyer_id, 'buyer_id');
       if (ownErr) return ownErr;
+
+      // FIX (25 Sep 2026): requireOwn only proves you are paying as
+      // yourself — it said nothing about whose listing you were
+      // featuring. feature-listing-pay.tsx checks it client-side and
+      // feature-listing-free-promo checks it server-side; this branch,
+      // the one that takes real money, did not. A direct API call could
+      // push any listing in the marketplace to the top of Home.
+      //
+      // Dormant today because the free promo runs instead, and it goes
+      // live on 1 February with the rest. Same shape as the Wanted
+      // commission: a rule enforced everywhere except the paid path.
+      const { data: listingRow } = await supabase
+        .from('listings')
+        .select('user_id')
+        .eq('id', listing_id)
+        .maybeSingle();
+
+      if (!listingRow) {
+        return new Response(JSON.stringify({ error: 'Listing not found' }), {
+          status: 400,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+      if (listingRow.user_id !== buyer_id) {
+        return new Response(JSON.stringify({ error: 'You can only feature your own listings' }), {
+          status: 403,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+
       // FIX: flat $5 fee, same PRICE constant feature-listing-pay.tsx uses.
       const amountErr = await validateAmount(5, 'featured listing fee');
       if (amountErr) return amountErr;

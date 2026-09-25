@@ -839,7 +839,18 @@ export default function DealerScreen() {
                     <Text style={styles.actionIcon}>📊</Text>
                     <Text style={styles.actionSecondaryText}>Analytics</Text>
                   </TouchableOpacity>
-                  <TouchableOpacity style={styles.actionSecondary} onPress={() => router.push('/explore')}>
+                  {/* FIX (25 Sep 2026, reported): this went to /explore —
+                      Browse, showing EVERYBODY's listings. You cannot boost
+                      somebody else's item, so the button landed you on a
+                      screen where nothing you could tap did what the button
+                      said. Now goes to your own listings, where you pick
+                      one and feature it from its page.
+
+                      The rule itself was never broken: listing.tsx only
+                      shows the Feature button when isOwner, and
+                      feature-listing-pay.tsx refuses a listing that is not
+                      yours. Only the route here was wrong. */}
+                  <TouchableOpacity style={styles.actionSecondary} onPress={() => router.push('/my-listings')}>
                     <Text style={styles.actionIcon}>⭐</Text>
                     <Text style={styles.actionSecondaryText}>Boost listing</Text>
                   </TouchableOpacity>
