@@ -109,7 +109,7 @@ export default function SellerProfileScreen() {
 
     const { data: profileData, error: profileError } = await supabase
       .from('profiles')
-      .select('full_name, avatar_url, account_type, rating, rating_count, created_at, dealer_pro_active, dealer_pro_expires_at, is_verified, verified_expires_at')
+      .select('full_name, business_name, avatar_url, account_type, rating, rating_count, created_at, dealer_pro_active, dealer_pro_expires_at, is_verified, verified_expires_at')
       .eq('id', id)
       .maybeSingle();
 
@@ -193,7 +193,7 @@ export default function SellerProfileScreen() {
 
   async function handleShare() {
     if (!id || !profile) return;
-    const name = profile.full_name || 'this seller';
+    const name = profile.business_name || profile.full_name || 'this seller';
     const ratingText = profile.rating_count > 0
       ? `${profile.rating.toFixed(1)}\u2605 (${profile.rating_count} reviews)`
       : 'a new seller';
@@ -294,7 +294,20 @@ export default function SellerProfileScreen() {
             </View>
           )}
 
-          <Text style={styles.name}>{profile.full_name || 'ImbizoHub Seller'}</Text>
+          {/* Trading name on top, the real person underneath.
+              profiles.business_name is Dealer Pro only and null for
+              everyone else, so a normal seller's page is unchanged.
+
+              The person's name deliberately stays visible: on a
+              marketplace nobody has heard of, a real name under the
+              shopfront is the trust signal. A trading name on its own is
+              something a scammer also has. */}
+          <Text style={styles.name}>
+            {profile.business_name || profile.full_name || 'ImbizoHub Seller'}
+          </Text>
+          {profile.business_name && profile.full_name ? (
+            <Text style={styles.traderName}>{profile.full_name}</Text>
+          ) : null}
 
           {profile.rating_count > 0 ? (
             <View style={styles.ratingRow}>
@@ -501,6 +514,7 @@ const styles = StyleSheet.create({
   avatarImage: { width: 88, height: 88, borderRadius: 44, marginBottom: 14 },
   avatarPlaceholder: { width: 88, height: 88, borderRadius: 44, backgroundColor: GOLD, alignItems: 'center', justifyContent: 'center', marginBottom: 14 },
   avatarInitials: { color: BLACK, fontSize: 30, fontWeight: '800' },
+  traderName: { color: '#A9A9A4', fontSize: 13, marginTop: 2, marginBottom: 2 },
   name: { fontSize: 20, fontWeight: '800', color: '#fff', marginBottom: 8 },
   ratingRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10 },
   ratingText: { fontSize: 12, color: GREY },

@@ -75,6 +75,13 @@ export default function ShopLinkScreen() {
   const [loading, setLoading] = useState(true);
   const [myId, setMyId] = useState('');
   const [fullName, setFullName] = useState('');
+  // The trading name. Dealer Pro only, gated by the same trigger as the
+  // slug, and the thing the link should actually be named after — a
+  // dealer's shop is "Kombi Spares", not "Thuthukani Lusaba".
+  const [shopName, setShopName] = useState('');
+  const [shopDraft, setShopDraft] = useState('');
+  const [savingName, setSavingName] = useState(false);
+  const [nameSaved, setNameSaved] = useState(false);
   const [savedSlug, setSavedSlug] = useState<string | null>(null);
   const [dealerProActive, setDealerProActive] = useState(false);
 
@@ -110,12 +117,14 @@ export default function ShopLinkScreen() {
 
     const { data: profile } = await supabase
       .from('profiles')
-      .select('full_name, slug, dealer_pro_active, dealer_pro_expires_at')
+      .select('full_name, business_name, slug, dealer_pro_active, dealer_pro_expires_at')
       .eq('id', user.id)
       .maybeSingle();
 
     if (profile) {
       setFullName(profile.full_name ?? '');
+      setShopName(profile.business_name ?? '');
+      setShopDraft(profile.business_name ?? '');
       setSavedSlug(profile.slug ?? null);
       setDealerProActive(!!(
         profile.dealer_pro_active &&
@@ -188,6 +197,36 @@ export default function ShopLinkScreen() {
     setAvailability('idle');
   }
 
+  async function saveShopName() {
+    const value = shopDraft.trim().replace(/\s+/g, ' ');
+
+    if (value && (value.length < 2 || value.length > 50)) {
+      setError('A shop name needs to be between 2 and 50 characters.');
+      return;
+    }
+
+    setSavingName(true);
+    setError('');
+
+    // .select() so the stored value comes back after the trigger has
+    // tidied the whitespace — the same reason the slug save does it.
+    const { data, error: upErr } = await supabase
+      .from('profiles')
+      .update({ business_name: value || null })
+      .eq('id', myId)
+      .select('business_name')
+      .single();
+
+    setSavingName(false);
+
+    if (upErr) { setError(messageForSaveError(upErr)); return; }
+
+    const saved = data?.business_name ?? '';
+    setShopName(saved);
+    setShopDraft(saved);
+    setNameSaved(true);
+  }
+
   async function clearSlug() {
     setSaving(true);
     setError('');
@@ -211,8 +250,9 @@ export default function ShopLinkScreen() {
 
   // ── sharing ─────────────────────────────────────────────────────────
   const liveUrl = savedSlug ? shopLinkUrl(savedSlug) : '';
+  const shareLabel = shopName || fullName;
   const shareMessage = savedSlug
-    ? `${fullName ? fullName + ' — ' : ''}see what I have for sale: ${liveUrl}`
+    ? `${shareLabel ? shareLabel + ' — ' : ''}see what I have for sale: ${liveUrl}`
     : '';
 
   async function shareLink() {
@@ -223,7 +263,7 @@ export default function ShopLinkScreen() {
       const nav: any = typeof navigator === 'undefined' ? null : navigator;
       try {
         if (nav?.share) {
-          await nav.share({ title: fullName || 'My shop', text: shareMessage, url: liveUrl });
+          await nav.share({ title: shareLabel || 'My shop', text: shareMessage, url: liveUrl });
           return;
         }
         if (nav?.clipboard?.writeText) {
@@ -264,7 +304,9 @@ export default function ShopLinkScreen() {
     );
   }
 
-  const suggestion = normaliseSlug(fullName);
+  // The shop's name is what the address should be built from. Falling
+  // back to the person's name only when there is no shop name yet.
+  const suggestion = normaliseSlug(shopName || fullName);
 
   return (
     <View style={styles.container}>
@@ -285,6 +327,38 @@ export default function ShopLinkScreen() {
             screen, in a dealer's own shop, in grey. Showing only what
             they get reads as a product; showing what they are escaping
             reads as an apology. */}
+        {dealerProActive && (
+          <View style={styles.nameCard}>
+            <Text style={styles.lbl}>YOUR SHOP NAME</Text>
+            <TextInput
+              style={styles.input}
+              value={shopDraft}
+              onChangeText={(t) => { setShopDraft(t); setNameSaved(false); setError(''); }}
+              placeholder={fullName || 'Kombi Spares Bulawayo'}
+              placeholderTextColor="#6F6F6A"
+              maxLength={50}
+              returnKeyType="done"
+              onSubmitEditing={saveShopName}
+            />
+            <Text style={styles.note}>
+              This heads your shop page. Your own name still shows underneath it.
+            </Text>
+            {shopDraft.trim() !== shopName ? (
+              <TouchableOpacity
+                style={styles.secondaryBtn}
+                onPress={saveShopName}
+                disabled={savingName}
+              >
+                <Text style={styles.secondaryBtnText}>
+                  {savingName ? 'Saving…' : 'Save shop name'}
+                </Text>
+              </TouchableOpacity>
+            ) : nameSaved ? (
+              <Text style={styles.statusGood}>✓ Saved</Text>
+            ) : null}
+          </View>
+        )}
+
         <View style={styles.exampleCard}>
           <Text style={styles.exampleLabel}>YOUR ADDRESS</Text>
           <Text style={styles.exampleGood}>
@@ -299,19 +373,6 @@ export default function ShopLinkScreen() {
           // it opens reads as a plan. Nothing here can write a slug —
           // the trigger would refuse it anyway.
           <>
-            <View style={styles.notOpenBox}>
-              <Text style={styles.notOpenTitle}>Part of Dealer Pro</Text>
-              <Text style={styles.notOpenBody}>
-                Your seller page is already live and already free — anyone can
-                open it and see everything you have listed. Dealer Pro is what
-                gives that page a short name instead of a long one.
-              </Text>
-              <Text style={[styles.notOpenBody, { marginTop: 10 }]}>
-                Dealer Pro is free until 31 January — turn it on and the link
-                is yours.
-              </Text>
-            </View>
-
             <TouchableOpacity style={styles.secondaryBtn} onPress={() => router.push('/dealer-pro-pay')}>
               <Text style={styles.secondaryBtnText}>Turn on Dealer Pro — free ›</Text>
             </TouchableOpacity>
@@ -490,13 +551,11 @@ const styles = StyleSheet.create({
   heading: { fontSize: 26, fontWeight: '800', color: '#fff', marginBottom: 6 },
   subheading: { fontSize: 13, color: GREY, marginBottom: 22, lineHeight: 19 },
 
+  nameCard: { backgroundColor: BLACK, borderRadius: 14, padding: 16, marginBottom: 14, borderWidth: 0.5, borderColor: '#333' },
   exampleCard: { backgroundColor: BLACK, borderRadius: 14, padding: 16, marginBottom: 20, borderWidth: 0.5, borderColor: '#333' },
   exampleLabel: { color: '#6F6F6A', fontSize: 10, fontWeight: '800', letterSpacing: 1 },
   exampleGood: { color: GOLD, fontSize: 15, fontWeight: '800', marginTop: 5 },
 
-  notOpenBox: { backgroundColor: DARK, borderRadius: 14, padding: 18, borderWidth: 1, borderColor: '#3a3a36', marginBottom: 16 },
-  notOpenTitle: { color: GOLD, fontSize: 15, fontWeight: '800', marginBottom: 8 },
-  notOpenBody: { color: GREY, fontSize: 13, lineHeight: 19 },
 
   warnBox: { backgroundColor: '#332a18', borderRadius: 10, padding: 12, marginBottom: 16, borderWidth: 1, borderColor: '#4a3c1e' },
   warnText: { color: '#e5c98a', fontSize: 12.5, lineHeight: 18 },
