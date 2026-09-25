@@ -899,7 +899,7 @@ export default function DealerScreen() {
               >
                 <View>
                   <Text style={styles.subName}>Dealer Pro Plan</Text>
-                  <Text style={styles.subDetail}>See what&apos;s included · Opens February 2027</Text>
+                  <Text style={styles.subDetail}>Free until 31 January · Turn it on</Text>
                 </View>
                 <Text style={styles.subManage}>View</Text>
               </TouchableOpacity>

@@ -279,14 +279,14 @@ export default function ShopLinkScreen() {
           WhatsApp status, on your van, on a flyer.
         </Text>
 
-        {/* What the thing IS, shown before any of the machinery. Someone
-            arriving here from a feature list has read one line about it. */}
+        {/* Just the address they will get. This used to show the long
+            uuid form above it with a line through it — a before-and-after
+            that put the ugliest thing in the product at the top of the
+            screen, in a dealer's own shop, in grey. Showing only what
+            they get reads as a product; showing what they are escaping
+            reads as an apology. */}
         <View style={styles.exampleCard}>
-          <Text style={styles.exampleLabel}>INSTEAD OF</Text>
-          <Text style={styles.exampleBad} numberOfLines={1}>
-            {SHOP_LINK_HOST}/seller?id=be32a5f4-9c1d-4f2a-…
-          </Text>
-          <Text style={[styles.exampleLabel, { marginTop: 14 }]}>YOU GET</Text>
+          <Text style={styles.exampleLabel}>YOUR ADDRESS</Text>
           <Text style={styles.exampleGood}>
             {SHOP_LINK_HOST}/s/{savedSlug || (candidate && editing ? candidate : suggestion || 'kombi-spares')}
           </Text>
@@ -307,13 +307,13 @@ export default function ShopLinkScreen() {
                 gives that page a short name instead of a long one.
               </Text>
               <Text style={[styles.notOpenBody, { marginTop: 10 }]}>
-                Dealer Pro opens in February 2027. Until 31 January everything
-                on ImbizoHub is free anyway.
+                Dealer Pro is free until 31 January — turn it on and the link
+                is yours.
               </Text>
             </View>
 
             <TouchableOpacity style={styles.secondaryBtn} onPress={() => router.push('/dealer-pro-pay')}>
-              <Text style={styles.secondaryBtnText}>See what Dealer Pro includes ›</Text>
+              <Text style={styles.secondaryBtnText}>Turn on Dealer Pro — free ›</Text>
             </TouchableOpacity>
           </>
         ) : savedSlug && !editing ? (
@@ -464,7 +464,7 @@ function messageForSaveError(err: any): string {
   const detail = `${err?.message ?? ''} ${err?.details ?? ''}`;
 
   if (code === '42501') {
-    return 'A short shop link is a Dealer Pro feature. Dealer Pro opens in February 2027.';
+    return 'A short shop link is a Dealer Pro feature. Turn Dealer Pro on first — it is free until 31 January.';
   }
   if (code === '23505') {
     return 'Somebody claimed that name a moment ago. Try another.';
@@ -492,7 +492,6 @@ const styles = StyleSheet.create({
 
   exampleCard: { backgroundColor: BLACK, borderRadius: 14, padding: 16, marginBottom: 20, borderWidth: 0.5, borderColor: '#333' },
   exampleLabel: { color: '#6F6F6A', fontSize: 10, fontWeight: '800', letterSpacing: 1 },
-  exampleBad: { color: '#7d7d77', fontSize: 13, marginTop: 5, textDecorationLine: 'line-through' },
   exampleGood: { color: GOLD, fontSize: 15, fontWeight: '800', marginTop: 5 },
 
   notOpenBox: { backgroundColor: DARK, borderRadius: 14, padding: 18, borderWidth: 1, borderColor: '#3a3a36', marginBottom: 16 },
