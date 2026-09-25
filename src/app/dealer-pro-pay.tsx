@@ -73,6 +73,31 @@
 const DEALER_PRO_HIDDEN = false;
 const DEALER_PRO_PAYMENT_OPEN = false;
 
+// FREE TRIAL, closing 31 January 2027 (product decision, 25 Sep 2026).
+//
+// The problem it solves: February is the first time anyone will be asked
+// for $30, and nobody will have the faintest idea what they are buying.
+// A dealer who has spent four months with the badge on their listings and
+// a short link on their van knows exactly what lapsing costs them. A
+// dealer meeting the offer for the first time on 1 February does not.
+//
+// It only works because the Dealer badge became live-derived on
+// 25 Sep 2026 (lib/badges.ts). Before that the badge was frozen at post
+// time, so granting Pro changed nothing a seller could see and the trial
+// would have handed them an invoice-shaped nothing.
+//
+// The grant runs server-side — register_dealer_pro_free_trial() — because
+// prevent_profile_privilege_escalation blocks a user writing
+// dealer_pro_active on themselves, which is the whole reason gating the
+// shop slug on Dealer Pro means anything. The RPC re-checks the date and
+// the "has at least one listing" rule itself; neither is trusted from
+// here.
+//
+// TO CLOSE IT EARLY: set this false. The RPC stays safe either way — it
+// refuses after 31 January regardless of what the app believes.
+const DEALER_PRO_FREE_TRIAL = true;
+const FREE_TRIAL_ENDS = '31 January 2027';
+
 import { useRouter } from 'expo-router';
 import * as WebBrowser from 'expo-web-browser';
 import { useEffect, useState } from 'react';
@@ -104,6 +129,7 @@ export default function DealerProPayScreen() {
   const [verifying, setVerifying] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
+  const [claiming, setClaiming] = useState(false);
 
   useEffect(() => { init(); }, []);
 
@@ -134,6 +160,32 @@ export default function DealerProPayScreen() {
     setExpiresAt(profile?.dealer_pro_expires_at ?? null);
 
     setLoading(false);
+  }
+
+  // Free trial claim. Deliberately NOT routed through create-payment:
+  // no intent, no amount, no transactions row. `transactions` is the
+  // record of money actually taken, and it is also the table to check in
+  // February to confirm Paynow works end to end — a row of zeroes in it
+  // would make an untested payment path look tested.
+  async function handleClaimFreeTrial() {
+    if (!DEALER_PRO_FREE_TRIAL || DEALER_PRO_PAYMENT_OPEN) return;
+
+    setError('');
+    setClaiming(true);
+
+    const { error: rpcError } = await supabase.rpc('register_dealer_pro_free_trial');
+
+    setClaiming(false);
+
+    if (rpcError) {
+      // The RPC's messages are written to be read by a dealer, not a
+      // developer ("Post a listing first — ..."), so they are shown as-is.
+      setError(rpcError.message);
+      return;
+    }
+
+    setSuccess(true);
+    await init();
   }
 
   async function handlePay() {
@@ -217,7 +269,12 @@ export default function DealerProPayScreen() {
             <Text style={styles.successTitle}>Dealer Pro is active</Text>
             {expiresAt && (
               <Text style={styles.successBody}>
-                Renews on {new Date(expiresAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}
+                {/* "Renews" is wrong for a trial — nothing renews, it
+                    stops. Saying so now is cheaper than a dealer finding
+                    out on 1 February. */}
+                {DEALER_PRO_PAYMENT_OPEN
+                  ? `Renews on ${new Date(expiresAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}`
+                  : `Free until ${new Date(expiresAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}, then $${PRICE} for six months`}
               </Text>
             )}
             {/* NEW: active subscribers get the same real, tappable link
@@ -376,6 +433,27 @@ export default function DealerProPayScreen() {
               : <Text style={styles.payBtnText}>Pay ${PRICE.toFixed(2)} with Paynow</Text>
             }
           </TouchableOpacity>
+        ) : DEALER_PRO_FREE_TRIAL ? (
+          <>
+            <TouchableOpacity
+              style={[styles.payBtn, claiming && { opacity: 0.6 }]}
+              onPress={handleClaimFreeTrial}
+              disabled={claiming}
+            >
+              {claiming
+                ? <ActivityIndicator color={BLACK} />
+                : <Text style={styles.payBtnText}>Turn it on free</Text>}
+            </TouchableOpacity>
+            <View style={styles.notOpenBox}>
+              <Text style={styles.notOpenTitle}>Free until {FREE_TRIAL_ENDS}</Text>
+              <Text style={styles.notOpenBody}>
+                Use the whole thing now and see what it does for you. From
+                February it&apos;s ${PRICE} for six months — we&apos;ll tell you before
+                anything changes, and nothing happens to your account until you
+                decide.
+              </Text>
+            </View>
+          </>
         ) : (
           <View style={styles.notOpenBox}>
             <Text style={styles.notOpenTitle}>Opens February 2027</Text>
