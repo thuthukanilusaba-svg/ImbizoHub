@@ -865,12 +865,33 @@ export default function DealerScreen() {
                     <Text style={styles.subManage}>Manage</Text>
                   </TouchableOpacity>
                 ) : (
-                  <View style={[styles.subCard, styles.subCardDisabled]}>
+                  /* FIX (25 Sep 2026): this was a plain View reading
+                     "Coming soon" and it did nothing when tapped — the
+                     only route into the Dealer Pro screen anywhere in
+                     the app was Dashboard → Listing performance → the
+                     locked analytics screen. DEALER_PRO_HIDDEN was set
+                     to false to make the offer visible, and this
+                     surface, the one a seller actually looks at, never
+                     got the change.
+
+                     Now a real button. The wording changed with it:
+                     "Coming soon" describes a product that does not
+                     exist, when what is true is that it exists, you can
+                     read exactly what is in it, and only the payment is
+                     shut. dealer-pro-pay.tsx already says that plainly
+                     and safely — DEALER_PRO_PAYMENT_OPEN is checked
+                     both in the UI and at the top of handlePay(), so
+                     nothing here can reach Paynow. */
+                  <TouchableOpacity
+                    style={styles.subCard}
+                    onPress={() => router.push('/dealer-pro-pay')}
+                  >
                     <View>
                       <Text style={styles.subName}>Dealer Pro Plan</Text>
-                      <Text style={styles.subDetail}>Coming soon</Text>
+                      <Text style={styles.subDetail}>See what&apos;s included · Opens February 2027</Text>
                     </View>
-                  </View>
+                    <Text style={styles.subManage}>View</Text>
+                  </TouchableOpacity>
                 )}
               </View>
             </>
