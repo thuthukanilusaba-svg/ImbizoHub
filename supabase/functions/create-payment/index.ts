@@ -316,9 +316,30 @@ Deno.serve(async (req) => {
       const ownErr = requireOwn(buyer_id, 'buyer_id');
       if (ownErr) return ownErr;
 
-      // FIX: recomputes the real 5% commission from the response's
-      // actual negotiated price, same formula as wanted-responses.tsx
-      // (response.price * 0.05), instead of trusting the client.
+      // Recomputes the real commission from the response's actual
+      // negotiated price instead of trusting the client.
+      //
+      // FIX (25 Sep 2026 — the cap and floor were missing HERE only).
+      // wanted-responses.tsx clamps this fee to $1.50–$15 and has done
+      // since its COMMISSION_CAP/MIN were added; its own comment says
+      // the clamp applies "both here and in create-payment's
+      // server-side validation (which must match or every non-promo
+      // accept would be rejected as 'Incorrect amount')". The client
+      // half landed. This half never did, so the comment described an
+      // agreement that did not exist.
+      //
+      // The consequence was exact: validateAmount() rejects anything
+      // differing by more than a cent, so every match where the clamp
+      // bit — under $30 (floor) or over $300 (cap) — could not start a
+      // payment at all. Both tails of a real marketplace.
+      //
+      // It has been invisible because accept-response-free-promo runs
+      // instead and never calls this function. That promo ends
+      // 2027-01-31, the same day this path goes live.
+      //
+      // Clamped form matches unlock_fee above, wanted-responses.tsx,
+      // the pricing table on the website and Ask Sindie — all four of
+      // which already promise "at least $1.50, never more than $15".
       const { data: responseRow } = await supabase.from('item_responses').select('price').eq('id', item_response_id).maybeSingle();
       if (!responseRow) {
         return new Response(JSON.stringify({ error: 'Response not found' }), {
@@ -326,7 +347,9 @@ Deno.serve(async (req) => {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         });
       }
-      const expectedCommission = parseFloat((responseRow.price * 0.05).toFixed(2));
+      const expectedCommission = parseFloat(
+        Math.max(Math.min(responseRow.price * 0.05, 15), 1.5).toFixed(2)
+      );
       const amountErr = await validateAmount(expectedCommission, 'commission');
       if (amountErr) return amountErr;
 
