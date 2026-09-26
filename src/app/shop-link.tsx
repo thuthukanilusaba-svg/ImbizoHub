@@ -308,6 +308,9 @@ export default function ShopLinkScreen() {
   // back to the person's name only when there is no shop name yet.
   const suggestion = normaliseSlug(shopName || fullName);
 
+  // Whether the claim button is genuinely unusable, as opposed to busy.
+  const claimOff = !!structural || availability === 'taken';
+
   return (
     <View style={styles.container}>
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
@@ -340,9 +343,6 @@ export default function ShopLinkScreen() {
               returnKeyType="done"
               onSubmitEditing={saveShopName}
             />
-            <Text style={styles.note}>
-              This heads your shop page. Your own name still shows underneath it.
-            </Text>
             {shopDraft.trim() !== shopName ? (
               <TouchableOpacity
                 style={styles.secondaryBtn}
@@ -463,8 +463,11 @@ export default function ShopLinkScreen() {
             ) : null}
 
             <View style={styles.statusRow}>
+              {/* The hint shows even when the field is empty. It used to be
+                  hidden until something was typed, which left the screen
+                  with a gold button that did nothing and no reason given. */}
               {structural ? (
-                draft ? <Text style={styles.statusBad}>{structural}</Text> : null
+                <Text style={draft ? styles.statusBad : styles.statusMuted}>{structural}</Text>
               ) : availability === 'checking' ? (
                 <Text style={styles.statusMuted}>Checking…</Text>
               ) : availability === 'free' ? (
@@ -480,14 +483,20 @@ export default function ShopLinkScreen() {
 
             {error ? <View style={styles.errorBox}><Text style={styles.errorText}>⚠️ {error}</Text></View> : null}
 
+            {/* Gold at half opacity still reads as a live button, so a
+                disabled claim looked like a broken one. Off it goes flat
+                grey, which nobody mistakes for something to tap. Saving
+                is not "off" — it keeps the gold and shows the spinner. */}
             <TouchableOpacity
-              style={[styles.primaryBtn, (!!structural || availability === 'taken' || saving) && { opacity: 0.5 }]}
+              style={[styles.primaryBtn, claimOff && styles.primaryBtnOff]}
               onPress={save}
-              disabled={!!structural || availability === 'taken' || saving}
+              disabled={claimOff || saving}
             >
               {saving
                 ? <ActivityIndicator color={BLACK} />
-                : <Text style={styles.primaryBtnText}>{savedSlug ? 'Save new link' : 'Claim this link'}</Text>}
+                : <Text style={[styles.primaryBtnText, claimOff && styles.primaryBtnTextOff]}>
+                    {savedSlug ? 'Save new link' : 'Claim this link'}
+                  </Text>}
             </TouchableOpacity>
 
             {savedSlug && (
@@ -588,6 +597,8 @@ const styles = StyleSheet.create({
 
   primaryBtn: { backgroundColor: GOLD, borderRadius: 14, paddingVertical: 16, alignItems: 'center', marginTop: 18 },
   primaryBtnText: { color: BLACK, fontSize: 15, fontWeight: '800' },
+  primaryBtnOff: { backgroundColor: '#2A2A28', borderWidth: 1, borderColor: '#3A3A36' },
+  primaryBtnTextOff: { color: '#7A7A74' },
   secondaryBtn: { borderWidth: 1.5, borderColor: '#3a3a36', borderRadius: 14, paddingVertical: 15, alignItems: 'center', marginTop: 10 },
   secondaryBtnText: { color: '#fff', fontSize: 14, fontWeight: '700' },
   linkBtn: { paddingVertical: 14, alignItems: 'center' },
