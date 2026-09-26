@@ -66,6 +66,31 @@ export function getUnreadCount() {
  */
 export async function refreshUnreadCount() {
   try {
+    // GUARD (26 Sep 2026): BottomNav calls this on mount, and BottomNav
+    // renders on the public seller page too — so every logged-out visitor,
+    // and every crawler that followed a shared shop link, fired this RPC
+    // and got 401 "permission denied for function". Three in 24h, two of
+    // them Google's Read-Aloud bot.
+    //
+    // The RPC is correctly closed to anon — it reads conversations, and
+    // granting anon EXECUTE to silence the log would hand that query to
+    // every crawler on the internet. The mistake was asking at all.
+    // _layout.tsx already guards startUnreadWatcher on exactly this
+    // condition; BottomNav's own mount-time refresh went around it.
+    //
+    // getSession() reads the locally persisted session and does not hit
+    // the network, so this costs nothing on the signed-in path.
+    const { data: sessionData } = await supabase.auth.getSession();
+    const user = sessionData?.session?.user;
+    if (!user || user.is_anonymous) {
+      // Signed out: the badge is zero, not stale-from-the-last-account.
+      if (currentCount !== 0) {
+        currentCount = 0;
+        emit();
+      }
+      return;
+    }
+
     const { data, error } = await supabase.rpc('my_unread_conversation_count');
     if (error) {
       // Not fatal and not worth interrupting anyone over — a stale badge is

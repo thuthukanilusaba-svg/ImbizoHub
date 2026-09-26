@@ -83,6 +83,10 @@ export default function SellerProfileScreen() {
 
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
+  // Distinct from notFound on purpose — see load(). "This seller does not
+  // exist" and "we could not read this seller" are different facts and
+  // need different screens, because only one of them is worth retrying.
+  const [loadError, setLoadError] = useState(false);
   const [profile, setProfile] = useState<any>(null);
   const [listings, setListings] = useState<any[]>([]);
   // Only ratings that carry written text — see load().
@@ -106,6 +110,10 @@ export default function SellerProfileScreen() {
   async function load() {
     if (!id) { setNotFound(true); setLoading(false); return; }
     setLoading(true);
+    // Reset both, or "Try again" can only ever show the failure it was
+    // rendered from.
+    setNotFound(false);
+    setLoadError(false);
 
     const { data: profileData, error: profileError } = await supabase
       .from('profiles')
@@ -113,7 +121,25 @@ export default function SellerProfileScreen() {
       .eq('id', id)
       .maybeSingle();
 
-    if (profileError || !profileData) {
+    // FIX (26 Sep 2026): these two were one branch, and both showed
+    // "Seller not found".
+    //
+    // On 26 Sep that cost hours. profiles.slug and profiles.business_name
+    // had no column grant, so every select naming them returned 403 —
+    // seventeen of them in the logs — and this screen reported a missing
+    // seller for a profile that was sitting right there. The page was
+    // correct that it had no data and wrong about why, and the wrong half
+    // is the half a person reads.
+    //
+    // A missing seller is final. A failed read is not, so it gets a retry.
+    if (profileError) {
+      console.log('seller profile load failed:', profileError.message);
+      setLoadError(true);
+      setLoading(false);
+      return;
+    }
+
+    if (!profileData) {
       setNotFound(true);
       setLoading(false);
       return;
@@ -255,6 +281,27 @@ export default function SellerProfileScreen() {
     return (
       <View style={styles.center}>
         <ActivityIndicator size="large" color={GOLD} />
+      </View>
+    );
+  }
+
+  // Deliberately NOT the same screen as notFound. This one does not claim
+  // anything about the seller — only that we could not load the page —
+  // and it offers the retry that a transient failure deserves.
+  if (loadError) {
+    return (
+      <View style={styles.center}>
+        <Text style={styles.notFoundEmoji}>⚠️</Text>
+        <Text style={styles.notFoundTitle}>Couldn&apos;t load this page</Text>
+        <Text style={styles.loadErrorHint}>
+          Something went wrong at our end. The seller is probably fine.
+        </Text>
+        <TouchableOpacity style={styles.backBtnCentered} onPress={load}>
+          <Text style={styles.backBtnCenteredText}>Try again</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={[styles.backBtnCentered, styles.retryGap]} onPress={() => router.replace('/')}>
+          <Text style={styles.backBtnCenteredText}><Text style={styles.backArrow}>‹</Text> Back to home</Text>
+        </TouchableOpacity>
       </View>
     );
   }
@@ -508,6 +555,8 @@ const styles = StyleSheet.create({
   notFoundEmoji: { fontSize: 48, marginBottom: 16 },
   notFoundTitle: { color: '#fff', fontSize: 18, fontWeight: '800', marginBottom: 24 },
   backBtnCentered: { backgroundColor: DARK, borderRadius: 12, paddingVertical: 12, paddingHorizontal: 24 },
+  loadErrorHint: { color: '#A9A9A4', fontSize: 14, lineHeight: 20, textAlign: 'center', marginTop: -12, marginBottom: 22, paddingHorizontal: 28 },
+  retryGap: { marginTop: 10 },
   backBtnCenteredText: { color: '#fff', fontSize: 14, fontWeight: '600' },
 
   identitySection: { alignItems: 'center', marginBottom: 24 },
