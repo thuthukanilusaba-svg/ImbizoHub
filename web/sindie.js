@@ -59,12 +59,12 @@
     {
       q: 'What is Dealer Pro?',
       k: 'dealer pro dealers volume bulk business trader shop link badge subscription 30 six months',
-      a: 'Dealer Pro is for people selling at volume rather than clearing out a spare room. It opens in February 2027 and costs $30 for six months.\n\nIt gives you a Dealer badge on every listing you post, your own short link — imbizohub.com/s/yourname — to put on your status or your van instead of a long address, and real figures on how your listings are doing.\n\nMost of what a dealer needs is free and already works: listing as much as you like, importing your whole catalogue from a WhatsApp broadcast, and one page showing everything you have for sale that you can share with anybody. Dealer Pro is the extra on top, not the way in.\n\nYou can open it in the app today to read what is included.'
+      a: 'Dealer Pro is for people selling at volume rather than clearing out a spare room. You can turn it on today and it is free until 31 January 2027. After that it is $30 for six months.\n\nIt gives you a Dealer badge on your listings, your business name at the top of your shop page with your own name underneath it, your own short link — imbizohub.com/s/yourshop — to put on your status or your van instead of a long address, and real figures on how your listings are doing.\n\nMost of what a dealer needs is free and already works: listing as much as you like, importing your whole catalogue from a WhatsApp broadcast, and one page showing everything you have for sale that you can share with anybody. Dealer Pro is the extra on top, not the way in.\n\nYou can open it in the app today to read what is included.'
     },
     {
       q: 'What is Meet & Pay?',
       k: 'meet pay pin safe safety scam robbed trust handover confirm',
-      a: 'It is how a deal is closed in person without either side having to simply trust the other.\n\nYou agree to meet. Each side gets a PIN. The item is inspected before any money changes hands, both people confirm the deal is done, and only then does it close and the rating open.\n\nWe never hold your money — you pay the seller directly.'
+      a: 'It is how a deal is closed in person without either side having to simply trust the other.\n\nYou meet, and you inspect the item before any money changes hands. You pay the seller face to face — cash, EcoCash, however you agreed. The seller then generates a four-digit PIN on their phone and reads it to you, and you type it into yours. It is good for fifteen minutes.\n\nBecause the only way you can have that PIN is if the seller handed it to you in person, entering it is proof the two of you met and the deal is done. The listing then closes itself and you can both rate each other.\n\nWe never hold your money — you pay the seller directly.'
     },
     {
       q: 'Is it safe to meet someone from the app?',
@@ -79,7 +79,7 @@
     {
       q: 'Do I need an account to look around?',
       k: 'account sign up register login browse look free anonymous',
-      a: 'No. You can browse listings, read Wanted posts and see how everything works without an account.\n\nYou only need one when you want your conversations and posts kept somewhere you can come back to.'
+      a: 'No. You can browse listings, read Wanted posts and see how everything works without an account.\n\nYou only need one when you want your conversations and posts kept somewhere you can come back to.\n\nAnd when you do sign up, any email address works — Yahoo, Outlook, iCloud, your work address. The Google button is only a shortcut, not a requirement, and there is no confirmation email to wait for.'
     },
     {
       q: 'How do I delete my account?',
