@@ -9,6 +9,7 @@ import { buildListingHref } from '../../lib/listingNav';
 import { useIsDesktopWeb } from '../../lib/responsive';
 import { formatPrice } from '../../lib/money';
 import { supabase } from '../../lib/supabase';
+import { firstNameFrom, initialsFrom } from '../../lib/initials';
 import { CATEGORIES, CATEGORY_OTHER } from '../../lib/categories';
 import { BADGE_PROFILE_COLUMNS, listingBadge } from '../../lib/badges';
 
@@ -103,12 +104,6 @@ const categories = [
   { icon: '⋯', label: 'More' },
 ];
 
-function getInitials(name: string): string {
-  if (!name) return '👤';
-  const parts = name.trim().split(/\s+/);
-  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
-  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
-}
 
 function getGreeting(): string {
   const hour = new Date().getHours();
@@ -155,7 +150,14 @@ export default function HomeScreen() {
     const { data: profile } = await supabase.rpc('my_profile').single();
 
     if (profile?.full_name) {
-      setUserName(profile.full_name.split(' ')[0]);
+      // THE WHOLE name. This used to keep only the first word, because
+      // the greeting wants a first name — and then handed that same
+      // truncated string to the initials function, which correctly saw a
+      // single word and returned two letters of it. "Thuthukani Lusaba"
+      // became "Thuthukani" became TH, while every other screen showed
+      // TL for the same person. The greeting takes its first name at
+      // render instead; the circle needs the surname.
+      setUserName(profile.full_name);
     }
 
     setAvatarUrl(profile?.avatar_url ?? null);
@@ -285,7 +287,7 @@ export default function HomeScreen() {
               </Text>
             </View>
             <Text style={styles.greeting}>
-              {userName ? `${getGreeting()}, ${userName}` : getGreeting()}
+              {userName ? `${getGreeting()}, ${firstNameFrom(userName)}` : getGreeting()}
             </Text>
           </View>
           {/* Tappable, and shows the real photo once one is uploaded.
@@ -303,7 +305,7 @@ export default function HomeScreen() {
               <Image source={{ uri: avatarUrl }} style={styles.avatar} />
             ) : (
               <View style={styles.avatar}>
-                <Text style={styles.avatarText}>{getInitials(userName)}</Text>
+                <Text style={styles.avatarText}>{initialsFrom(userName)}</Text>
               </View>
             )}
           </TouchableOpacity>

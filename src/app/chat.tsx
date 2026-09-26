@@ -78,6 +78,7 @@ import {
 import PhotoZoomViewer from '../../components/PhotoZoomViewer';
 import { openChannel } from '../../lib/realtime';
 import { supabase } from '../../lib/supabase';
+import { initialsFrom } from '../../lib/initials';
 import { useWebKeyboardInset } from '../../lib/useWebKeyboardInset';
 import { markConversationRead } from '../../lib/unreadMessages';
 import { prepareUpload } from '../../lib/uploadHelpers';
@@ -107,12 +108,6 @@ function formatTripDate(value: string): string {
   }
 }
 
-function getInitials(name: string): string {
-  if (!name) return '👤';
-  const parts = name.trim().split(/\s+/);
-  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
-  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
-}
 
 export default function ChatScreen() {
   const router = useRouter();
@@ -1718,7 +1713,7 @@ export default function ChatScreen() {
           </TouchableOpacity>
           <View style={styles.avatarWrap}>
             <View style={styles.avatar}>
-              <Text style={styles.avatarText}>{getInitials(otherPersonName)}</Text>
+              <Text style={styles.avatarText}>{initialsFrom(otherPersonName)}</Text>
             </View>
             <View style={styles.onlineDot} />
           </View>
@@ -1966,7 +1961,7 @@ export default function ChatScreen() {
               <View style={[styles.msgRow, isMine && styles.msgRowMine]}>
                 {!isMine && (
                   <View style={styles.msgAvatar}>
-                    <Text style={styles.msgAvatarText}>{getInitials(otherPersonName)}</Text>
+                    <Text style={styles.msgAvatarText}>{initialsFrom(otherPersonName)}</Text>
                   </View>
                 )}
                 <View style={styles.bubble}>

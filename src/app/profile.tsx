@@ -86,6 +86,7 @@ import { DELIVERY_BOOKING_ENABLED, DELIVERY_OPERATOR_SIGNUP_PAUSED_MESSAGE, DELI
 import { normalizeImageOrientation } from '../../lib/imageOrientation';
 import { isProNow } from '../../lib/badges';
 import { supabase } from '../../lib/supabase';
+import { initialsFrom } from '../../lib/initials';
 import CityPicker from '../../components/CityPicker';
 import { prepareUpload } from '../../lib/uploadHelpers';
 import { checkName } from '../../lib/nameValidation';
@@ -511,9 +512,10 @@ export default function ProfileScreen() {
     router.replace('/login');
   }
 
+  // Was: first letter of the first TWO words, so "Tatenda John Dube"
+  // showed TJ here and TD in the inbox. One rule now, in lib/initials.
   function initials() {
-    if (fullName) return fullName.split(' ').map((w) => w[0]).join('').slice(0, 2).toUpperCase();
-    return email ? email[0].toUpperCase() : '?';
+    return initialsFrom(fullName, email ? email[0].toUpperCase() : '?');
   }
 
   function joinedDate() {

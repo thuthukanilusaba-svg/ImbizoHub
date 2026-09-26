@@ -98,22 +98,25 @@ function escapeHtml(s: string): string {
 // (1200x630) rendered into a 104px circle, which came out as a squashed
 // strip of the landing-page artwork.
 //
-// NOTE: the app contains two different initials implementations —
-// seller.tsx's initials() renders a one-word name as a single letter
-// ("Masha" -> "M"), while chat.tsx's getInitials() takes two ("MA").
-// This follows chat.tsx's version, which reads better in a large
-// circle. Worth unifying them in the app at some point; they should not
-// disagree.
+// UNIFIED (26 Sep 2026). The note that used to sit here said the app had
+// two disagreeing implementations and that it was "worth unifying them at
+// some point". There were six, and this was the seventh.
+//
+// The app now has exactly one, in lib/initials.ts. This is a deliberate
+// hand-copy of it — an edge function cannot import from the app tree, and
+// bundling one file for one function is not worth the build step. Keep
+// the two in step BY HAND: the rule is first letter of the first and
+// LAST name ("Tatenda John Dube" -> TD, not TJ), two letters for a
+// single-word name, and the caller's fallback for nothing at all.
+//
+// This copy previously took the first letter of the first two words, so
+// a three-part name rendered differently on a shared link than it did
+// anywhere in the app.
 function initialsFor(fullName: string): string {
-  const name = (fullName || '').trim();
-  if (!name) return '?';
-  const parts = name.split(/\s+/);
+  const parts = (fullName || '').trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return '?';
   if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
-  return parts
-    .map((w) => w[0])
-    .join('')
-    .slice(0, 2)
-    .toUpperCase();
+  return ((parts[0][0] ?? '') + (parts[parts.length - 1][0] ?? '')).toUpperCase() || '?';
 }
 
 // Only accept something that actually looks like a profile id. Without

@@ -42,6 +42,7 @@ import {
 import { buildListingHref } from '../../lib/listingNav';
 import { formatPrice } from '../../lib/money';
 import { supabase } from '../../lib/supabase';
+import { initialsFrom } from '../../lib/initials';
 
 const GOLD = '#B8860B';
 const BLACK = '#1A1A18';
@@ -240,9 +241,9 @@ export default function SellerProfileScreen() {
     }
   }
 
+  // See lib/initials — this used to disagree with the inbox.
   function initials() {
-    if (!profile?.full_name) return '?';
-    return profile.full_name.split(' ').map((w: string) => w[0]).join('').slice(0, 2).toUpperCase();
+    return initialsFrom(profile?.full_name, '?');
   }
 
   function joinedDate() {

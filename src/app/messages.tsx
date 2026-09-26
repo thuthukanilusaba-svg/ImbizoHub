@@ -33,6 +33,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import BottomNav from '../../components/BottomNav';
 import { supabase } from '../../lib/supabase';
+import { initialsFrom } from '../../lib/initials';
 
 const GOLD = '#B8860B';
 const BLACK = '#1A1A18';
@@ -119,12 +120,6 @@ function groupByPerson(convos: Conversation[]): PersonGroup[] {
   return groups;
 }
 
-function getInitials(name: string): string {
-  if (!name) return '👤';
-  const parts = name.trim().split(/\s+/);
-  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
-  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
-}
 
 export default function MessagesScreen() {
   const router = useRouter();
@@ -461,7 +456,7 @@ export default function MessagesScreen() {
                   disabled={!single}
                 >
                   <View style={styles.avatar}>
-                    <Text style={styles.avatarText}>{getInitials(person.otherName)}</Text>
+                    <Text style={styles.avatarText}>{initialsFrom(person.otherName)}</Text>
                   </View>
                   <View style={styles.convoBody}>
                     <View style={styles.convoTopRow}>

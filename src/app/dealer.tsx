@@ -81,6 +81,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import BottomNav from '../../components/BottomNav';
 import { shopLinkDisplay } from '../../lib/slug';
 import { supabase } from '../../lib/supabase';
+import { initialsFrom } from '../../lib/initials';
 import {
   DELIVERY_BOOKING_ENABLED,
   DELIVERY_OPERATOR_SIGNUP_PAUSED_MESSAGE,
@@ -402,9 +403,9 @@ export default function DealerScreen() {
     return map[status] ?? status;
   }
 
+  // See lib/initials — this used to disagree with the inbox.
   function myInitials() {
-    if (myFullName) return myFullName.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
-    return myEmail ? myEmail[0].toUpperCase() : '?';
+    return initialsFrom(myFullName, myEmail ? myEmail[0].toUpperCase() : '?');
   }
 
   const isDeliveryOperator = !!deliveryOperator;
