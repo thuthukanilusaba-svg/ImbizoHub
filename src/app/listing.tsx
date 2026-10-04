@@ -360,6 +360,20 @@ export default function ListingScreen() {
 
   const isOwner = myId === listing.user_id;
   const isSold = listing.status === 'sold';
+  // FIX (3 Oct 2026): 'sold' had a whole visual state — overlay, badge,
+  // greyed price, a buyer action bar that says so — and 'removed' had
+  // none of it. This screen deliberately fetches by id with no status
+  // filter (see load() and the reasoning above it), so a withdrawn
+  // listing still opens from an old chat or a forwarded link — and it
+  // opened looking completely live. A buyer started Meet & Pay on a
+  // phone that had been off the market for nineteen days.
+  //
+  // Withdrawn is NOT sold and must not say "sold": the seller may put it
+  // back, and telling a buyer it sold when it did not is its own small
+  // lie. But the practical fact for a buyer is the same — you cannot buy
+  // this, so do not travel for it.
+  const isWithdrawn = listing.status === 'removed' || listing.status === 'removed_by_admin';
+  const isUnavailable = isSold || isWithdrawn;
 
   // Ratio for whichever photo is currently active/centered — 1 (square)
   // until its real dimensions arrive from Image.getSize(), so there's
@@ -494,9 +508,9 @@ export default function ListingScreen() {
             </View>
           )}
 
-          {isSold && (
+          {isUnavailable && (
             <View style={styles.soldOverlay}>
-              <Text style={styles.soldOverlayText}>SOLD</Text>
+              <Text style={styles.soldOverlayText}>{isSold ? 'SOLD' : 'NOT AVAILABLE'}</Text>
             </View>
           )}
         </View>
@@ -509,9 +523,9 @@ export default function ListingScreen() {
         <View style={styles.details}>
           <View style={styles.titleRow}>
             <Text style={styles.title}>{listing.title}</Text>
-            {isSold ? (
+            {isUnavailable ? (
               <View style={styles.soldBadge}>
-                <Text style={styles.soldBadgeText}>SOLD</Text>
+                <Text style={styles.soldBadgeText}>{isSold ? 'SOLD' : 'TAKEN DOWN'}</Text>
               </View>
             ) : sellerVerified ? (
               <View style={styles.badgeVerified}>
@@ -531,7 +545,7 @@ export default function ListingScreen() {
             })()}
           </View>
 
-          <Text style={[styles.price, isSold && { color: GREY }]}>${formatPrice(listing.price)}</Text>
+          <Text style={[styles.price, isUnavailable && { color: GREY }]}>${formatPrice(listing.price)}</Text>
           <Text style={styles.location}>📍 {listing.location}</Text>
 
           {listing.description ? (
@@ -552,7 +566,7 @@ export default function ListingScreen() {
             </View>
           ) : null}
 
-          {isOwner && !isSold && (
+          {isOwner && !isUnavailable && (
             <View style={styles.promoRow}>
               {!listing.featured_until || new Date(listing.featured_until).getTime() < Date.now() ? (
                 <TouchableOpacity
@@ -657,10 +671,15 @@ export default function ListingScreen() {
             <Text style={styles.chatBtnText}>💬 Message buyers</Text>
           </TouchableOpacity>
         </View>
-      ) : isSold ? (
+      ) : isUnavailable ? (
+        // No "Message seller" here on purpose. The point is to stop the
+        // conversation that ends with someone crossing town for an item
+        // that is not for sale.
         <View style={[styles.actionBar, { paddingBottom: 16 + insets.bottom }]}>
           <View style={[styles.chatBtn, { backgroundColor: DARK }]}>
-            <Text style={[styles.chatBtnText, { color: GREY }]}>This item has been sold</Text>
+            <Text style={[styles.chatBtnText, { color: GREY }]}>
+              {isSold ? 'This item has been sold' : 'This listing is no longer for sale'}
+            </Text>
           </View>
         </View>
       ) : (
