@@ -112,6 +112,26 @@ export default function BrowseWantedScreen() {
   // Which card is mid-check, so its button can show a spinner instead
   // of appearing dead for the moment the lookup takes.
   const [checkingId, setCheckingId] = useState<string | null>(null);
+  // FIX (4 Oct 2026): the description was clamped to two lines and the
+  // card had no onPress at all — so tapping a want did nothing, and there
+  // is no detail screen to open. A seller could read one line of what
+  // somebody wanted and was then asked to quote a price for it.
+  //
+  // The want that exposed it: "Wedding Camera man", whose description is
+  // a NUMBERED LIST of requirements. One visible line is not something
+  // anyone can price a wedding from.
+  //
+  // Expanded per card rather than globally: the list is for scanning, and
+  // forcing every long want open makes it unscannable.
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
+
+  function toggleExpanded(id: string) {
+    setExpandedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }
   // Shown when a want turned out to be gone. Sits above the list
   // rather than in an alert, so it survives the refresh that follows
   // and reads as an explanation for the card vanishing.
@@ -434,9 +454,32 @@ export default function BrowseWantedScreen() {
                 </View>
               </View>
 
-              {item.description ? (
-                <Text style={styles.cardDesc} numberOfLines={2}>{item.description}</Text>
-              ) : null}
+              {item.description ? (() => {
+                const expanded = expandedIds.has(item.id);
+                // Only offer "more" when there is actually more. Clamping
+                // to 2 lines is a line count, not a character count, so
+                // this is a deliberate approximation: ~2 lines of this
+                // card is roughly 90 characters, and a newline means the
+                // author wrote a list, which always has more below it.
+                const hasMore = item.description.length > 90 || item.description.includes('\n');
+                return (
+                  <TouchableOpacity
+                    activeOpacity={hasMore ? 0.7 : 1}
+                    onPress={hasMore ? () => toggleExpanded(item.id) : undefined}
+                    accessibilityRole={hasMore ? 'button' : undefined}
+                    accessibilityLabel={hasMore ? (expanded ? 'Show less' : 'Show the full description') : undefined}
+                  >
+                    <Text style={styles.cardDesc} numberOfLines={expanded ? undefined : 2}>
+                      {item.description}
+                    </Text>
+                    {hasMore ? (
+                      <Text style={styles.moreLink}>
+                        {expanded ? 'Show less' : 'Read more'}
+                      </Text>
+                    ) : null}
+                  </TouchableOpacity>
+                );
+              })() : null}
 
               <View style={styles.chips}>
                 {budget && <Chip label={`💰 ${budget}`} />}
@@ -699,7 +742,8 @@ const styles = StyleSheet.create({
   cardTitle: { color: '#fff', fontSize: 15, fontWeight: '700', flex: 1 },
   categoryBadge: { backgroundColor: '#3a2800', borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3 },
   categoryBadgeText: { color: GOLD, fontSize: 10, fontWeight: '700' },
-  cardDesc: { color: GREY, fontSize: 13, lineHeight: 18, marginBottom: 10 },
+  cardDesc: { color: GREY, fontSize: 13, lineHeight: 18, marginBottom: 4 },
+  moreLink: { color: GOLD, fontSize: 12.5, fontWeight: '700', marginBottom: 10 },
 
   chips: { flexDirection: 'row', gap: 8, marginBottom: 12, flexWrap: 'wrap' },
   chip: { backgroundColor: DARK, borderRadius: 20, paddingHorizontal: 10, paddingVertical: 4, borderWidth: 0.5, borderColor: '#333' },
