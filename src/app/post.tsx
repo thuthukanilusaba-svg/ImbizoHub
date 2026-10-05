@@ -89,7 +89,21 @@ export default function PostScreen() {
   const [description, setDescription] = useState('');
   const [price, setPrice] = useState('');
   const [location, setLocation] = useState('');
-  const [category, setCategory] = useState('Phones');
+  // FIX (5 Oct 2026). This was useState('Phones') with nothing requiring
+  // a choice, so a seller who filled in title, price and location and
+  // tapped Post filed their listing under Phones whatever it was.
+  //
+  // The identical bug was found and fixed in post-wanted.tsx, whose own
+  // header records three real Wanted posts landing under Phones because
+  // the default was never changed. This screen — the one that matters
+  // more — never got the same treatment.
+  //
+  // It became load-bearing on 5 Oct: seller-preview decides whether a
+  // shop page reads "A seller" or "A service provider" by counting
+  // listings in the Services category. A photographer whose listing
+  // defaulted to Phones is called a seller, correctly, from data that
+  // the form invented on her behalf.
+  const [category, setCategory] = useState('');
   const [images, setImages] = useState<{ uri: string; uploading: boolean; url?: string; aspectRatio: number }[]>([]);
   const [posting, setPosting] = useState(false);
 
@@ -286,6 +300,14 @@ export default function PostScreen() {
 
     if (!title || !price || !location) {
       setError('Please fill in title, price, and location.');
+      return;
+    }
+
+    // Checked separately from the three above so the message can name the
+    // field. "Please fill in title, price, location and category" sends
+    // someone back to re-read inputs they already filled in.
+    if (!category) {
+      setError('Please choose a category.');
       return;
     }
 
@@ -556,7 +578,7 @@ export default function PostScreen() {
             placeholder="Select your city"
           />
 
-          <Text style={styles.label}>Category</Text>
+          <Text style={styles.label}>Category *</Text>
           {/* FIX (reported on web): this was a horizontal RNScrollView
               with showsHorizontalScrollIndicator={false}. On a phone
               that's fine — you swipe. On desktop web there is no swipe,
@@ -584,6 +606,12 @@ export default function PostScreen() {
               </TouchableOpacity>
             ))}
           </View>
+          {/* Shown only while nothing is chosen. A hint that stays put
+              after you have obeyed it reads as an unfixed error. Matches
+              post-wanted.tsx word for word. */}
+          {!category ? (
+            <Text style={styles.categoryHint}>Tap a category above — required before posting.</Text>
+          ) : null}
 
           <Text style={styles.label}>Description</Text>
           {/* Not "the item's condition" any more. Services became a
@@ -669,6 +697,7 @@ const styles = StyleSheet.create({
   textArea: { height: 90, textAlignVertical: 'top', paddingTop: 10 },
 
   categoryWrap: { flexDirection: 'row', flexWrap: 'wrap', marginBottom: 4 },
+  categoryHint: { color: '#ff8a8a', fontSize: 11, marginTop: 2, marginBottom: 4 },
   // marginBottom matches marginRight so the two rows sit as evenly as
   // the chips do side by side.
   categoryChip: { backgroundColor: DARK, borderRadius: 20, paddingHorizontal: 14, paddingVertical: 8, marginRight: 8, marginBottom: 8, borderWidth: 0.5, borderColor: '#333' },

@@ -300,6 +300,44 @@ Deno.serve(async (req) => {
   const items = listings ?? [];
   const totalItems = listingCount ?? items.length;
 
+  // ── Shop, service provider, or both? ────────────────────────────────
+  // DERIVED, not a flag on the profile. Same argument hirevan.tsx makes
+  // for truck availability: a flag a human has to remember to set is a
+  // flag that goes stale, and this page already knows what the person
+  // has listed. A photographer becomes "a service provider" the day they
+  // list a service, and stops being one if they stop.
+  //
+  // head:true because only the number is wanted — the grid above already
+  // fetched the rows it renders. This is a count, not a second page of
+  // listings.
+  //
+  // Depends on the 'Services' category added 5 Oct 2026 (lib/categories.ts).
+  // The string is matched by hand here: an edge function cannot import
+  // from the app tree. If that label is ever RENAMED, this silently
+  // falls back to calling everybody a seller — which is the old
+  // behaviour, not a crash, but it is wrong. Same hand-sync caveat as
+  // SLUG_RE and initialsFor above.
+  const { count: serviceCount } = await supabase
+    .from('listings')
+    .select('id', { count: 'exact', head: true })
+    .eq('user_id', id)
+    .eq('status', 'active')
+    .eq('category', 'Services');
+
+  const services = serviceCount ?? 0;
+  const goods = Math.max(totalItems - services, 0);
+  const trade: 'services' | 'mixed' | 'goods' =
+    services > 0 && goods === 0 ? 'services' : services > 0 ? 'mixed' : 'goods';
+
+  // What to call one of their listings. "3 items" under a photographer's
+  // name reads as though they are selling cameras.
+  const unit = (n: number) => {
+    const one = n === 1;
+    if (trade === 'services') return one ? 'service' : 'services';
+    if (trade === 'mixed') return one ? 'listing' : 'listings';
+    return one ? 'item' : 'items';
+  };
+
   // The trading name heads the page; the person's name goes under it in
   // small type. business_name is Dealer Pro only and null for everyone
   // else, so an ordinary seller's card is byte-for-byte what it was.
@@ -312,18 +350,36 @@ Deno.serve(async (req) => {
   const traderName = profile.business_name && profile.full_name
     ? escapeHtml(profile.full_name)
     : null;
+  // The unrated line names what this person IS. The rated line already
+  // carries "on ImbizoHub" and no noun at all, so it needs no change —
+  // and a rating is the better thing to lead with once one exists.
+  const roleText =
+    trade === 'services'
+      ? 'A service provider on ImbizoHub'
+      : trade === 'mixed'
+        ? 'Goods and services on ImbizoHub'
+        : 'A seller on ImbizoHub';
+
   const ratingText =
     profile.rating_count > 0
       ? `${Number(profile.rating).toFixed(1)}★ (${profile.rating_count} review${profile.rating_count === 1 ? '' : 's'}) on ImbizoHub`
-      : 'A seller on ImbizoHub';
+      : roleText;
 
-  // What WhatsApp and Facebook show under the link. The item count goes
-  // FIRST because it is the only part that says there is something to
-  // look at — "4.8★ (23 reviews)" describes a person, "24 items for
-  // sale" describes a shop.
-  const shareText = totalItems > 0
-    ? `${totalItems} item${totalItems === 1 ? '' : 's'} for sale · ${ratingText}`
-    : ratingText;
+  // What WhatsApp and Facebook show under the link. The count goes FIRST
+  // because it is the only part that says there is something to look at
+  // — "4.8★ (23 reviews)" describes a person, "24 items for sale"
+  // describes a shop.
+  const offerText =
+    trade === 'services'
+      ? `${totalItems} ${unit(totalItems)} offered`
+      : trade === 'mixed'
+        // Bare count here, because roleText right after it already says
+        // "Goods and services" — spelling it out twice read as a stutter
+        // in the preview card.
+        ? `${totalItems} ${unit(totalItems)}`
+        : `${totalItems} ${unit(totalItems)} for sale`;
+
+  const shareText = totalItems > 0 ? `${offerText} · ${ratingText}` : ratingText;
 
   // og:image still falls back to the site banner — that IS the right
   // image for a WhatsApp card. Only the on-page avatar differs, because
@@ -391,8 +447,8 @@ Deno.serve(async (req) => {
 
   const catalogue = items.length === 0 ? '' : `
   <div class="cat-head">
-    <span class="cat-title">Catalogue</span>
-    <span class="cat-count">${totalItems} item${totalItems === 1 ? '' : 's'}</span>
+    <span class="cat-title">${trade === 'services' ? 'Services' : 'Catalogue'}</span>
+    <span class="cat-count">${totalItems} ${unit(totalItems)}</span>
   </div>
   <div class="grid">
     ${items.map((it: any) => `
@@ -407,7 +463,7 @@ Deno.serve(async (req) => {
     </a>`).join('')}
   </div>
   ${totalItems > items.length
-    ? `<a class="more" href="${webUrl}">See all ${totalItems} items \u2192</a>`
+    ? `<a class="more" href="${webUrl}">See all ${totalItems} ${unit(totalItems)} \u2192</a>`
     : ''}`;
 
   const head = `
