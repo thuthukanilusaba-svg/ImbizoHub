@@ -559,9 +559,39 @@ export default function BrowseWantedScreen() {
             {!submitted ? (
               <>
                 <Text style={styles.modalTitle}>Your response</Text>
-                {selected && (
-                  <Text style={styles.modalItemTitle}>{selected.title}</Text>
-                )}
+
+                {/* FIX (5 Oct 2026). This was the title alone — four words
+                    like "Wedding Camera man" — sitting directly above a
+                    REQUIRED price field. The seller was being asked to name
+                    a number against a sentence fragment, while the date,
+                    the venue and the conditions stayed in a description
+                    they had no way to see from inside this modal. The post
+                    that exposed it asked for a camera man for 18 December
+                    at Hillside, with traceable references, and sat four
+                    days with zero responses.
+
+                    Shown in full, not truncated: the modal body is already
+                    a ScrollView, and the requirement you are quoting on is
+                    the one thing worth scrolling for. */}
+                {selected ? (() => {
+                  const meta = [
+                    budgetLabel(selected.budget_min, selected.budget_max),
+                    selected.location,
+                  ].filter(Boolean).join('  ·  ');
+                  return (
+                    <View style={styles.askCard}>
+                      <Text style={styles.askTitle}>{selected.title}</Text>
+                      {meta ? <Text style={styles.askMeta}>{meta}</Text> : null}
+                      {selected.description ? (
+                        <Text style={styles.askDesc}>{selected.description}</Text>
+                      ) : (
+                        <Text style={styles.askNone}>
+                          No extra details given — ask in your message.
+                        </Text>
+                      )}
+                    </View>
+                  );
+                })() : null}
 
                 <Text style={styles.modalLabel}>Your price (USD) *</Text>
                 <TextInput
@@ -773,6 +803,17 @@ const styles = StyleSheet.create({
   },
   modalTitle: { fontSize: 18, fontWeight: '800', color: '#fff', marginBottom: 4 },
   modalItemTitle: { fontSize: 13, color: GREY, marginBottom: 16 },
+  // What the buyer actually asked for, quoted back inside the response
+  // sheet. Boxed rather than loose text so it reads as THEIR words and
+  // not as a label belonging to the price field underneath it.
+  askCard: {
+    backgroundColor: '#1C1C1A', borderWidth: 1, borderColor: '#2E2E2A',
+    borderRadius: 12, padding: 12, marginTop: 10, marginBottom: 2,
+  },
+  askTitle: { color: '#fff', fontSize: 15, fontWeight: '800', marginBottom: 4 },
+  askMeta: { color: GOLD, fontSize: 12.5, fontWeight: '700', marginBottom: 8 },
+  askDesc: { color: GREY, fontSize: 13, lineHeight: 19 },
+  askNone: { color: '#777', fontSize: 12.5, fontStyle: 'italic' },
   modalLabel: { fontSize: 13, fontWeight: '700', color: '#fff', marginBottom: 6, marginTop: 14 },
   modalInput: {
     backgroundColor: DARK, borderRadius: 10,

@@ -586,9 +586,13 @@ export default function PostScreen() {
           </View>
 
           <Text style={styles.label}>Description</Text>
+          {/* Not "the item's condition" any more. Services became a
+              category on 5 Oct 2026, and a photographer reading a field
+              that only asks about condition reasonably concludes this
+              screen is not for them. */}
           <TextInput
             style={[styles.input, styles.textArea]}
-            placeholder="Describe the item's condition, features..."
+            placeholder="Condition and features — or what the service includes..."
             placeholderTextColor="#666"
             value={description}
             onChangeText={setDescription}

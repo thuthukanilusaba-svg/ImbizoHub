@@ -315,9 +315,13 @@ export default function PostWantedScreen() {
           />
 
           <Text style={styles.label}>More details (optional)</Text>
+          {/* "Dates" added for services: the Wanted post that prompted the
+              Services category was "Wedding Camera man", where the date is
+              the single most important detail and the field did not ask
+              for it. */}
           <TextInput
             style={[styles.input, styles.textArea]}
-            placeholder="Condition, color, anything specific you need..."
+            placeholder="Condition, colour, dates — anything specific you need..."
             placeholderTextColor="#666"
             value={description}
             onChangeText={setDescription}

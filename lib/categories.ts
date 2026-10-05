@@ -43,8 +43,28 @@ export const CATEGORIES: readonly Category[] = [
   { icon: '🛋️', label: 'Furniture' },
   { icon: '👕', label: 'Clothing' },
   { icon: '🏠', label: 'Appliances' },
+  // ADDED 5 Oct 2026. Every one of the nine categories before this was a
+  // thing you can put in a van. A photographer, a plumber, a tutor or a
+  // welder had nowhere to file themselves except 'Other', which is where
+  // the only Wanted post of 4 Oct — "Wedding Camera man" — ended up.
+  // That is a real person asking for a service and the list having no
+  // word for it.
+  //
+  // POSITION IS LOAD-BEARING, not alphabetical. index.tsx shows the
+  // first seven non-'Other' entries on the home grid and hides the rest
+  // behind More, so seventh is the last visible slot. Put at the end
+  // instead, Services would exist in the posting form and in /explore
+  // and be invisible on the screen everybody opens — which is most of
+  // the way back to having no Services category at all.
+  //
+  // This pushes Building to eighth, behind More. Deliberate: Building
+  // has nothing to find yet either, and a category nobody can see is a
+  // category nobody posts in. Move this line down one to undo it.
+  { icon: '🔧', label: 'Services' },
   { icon: '🧱', label: 'Building' },
   { icon: '👶', label: 'Baby' },
+  // Existing rows filed under 'Other' are NOT migrated. The column is
+  // free text with no constraint, and some of them genuinely are other.
   { icon: '📦', label: 'Other' },
 ] as const;
 
