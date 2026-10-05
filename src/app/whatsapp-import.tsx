@@ -207,6 +207,29 @@ export default function WhatsAppImportScreen() {
   // is meant to speed up.
   const [sharedLocation, setSharedLocation] = useState('');
 
+  // NEW (5 Oct 2026), same shape as sharedLocation and for the same
+  // reason. Every parsed row used to be stamped category:'Phones' by the
+  // parser — a literal invented on the seller's behalf and applied to
+  // the whole import at once. A forty-item catalogue of building
+  // materials went live under Phones unless the seller tapped through
+  // forty chip rows.
+  //
+  // This was the third and last place that bug lived. post-wanted.tsx
+  // fixed it first — its header records three real Wanted posts landing
+  // under Phones because the default was never changed — and post.tsx on
+  // 5 Oct.
+  //
+  // Asked ONCE and applied to everything rather than required per row: a
+  // bulk import is overwhelmingly one kind of thing, and demanding forty
+  // identical taps is how a required field becomes a field people game.
+  // The per-item chips below still override it.
+  //
+  // Deliberately NOT defaulted to 'Other' either. lib/categories.ts is
+  // explicit that Other is never used as a default — swapping one silent
+  // default for a vaguer silent default is the same mistake with better
+  // manners.
+  const [sharedCategory, setSharedCategory] = useState('');
+
   // NEW: an array now, instead of individual title/price/description/
   // category fields — holds one or many parsed items depending on
   // what splitIntoItems() found. The single-item case is just this
@@ -250,7 +273,9 @@ export default function WhatsAppImportScreen() {
         price: guessedPrice,
         description: guessedDescription,
         location: '',
-        category: 'Phones',
+        // Empty, not 'Phones'. An unset category inherits sharedCategory,
+        // which the seller has to choose before the import will run.
+        category: '',
         include: true,
       };
     });
@@ -294,6 +319,18 @@ export default function WhatsAppImportScreen() {
       const loc = it.location.trim() || sharedLocation.trim();
       if (!it.title.trim() || !it.price.trim() || !loc) {
         setError(`"${it.title || 'One item'}" is missing a title, price, or location — fix it before importing.`);
+        return;
+      }
+      // Named separately from the three above so the message points at the
+      // one control that fixes it. In practice this fires once, on the
+      // first row, because nothing has a category until the shared one is
+      // chosen.
+      if (!(it.category || sharedCategory)) {
+        setError(
+          items.length > 1
+            ? 'Choose a category for these items before importing.'
+            : 'Choose a category before importing.'
+        );
         return;
       }
       if (isNaN(parseFloat(it.price)) || parseFloat(it.price) <= 0) {
@@ -355,7 +392,10 @@ export default function WhatsAppImportScreen() {
         description: it.description.trim(),
         price: parseFloat(it.price),
         location: loc,
-        category: it.category,
+        // Same inheritance the location uses one line above: the row's own
+        // choice when it has one, otherwise the shared pick. Validated
+        // non-empty before the loop started.
+        category: it.category || sharedCategory,
         image_url: null,
         image_urls: [],
         // HISTORICAL RECORD ONLY as of 23 Sep 2026. Nothing renders from
@@ -476,6 +516,24 @@ export default function WhatsAppImportScreen() {
               onChange={setSharedLocation}
               placeholder="Select the city for all items"
             />
+
+            <Text style={styles.label}>Category * (applies to all, unless overridden below)</Text>
+            <View style={styles.categoryWrap}>
+              {categories.map((cat) => (
+                <TouchableOpacity
+                  key={cat}
+                  style={[styles.categoryChip, sharedCategory === cat && styles.categoryChipActive]}
+                  onPress={() => setSharedCategory(cat)}
+                >
+                  <Text style={[styles.categoryChipText, sharedCategory === cat && styles.categoryChipTextActive]}>
+                    {cat}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+            {!sharedCategory ? (
+              <Text style={styles.categoryHint}>Tap a category above — required before importing.</Text>
+            ) : null}
           </View>
         )}
 
@@ -556,9 +614,19 @@ export default function WhatsAppImportScreen() {
               </>
             )}
 
-            <Text style={styles.label}>Category</Text>
+            {/* The shared-settings card above only renders for a multi-item
+                import, so for a single item there is no shared pick to
+                override and this row IS the question. */}
+            <Text style={styles.label}>
+              {items.length > 1 ? 'Category (overrides the shared one)' : 'Category *'}
+            </Text>
             {/* Wraps rather than scrolls horizontally — see post.tsx's
-                matching comment. */}
+                matching comment.
+
+                No chip is highlighted while item.category is empty — that
+                is the row INHERITING the shared pick, not an unanswered
+                question. The line underneath says which, so an unlit row
+                does not read as a gap. */}
             <View style={styles.categoryWrap}>
               {categories.map((cat) => (
                 <TouchableOpacity
@@ -572,11 +640,24 @@ export default function WhatsAppImportScreen() {
                 </TouchableOpacity>
               ))}
             </View>
+            {items.length === 1 ? (
+              !item.category ? (
+                <Text style={styles.categoryHint}>Tap a category above — required before importing.</Text>
+              ) : null
+            ) : item.category ? (
+              <TouchableOpacity onPress={() => updateItem(item.key, 'category', '')}>
+                <Text style={styles.clearOverride}>
+                  ← Use the shared category instead
+                </Text>
+              </TouchableOpacity>
+            ) : sharedCategory ? (
+              <Text style={styles.reviewNote}>Using the shared category: {sharedCategory}</Text>
+            ) : null}
 
             <Text style={styles.label}>Description</Text>
             <TextInput
               style={[styles.input, styles.textArea]}
-              placeholder="Describe the item's condition, features..."
+              placeholder="Condition and features — or what the service includes..."
               placeholderTextColor="#666"
               value={item.description}
               onChangeText={(v) => updateItem(item.key, 'description', v)}
@@ -671,6 +752,7 @@ const styles = StyleSheet.create({
   removeText: { color: RED, fontSize: 12, fontWeight: '600' },
 
   categoryWrap: { flexDirection: 'row', flexWrap: 'wrap', marginBottom: 4 },
+  categoryHint: { color: '#ff8a8a', fontSize: 11, marginTop: 2, marginBottom: 4 },
   categoryChip: { backgroundColor: DARK, borderRadius: 20, paddingHorizontal: 14, paddingVertical: 8, marginRight: 8, marginBottom: 8, borderWidth: 0.5, borderColor: '#333' },
   categoryChipActive: { backgroundColor: GOLD, borderColor: GOLD },
   categoryChipText: { color: GREY, fontSize: 12 },
