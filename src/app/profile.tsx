@@ -133,6 +133,8 @@ export default function ProfileScreen() {
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const [createdAt, setCreatedAt] = useState('');
   const [listingCount, setListingCount] = useState(0);
+  const [activeListingCount, setActiveListingCount] = useState(0);
+  const [serviceListingCount, setServiceListingCount] = useState(0);
   // Dealer Pro, checked against its expiry rather than the flag alone —
   // isProNow() in lib/badges.ts is the single copy of that test.
   const [dealerProActive, setDealerProActive] = useState(false);
@@ -233,6 +235,25 @@ export default function ProfileScreen() {
       .select('*', { count: 'exact', head: true })
       .eq('user_id', user.id);
     setListingCount(count ?? 0);
+
+    // What this person actually offers, for the badge below. Counting
+    // ACTIVE listings only, and separating services from goods, so the
+    // badge describes what they are doing now rather than what they
+    // ticked on the signup form months ago. Same derivation the public
+    // shop page uses (seller-preview), kept in step by hand.
+    const { count: activeTotal } = await supabase
+      .from('listings')
+      .select('id', { count: 'exact', head: true })
+      .eq('user_id', user.id)
+      .eq('status', 'active');
+    const { count: activeServices } = await supabase
+      .from('listings')
+      .select('id', { count: 'exact', head: true })
+      .eq('user_id', user.id)
+      .eq('status', 'active')
+      .eq('category', 'Services');
+    setActiveListingCount(activeTotal ?? 0);
+    setServiceListingCount(activeServices ?? 0);
 
     // Only ratings that actually SAY something.
     //
@@ -523,12 +544,42 @@ export default function ProfileScreen() {
     return new Date(createdAt).toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
   }
 
+  // REWRITTEN 6 Oct 2026. This read account_type straight out of the
+  // profile, which is whatever was picked on the signup form and never
+  // revisited. A domestic-staff placements agency signed up, listed
+  // services, and wore a badge saying "Buyer" — because the signup
+  // picker offers Buyer, Seller, Transport Operator and Delivery
+  // Operator, and none of those is what she does.
+  //
+  // Adding a fifth option to that picker would not have fixed it: she
+  // would still have had to predict, before using the app once, which
+  // word described her. The badge now says what she is DOING, from her
+  // own active listings — the same derivation the public shop page uses
+  // (supabase/functions/seller-preview), and the same argument as
+  // hirevan.tsx's truck availability. It turns itself on the day she
+  // lists a service and off again if she stops.
+  //
+  // Registered operator types still win: those are paid registrations
+  // with an expiry, not an inference, and someone who has paid to be a
+  // transport operator should be labelled one whether or not they also
+  // sell a sofa.
   function accountTypeLabel() {
-    const map: Record<string, string> = {
-      buyer: 'Buyer', seller: 'Seller', transport_operator: 'Transport Operator',
-      delivery: 'Delivery Operator',
-    };
-    return map[accountType] || accountType;
+    if (accountType === 'transport_operator') return 'Transport Operator';
+    if (accountType === 'delivery') return 'Delivery Operator';
+
+    if (activeListingCount > 0) {
+      const goods = activeListingCount - serviceListingCount;
+      if (serviceListingCount > 0 && goods <= 0) return 'Service Provider';
+      if (serviceListingCount > 0) return 'Goods & Services';
+      return 'Seller';
+    }
+
+    // Nothing listed. Fall back to what they declared at signup rather
+    // than demoting someone who chose "Seller" to "Buyer" for not having
+    // posted yet — the derivation above only ever upgrades. No account
+    // currently holds 'seller' (21 are 'buyer', 7 'transport_operator'),
+    // but the signup picker still offers it.
+    return accountType === 'seller' ? 'Seller' : 'Buyer';
   }
 
   function renderStars(count: number, size = 16) {
