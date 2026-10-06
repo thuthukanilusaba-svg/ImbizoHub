@@ -43,6 +43,12 @@ export default function LoginScreen() {
   const router = useRouter();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  // ADDED 6 Oct 2026. register.tsx has had a show/hide toggle on both of
+  // its password fields since it was written; this screen never got one.
+  // So the place where a typo actually costs something — signing in,
+  // where you cannot see what you typed and the only feedback is
+  // "Invalid login credentials" — was the one place you typed blind.
+  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   // NEW: Google sign-in. Tracks WHICH provider is mid-flow (rather
@@ -166,14 +172,30 @@ export default function LoginScreen() {
         />
 
         <Text style={styles.label}>Password</Text>
-        <TextInput
-          style={styles.input}
-          placeholder="Your password"
-          placeholderTextColor="#666"
-          value={password}
-          onChangeText={setPassword}
-          secureTextEntry
-        />
+        {/* Same shape as register.tsx's: the eye sits inside the field on
+            the right, and the icon shows the CURRENT state rather than
+            what tapping will do — matching the other screen exactly
+            matters more than which convention is better. */}
+        <View style={styles.passwordRow}>
+          <TextInput
+            style={styles.passwordInput}
+            placeholder="Your password"
+            placeholderTextColor="#666"
+            value={password}
+            onChangeText={setPassword}
+            secureTextEntry={!showPassword}
+            autoCapitalize="none"
+            autoCorrect={false}
+          />
+          <TouchableOpacity
+            style={styles.eyeBtn}
+            onPress={() => setShowPassword((prev) => !prev)}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            accessibilityLabel={showPassword ? 'Hide password' : 'Show password'}
+          >
+            <Text style={styles.eyeIcon}>{showPassword ? '🙈' : '👁️'}</Text>
+          </TouchableOpacity>
+        </View>
 
         <TouchableOpacity onPress={() => router.push('/forgot-password')} style={styles.forgotLink}>
           <Text style={styles.forgotLinkText}>Forgot your password?</Text>
@@ -234,6 +256,14 @@ const styles = StyleSheet.create({
   error: { color: '#ff4444', fontSize: 13, marginBottom: 16, backgroundColor: '#2a1a1a', padding: 10, borderRadius: 8 },
   label: { color: '#aaa', fontSize: 12, marginBottom: 6, marginTop: 16 },
   input: { backgroundColor: DARK, borderRadius: 10, padding: 14, color: '#fff', fontSize: 15 },
+  // Matches this screen's own `input` (radius 10, padding 14) rather than
+  // register.tsx's (radius 8, padding 12) — the two screens style their
+  // fields differently, and a password box that does not match the email
+  // box directly above it looks like a mistake.
+  passwordRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: DARK, borderRadius: 10 },
+  passwordInput: { flex: 1, color: '#fff', padding: 14, fontSize: 15 },
+  eyeBtn: { paddingHorizontal: 14, paddingVertical: 12 },
+  eyeIcon: { fontSize: 18 },
   button: { backgroundColor: GOLD, borderRadius: 10, padding: 16, alignItems: 'center', marginTop: 24 },
   forgotLink: { alignSelf: 'flex-end', marginTop: 8 },
   forgotLinkText: { color: GOLD, fontSize: 12 },
