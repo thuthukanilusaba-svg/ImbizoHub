@@ -135,6 +135,8 @@ export default function HomeScreen() {
   const [userName, setUserName] = useState('');
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const [userEmail, setUserEmail] = useState('');
+  const [deletionRequestedAt, setDeletionRequestedAt] = useState<string | null>(null);
+  const [cancellingDeletion, setCancellingDeletion] = useState(false);
   const [showDashboardTab, setShowDashboardTab] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
   const [featuredListing, setFeaturedListing] = useState<any>(null);
@@ -144,6 +146,23 @@ export default function HomeScreen() {
     fetchListings(0, false);
     fetchFeaturedListing();
   }, []);
+
+  async function cancelDeletion() {
+    setCancellingDeletion(true);
+    const { error: cancelError } = await supabase.rpc('cancel_account_deletion');
+    setCancellingDeletion(false);
+
+    if (cancelError) {
+      console.log('cancel_account_deletion failed:', cancelError.message);
+      reportHandledError('cancel-account-deletion', cancelError);
+      return;
+    }
+
+    // Reload rather than just hiding the banner: the RPC also restores
+    // the name from auth metadata, and the greeting and the avatar circle
+    // are both reading the old 'Deleted user' value until this runs.
+    await loadUser();
+  }
 
   async function loadUser() {
     const { data: { user } } = await supabase.auth.getUser();
@@ -185,6 +204,11 @@ export default function HomeScreen() {
 
     setAvatarUrl(profile?.avatar_url ?? null);
     setIsAdmin(!!profile?.is_admin);
+    // Read through my_profile() rather than the table: authenticated has
+    // SELECT on only 28 of the 46 columns and deletion_requested_at is
+    // not one of them. The RPC is SECURITY DEFINER and returns the whole
+    // row, so the flag arrives here without widening that grant.
+    setDeletionRequestedAt((profile?.deletion_requested_at as string | null) ?? null);
 
     // CHANGED 6 Oct 2026. This was `hasPostedListing || isActiveOperator`,
     // which hid the Dashboard tab from anyone who had not yet posted — and
@@ -339,6 +363,44 @@ export default function HomeScreen() {
             )}
           </TouchableOpacity>
         </View>
+
+        {/* ADDED 6 Oct 2026. Until today a pending deletion was invisible
+            and irreversible: deletion_requested_at was written in one
+            place, read nowhere, and cleared by nothing. Someone who
+            changed their mind had no way back, and could carry on using
+            the app for 29 days with no sign that it was about to be
+            destroyed.
+
+            Placed at the top of the feed, above everything, because it
+            outranks every other thing this screen has to say. */}
+        {deletionRequestedAt ? (
+          <View style={styles.deletionBanner}>
+            <Text style={styles.deletionTitle}>⚠️ This account is scheduled for deletion</Text>
+            <Text style={styles.deletionBody}>
+              Everything is removed on{' '}
+              {new Date(new Date(deletionRequestedAt).getTime() + 30 * 24 * 60 * 60 * 1000)
+                .toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}
+              . You can stop it until then.
+            </Text>
+            <TouchableOpacity
+              style={[styles.deletionBtn, cancellingDeletion && { opacity: 0.6 }]}
+              onPress={cancelDeletion}
+              disabled={cancellingDeletion}
+              activeOpacity={0.85}
+            >
+              {cancellingDeletion
+                ? <ActivityIndicator color="#1A1A18" />
+                : <Text style={styles.deletionBtnText}>Keep my account</Text>}
+            </TouchableOpacity>
+            {/* Said plainly rather than discovered later. The deletion
+                nulls these and they are stored nowhere else, so cancelling
+                cannot bring them back. */}
+            <Text style={styles.deletionNote}>
+              Your name comes back. Your phone number, photo and town do not — you&apos;ll need to add
+              those again.
+            </Text>
+          </View>
+        ) : null}
 
         {/* REMOVED (product decision): this search bar was purely a
             shortcut to /explore — no live typing/filtering happened
@@ -701,6 +763,14 @@ const styles = StyleSheet.create({
   // between browseWantedBanner and whatsappBanner (both marginTop: 4)
   // instead of trailing alone after "Recent listings" — 12 read as an
   // odd, larger gap than its new neighbors use between each other.
+  // Red, not gold. Every other banner on this screen is an invitation;
+  // this one is a warning, and it should not look like the others.
+  deletionBanner: { backgroundColor: '#2e1a1a', borderRadius: 14, marginHorizontal: 16, marginTop: 12, marginBottom: 4, paddingHorizontal: 18, paddingVertical: 16, borderWidth: 1, borderColor: '#8a2a2a' },
+  deletionTitle: { color: '#ffb3b3', fontSize: 14, fontWeight: '800', marginBottom: 6 },
+  deletionBody: { color: '#e0c4c4', fontSize: 12.5, lineHeight: 18, marginBottom: 12 },
+  deletionBtn: { backgroundColor: '#E8B44A', borderRadius: 12, paddingVertical: 13, alignItems: 'center' },
+  deletionBtnText: { color: '#1A1A18', fontSize: 14, fontWeight: '800' },
+  deletionNote: { color: '#b89a9a', fontSize: 11.5, lineHeight: 16, marginTop: 10 },
   vanBanner: { backgroundColor: '#1a1a2e', borderRadius: 14, marginHorizontal: 16, marginTop: 4, marginBottom: 4, paddingHorizontal: 18, paddingVertical: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderWidth: 0.5, borderColor: '#3a3a5e' },
   wantedBanner: { backgroundColor: '#1a2e1a', borderRadius: 14, marginHorizontal: 16, marginTop: 12, marginBottom: 4, paddingHorizontal: 18, paddingVertical: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderWidth: 0.5, borderColor: '#3a5e3a' },
   browseWantedBanner: { backgroundColor: '#2e2a1a', borderRadius: 14, marginHorizontal: 16, marginTop: 4, marginBottom: 4, paddingHorizontal: 18, paddingVertical: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderWidth: 0.5, borderColor: '#5e5a3a' },

@@ -96,9 +96,16 @@ export default function AccountDeleteScreen() {
         <View style={styles.doneCard}>
           <Text style={styles.doneEmoji}>✅</Text>
           <Text style={styles.doneTitle}>Account deletion requested</Text>
+          {/* REWRITTEN 6 Oct 2026. The old version stopped at "fully
+              deleted within 30 days" and left out the two things someone
+              needs in the next five minutes: that signing in again still
+              works, and that it is how you change your mind. */}
           <Text style={styles.doneBody}>
             Your personal details have been removed and your listings are no longer visible. Your account
             will be fully deleted within 30 days.
+            {'\n\n'}
+            Changed your mind? Sign in again with the same email any time in the next 30 days and tap
+            &ldquo;Keep my account&rdquo; on the home screen. After that it is gone for good.
           </Text>
           <TouchableOpacity style={styles.doneBtn} onPress={() => router.replace('/')}>
             <Text style={styles.doneBtnText}>Back to home</Text>
@@ -115,13 +122,30 @@ export default function AccountDeleteScreen() {
       </TouchableOpacity>
 
       <Text style={styles.heading}>Delete your account</Text>
-      <Text style={styles.subheading}>This action is permanent and can't be undone.</Text>
+      {/* "can't be undone" was not accurate either — there is a 30-day
+          window, and saying otherwise is what turns a change of mind into
+          a support request. Permanent AFTER 30 days is the true claim and
+          is no less sobering. */}
+      <Text style={styles.subheading}>
+        You have 30 days to change your mind. After that it is permanent and can&apos;t be undone.
+      </Text>
 
       <View style={styles.warningCard}>
         <Text style={styles.warningTitle}>⚠️ What happens immediately</Text>
         <Text style={styles.warningItem}>• Your name, phone number, and photo are removed</Text>
         <Text style={styles.warningItem}>• Your active listings and wanted posts are taken down</Text>
-        <Text style={styles.warningItem}>• You'll be signed out and can't log back in</Text>
+        {/* FIX (6 Oct 2026): this read "You'll be signed out and can't log
+            back in", which is false, and false in the costly direction.
+            The auth user survives the whole 30 days — not banned, email
+            still confirmed, password unchanged — so signing in works
+            fine. Someone read this line, took deletion to be immediate
+            and irreversible, and deleted a real business's account
+            believing they could simply sign up again. They could not:
+            the email stays taken until the sweep runs. */}
+        <Text style={styles.warningItem}>• You&apos;ll be signed out</Text>
+        <Text style={styles.warningItem}>
+          • Your email stays locked to this account for 30 days, so you can&apos;t sign up again with it
+        </Text>
       </View>
 
       <View style={styles.warningCard}>
