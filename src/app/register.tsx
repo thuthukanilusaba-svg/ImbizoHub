@@ -6,6 +6,7 @@ import { OAuthProvider, signInWithProvider } from '../../lib/oauth';
 import { DELIVERY_BOOKING_ENABLED } from '../../lib/featureFlags';
 import { checkName } from '../../lib/nameValidation';
 import { reportHandledError } from '../../lib/crashReporter';
+import { recordTermsAcceptance } from '../../lib/terms';
 
 const GOLD = '#B8860B';
 const BLACK = '#1A1A18';
@@ -230,6 +231,12 @@ export default function RegisterScreen() {
       }
     }
 
+    // The one place on this screen where consent is genuine clickwrap:
+    // agreedToTerms was checked above and blocks submission. Recorded
+    // the same way the OAuth paths record theirs, so there is one
+    // column to look at rather than two stories.
+    await recordTermsAcceptance();
+
     setLoading(false);
     isSubmittingRef.current = false;
 
@@ -268,6 +275,28 @@ export default function RegisterScreen() {
             </>
           )}
         </TouchableOpacity>
+
+        {/* ADDED 6 Oct 2026. handleOAuthSignIn never checked
+            agreedToTerms, so every account created with Google — six of
+            them — was created without the Terms ever being shown, let
+            alone accepted. The checkbox sits below the email form, which
+            someone taking this button never scrolls past.
+
+            A notice rather than a hard gate, deliberately. Blocking here
+            would raise "please agree to the Terms" about a checkbox that
+            is off-screen on web, which reads as the button being broken.
+            Moving the checkbox above this button was the other option and
+            puts a legal control between the person and the one-tap path
+            the layout exists to offer.
+
+            The acceptance itself is recorded server-side on the way back
+            in — see lib/terms.ts. */}
+        <Text style={styles.oauthTerms}>
+          By continuing with Google you agree to the{' '}
+          <Text style={styles.termsLink} onPress={() => Linking.openURL(TERMS_URL)}>
+            Terms of Service
+          </Text>.
+        </Text>
 
         {errorMsg ? <Text style={styles.error}>{errorMsg}</Text> : null}
 
@@ -532,4 +561,5 @@ const styles = StyleSheet.create({
   },
   oauthIconGoogle: { fontSize: 16, fontWeight: '900', color: '#4285F4', width: 18, textAlign: 'center' },
   oauthButtonText: { color: '#1A1A1A', fontSize: 15, fontWeight: '600' },
+  oauthTerms: { color: '#9A9A95', fontSize: 11.5, textAlign: 'center', marginTop: 10, lineHeight: 16 },
 });

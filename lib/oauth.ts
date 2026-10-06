@@ -41,6 +41,7 @@ import { Platform } from 'react-native';
 import * as WebBrowser from 'expo-web-browser';
 import { supabase } from './supabase';
 import { createAppURL } from './appUrl';
+import { recordTermsAcceptance } from './terms';
 
 export type OAuthProvider = 'google';
 
@@ -127,6 +128,16 @@ export async function signInWithProvider(provider: OAuthProvider): Promise<OAuth
   }
 
   await mergeAnonymousSession(previousAnonymousId);
+
+  // NATIVE path. Called unconditionally, including when this is a plain
+  // sign-in from login.tsx: the RPC stamps only accounts created within
+  // the last hour, so a returning user is never recorded as having
+  // accepted terms they were never shown. Putting that test here instead
+  // would mean duplicating it in auth-callback.tsx, where the web return
+  // trip genuinely cannot tell the two apart.
+  //
+  // Best effort — see lib/terms.ts. Never blocks sign-in.
+  await recordTermsAcceptance();
 
   return { status: 'success' };
 }

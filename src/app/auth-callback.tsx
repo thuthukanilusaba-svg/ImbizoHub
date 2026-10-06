@@ -22,6 +22,7 @@ import { useEffect, useState } from 'react';
 import { ActivityIndicator, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { supabase } from '../../lib/supabase';
 import { consumePendingAnonymousMerge } from '../../lib/oauth';
+import { recordTermsAcceptance } from '../../lib/terms';
 
 const GOLD = '#B8860B';
 const BLACK = '#1A1A18';
@@ -73,6 +74,17 @@ export default function AuthCallbackScreen() {
     // Best-effort — see lib/oauth.ts. Never blocks getting the user
     // into the app.
     await consumePendingAnonymousMerge();
+
+    // WEB path. This screen receives the return trip for BOTH the
+    // register and login screens — they share signInWithProvider() and
+    // there is nothing in the redirect that distinguishes them. So the
+    // "is this a signup" test is not made here: record_terms_acceptance()
+    // stamps only an account created in the last hour, which a returning
+    // user's never is.
+    //
+    // Best effort — see lib/terms.ts. Never blocks getting into the app,
+    // for the same reason consumePendingAnonymousMerge() above does not.
+    await recordTermsAcceptance();
 
     router.replace('/');
   }
