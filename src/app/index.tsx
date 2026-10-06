@@ -12,6 +12,7 @@ import { supabase } from '../../lib/supabase';
 import { firstNameFrom, initialsFrom } from '../../lib/initials';
 import { CATEGORIES, CATEGORY_OTHER } from '../../lib/categories';
 import { BADGE_PROFILE_COLUMNS, listingBadge } from '../../lib/badges';
+import { reportHandledError } from '../../lib/crashReporter';
 
 const GOLD = '#B8860B';
 const BLACK = '#1A1A18';
@@ -133,6 +134,7 @@ export default function HomeScreen() {
   const [hasMore, setHasMore] = useState(true);
   const [userName, setUserName] = useState('');
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
+  const [userEmail, setUserEmail] = useState('');
   const [showDashboardTab, setShowDashboardTab] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
   const [featuredListing, setFeaturedListing] = useState<any>(null);
@@ -146,8 +148,29 @@ export default function HomeScreen() {
   async function loadUser() {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
+
+    // Held so the circle has something to show when the profile call does
+    // not come back. profile.tsx and dealer.tsx already fall back to the
+    // email's first letter; this screen showed a bare '?', which reads as
+    // "we do not know who you are" rather than "still loading".
+    setUserEmail(user.email ?? '');
+
     // is_admin is no longer readable from the table — see my_profile().
-    const { data: profile } = await supabase.rpc('my_profile').single();
+    const { data: profile, error: profileError } = await supabase.rpc('my_profile').single();
+
+    // FIX (6 Oct 2026). This error was DISCARDED. When my_profile()
+    // failed — on web the likeliest cause is it firing before the session
+    // has been restored, and the function raises 'Not authenticated' when
+    // auth.uid() is null — profile came back null, setUserName was never
+    // called, and the avatar sat on its fallback until the page was
+    // reloaded. Nothing was logged, so there was no trace it had happened.
+    //
+    // Reported, not shown: a name in a circle is not worth an error
+    // banner over a feed that loaded perfectly well.
+    if (profileError) {
+      console.log('my_profile failed on home:', profileError.message);
+      reportHandledError('home-my-profile', profileError);
+    }
 
     if (profile?.full_name) {
       // THE WHOLE name. This used to keep only the first word, because
@@ -163,26 +186,30 @@ export default function HomeScreen() {
     setAvatarUrl(profile?.avatar_url ?? null);
     setIsAdmin(!!profile?.is_admin);
 
-    const { count: listingCount } = await supabase
-      .from('listings')
-      .select('id', { count: 'exact', head: true })
-      .eq('user_id', user.id);
-
-    const hasPostedListing = (listingCount ?? 0) > 0;
-
-    const { data: operator } = await supabase
-      .from('delivery_operators')
-      .select('registration_paid, registration_expires_at')
-      .eq('user_id', user.id)
-      .maybeSingle();
-
-    const isActiveOperator = !!(
-      operator?.registration_paid &&
-      operator?.registration_expires_at &&
-      new Date(operator.registration_expires_at).getTime() > Date.now()
-    );
-
-    setShowDashboardTab(hasPostedListing || isActiveOperator);
+    // CHANGED 6 Oct 2026. This was `hasPostedListing || isActiveOperator`,
+    // which hid the Dashboard tab from anyone who had not yet posted — and
+    // the Dashboard is the only route to Dealer Pro, the shop link and
+    // analytics. So the people who most need persuading to sell were the
+    // only ones who could not see any of the reasons to.
+    //
+    // dealer.tsx already moved the Dealer Pro card out of its own
+    // isSeller block on 25 Sep for exactly this reason ("a paid tier
+    // nobody can see is a paid tier nobody buys"). That made the card
+    // visible to everyone who REACHES the screen; the screen stayed
+    // gated. This is the other half of that fix.
+    //
+    // Safe because dealer.tsx still renders its seller-only sections
+    // behind isSeller: a buyer opening it sees the Dealer Pro offer and
+    // Add listing, not an empty analytics panel.
+    //
+    // The two queries this replaced — a listings count and a
+    // delivery_operators lookup — ran on every load of this screen and
+    // were used for nothing else. The operator one could never return
+    // true anyway: delivery_operators holds zero rows and Book & Deliver
+    // is paused, so this screen's "active operator" test had been dead
+    // since it was written. Transport operators live in
+    // profiles.operator_status.
+    setShowDashboardTab(!user.is_anonymous);
   }
 
   // FIX (real bug, found during a thorough review): the featured
@@ -305,7 +332,9 @@ export default function HomeScreen() {
               <Image source={{ uri: avatarUrl }} style={styles.avatar} />
             ) : (
               <View style={styles.avatar}>
-                <Text style={styles.avatarText}>{initialsFrom(userName)}</Text>
+                <Text style={styles.avatarText}>
+                  {initialsFrom(userName, userEmail ? userEmail[0].toUpperCase() : '?')}
+                </Text>
               </View>
             )}
           </TouchableOpacity>

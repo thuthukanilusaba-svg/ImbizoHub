@@ -549,7 +549,16 @@ export default function ProfileScreen() {
     );
   }
 
-  const showDashboardTab = listingCount > 0 || isActiveOperator;
+  // CHANGED 6 Oct 2026 — see index.tsx's longer note. The Dashboard is
+  // the only route to Dealer Pro, the shop link and analytics, so gating
+  // it on having already posted hid every reason to start selling from
+  // exactly the people who had not started.
+  //
+  // Unconditional here: load() turns an anonymous visitor away at the top
+  // and again before any action, so anyone reaching this line is signed
+  // in. listingCount and isActiveOperator are still used elsewhere on
+  // this screen and are deliberately left alone.
+  const showDashboardTab = true;
 
   return (
     <View style={styles.screen}>

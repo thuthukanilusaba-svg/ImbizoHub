@@ -444,13 +444,26 @@ export default function DealerProPayScreen() {
                 ? <ActivityIndicator color={BLACK} />
                 : <Text style={styles.payBtnText}>Turn it on free</Text>}
             </TouchableOpacity>
+            {/* COPY CHANGED 6 Oct 2026, with the trial itself. It used to
+                read "Free until 31 January 2027" because every trial ended
+                on that one date no matter when it started — which meant
+                claiming in January bought you three weeks. The trial now
+                runs six months from the day it is turned on, so the
+                heading says that and the exact date appears on the success
+                screen, read back from what the server actually stored.
+
+                FREE_TRIAL_ENDS is still the honest thing to print here:
+                it is now the date the OFFER closes, not the date your
+                cover ends. */}
             <View style={styles.notOpenBox}>
-              <Text style={styles.notOpenTitle}>Free until {FREE_TRIAL_ENDS}</Text>
+              <Text style={styles.notOpenTitle}>Six months free</Text>
               <Text style={styles.notOpenBody}>
-                Use the whole thing now and see what it does for you. From
-                February it&apos;s ${PRICE} for six months — we&apos;ll tell you before
-                anything changes, and nothing happens to your account until you
-                decide.
+                Six months from the day you turn it on. Use the whole thing and
+                see what it does for you — after that it&apos;s ${PRICE} for six
+                months, we&apos;ll tell you before anything changes, and nothing
+                happens to your account until you decide.
+                {'\n\n'}
+                The free offer closes on {FREE_TRIAL_ENDS}.
               </Text>
             </View>
           </>

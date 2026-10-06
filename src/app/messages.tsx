@@ -302,26 +302,30 @@ export default function MessagesScreen() {
     // UPDATED (product decision): was account_type === 'seller' — see
     // index.tsx's matching fix for the full reasoning. Now driven by
     // whether this person has actually posted a listing.
-    const { count: listingCount } = await supabase
-      .from('listings')
-      .select('id', { count: 'exact', head: true })
-      .eq('user_id', user.id);
-
-    const hasPostedListing = (listingCount ?? 0) > 0;
-
-    const { data: operator } = await supabase
-      .from('delivery_operators')
-      .select('registration_paid, registration_expires_at')
-      .eq('user_id', user.id)
-      .maybeSingle();
-
-    const isActiveOperator = !!(
-      operator?.registration_paid &&
-      operator?.registration_expires_at &&
-      new Date(operator.registration_expires_at).getTime() > Date.now()
-    );
-
-    setShowDashboardTab(hasPostedListing || isActiveOperator);
+    // CHANGED 6 Oct 2026. This was `hasPostedListing || isActiveOperator`,
+    // which hid the Dashboard tab from anyone who had not yet posted — and
+    // the Dashboard is the only route to Dealer Pro, the shop link and
+    // analytics. So the people who most need persuading to sell were the
+    // only ones who could not see any of the reasons to.
+    //
+    // dealer.tsx already moved the Dealer Pro card out of its own
+    // isSeller block on 25 Sep for exactly this reason ("a paid tier
+    // nobody can see is a paid tier nobody buys"). That made the card
+    // visible to everyone who REACHES the screen; the screen stayed
+    // gated. This is the other half of that fix.
+    //
+    // Safe because dealer.tsx still renders its seller-only sections
+    // behind isSeller: a buyer opening it sees the Dealer Pro offer and
+    // Add listing, not an empty analytics panel.
+    //
+    // The two queries this replaced — a listings count and a
+    // delivery_operators lookup — ran on every load of this screen and
+    // were used for nothing else. The operator one could never return
+    // true anyway: delivery_operators holds zero rows and Book & Deliver
+    // is paused, so this screen's "active operator" test had been dead
+    // since it was written. Transport operators live in
+    // profiles.operator_status.
+    setShowDashboardTab(!user.is_anonymous);
   }
 
   function formatTime(dateStr: string) {
