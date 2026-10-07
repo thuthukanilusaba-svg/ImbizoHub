@@ -73,9 +73,11 @@
 const DEALER_PRO_HIDDEN = false;
 const DEALER_PRO_PAYMENT_OPEN = false;
 
-// FREE TRIAL, closing 31 January 2027 (product decision, 25 Sep 2026).
+// FREE TRIAL, closing 28 February 2027 (product decision, 25 Sep 2026;
+// moved from 31 January on 7 Oct 2026 so Dealer Pro does not fall due on
+// the same day as the operator registrations and the van-hire promo).
 //
-// The problem it solves: February is the first time anyone will be asked
+// The problem it solves: March is the first time anyone will be asked
 // for $30, and nobody will have the faintest idea what they are buying.
 // A dealer who has spent four months with the badge on their listings and
 // a short link on their van knows exactly what lapsing costs them. A
@@ -96,7 +98,19 @@ const DEALER_PRO_PAYMENT_OPEN = false;
 // TO CLOSE IT EARLY: set this false. The RPC stays safe either way — it
 // refuses after 31 January regardless of what the app believes.
 const DEALER_PRO_FREE_TRIAL = true;
-const FREE_TRIAL_ENDS = '31 January 2027';
+// CHANGED 7 Oct 2026, to match register_dealer_pro_free_trial().
+//
+// This has moved twice in two days and the screen must not be allowed to
+// drift from the function again: 31 Jan 2027 originally, then briefly a
+// rolling six months from the claim, now a fixed 28 Feb 2027 for
+// everyone. A month later than the transport-operator registrations and
+// the van-hire promo, which both still close on 31 Jan, so nobody meets
+// two bills on the same morning.
+//
+// The exact date each person holds is shown on the success screen from
+// what the server actually stored, so that part self-corrects. This
+// constant is only the offer's advertised end.
+const FREE_TRIAL_ENDS = '28 February 2027';
 
 import { useRouter } from 'expo-router';
 import * as WebBrowser from 'expo-web-browser';
@@ -311,14 +325,15 @@ export default function DealerProPayScreen() {
           <View style={styles.successCard}>
             <Text style={styles.successEmoji}>⭐</Text>
             <Text style={styles.successTitle}>Coming soon</Text>
-            {/* Names a date rather than "soon". Every fee on ImbizoHub is
-                free until 31 January 2027, so a dealer reading this is
+            {/* Names a date rather than "soon". Every other fee on
+                ImbizoHub is free until 31 January 2027 and Dealer Pro
+                itself until 28 February, so a dealer reading this is
                 not being kept waiting for a product — they already have
                 the promotion. Saying so is more honest than an open-ended
                 "check back", and it sets the moment Pro starts mattering
                 instead of leaving it vague. */}
             <Text style={styles.successBody}>
-              Dealer Pro opens in February 2027. Until 31 January
+              Dealer Pro opens in March 2027. Until {FREE_TRIAL_ENDS}
               everything on ImbizoHub is free anyway — list as much as you
               like, and we&apos;ll tell you before anything changes.
             </Text>
@@ -456,20 +471,18 @@ export default function DealerProPayScreen() {
                 it is now the date the OFFER closes, not the date your
                 cover ends. */}
             <View style={styles.notOpenBox}>
-              <Text style={styles.notOpenTitle}>Six months free</Text>
+              <Text style={styles.notOpenTitle}>Free until {FREE_TRIAL_ENDS}</Text>
               <Text style={styles.notOpenBody}>
-                Six months from the day you turn it on. Use the whole thing and
-                see what it does for you — after that it&apos;s ${PRICE} for six
-                months, we&apos;ll tell you before anything changes, and nothing
-                happens to your account until you decide.
-                {'\n\n'}
-                The free offer closes on {FREE_TRIAL_ENDS}.
+                Turn it on and use the whole thing — see what it does for you.
+                After that it&apos;s ${PRICE} for six months. We&apos;ll tell you
+                before anything changes, and nothing happens to your account
+                until you decide.
               </Text>
             </View>
           </>
         ) : (
           <View style={styles.notOpenBox}>
-            <Text style={styles.notOpenTitle}>Opens February 2027</Text>
+            <Text style={styles.notOpenTitle}>Opens March 2027</Text>
             <Text style={styles.notOpenBody}>
               Dealer Pro isn&apos;t taking payments yet. Everything you can do on
               ImbizoHub today — listing, importing your catalogue, chatting,
