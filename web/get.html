@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<!--
+  web/get.html  ->  imbizohub.com/get
+
+  WHY THIS PAGE EXISTS
+  A reel, a WhatsApp status, a poster on a shop window and a person saying
+  it out loud all have the same constraint: whatever you point people at
+  has to be short enough to remember and type. The Play Store URL is
+  https://play.google.com/store/apps/details?id=com.imbizohub.app, which is
+  none of those things — it wraps across two lines in a caption and nobody
+  retypes it from a video.
+
+  "imbizohub.com/get" is eight characters plus four. That is the whole idea.
+
+  HOW IT GETS SERVED
+  scripts/assemble-web.js copies the whole web/ folder to the deploy root,
+  and vercel.json sets cleanUrls:true, so this file lands at /get.html and
+  is served at /get. No rewrite, no redirect rule, nothing to keep in sync.
+
+  WHY A PAGE AND NOT A vercel.json REDIRECT
+  A 308 redirect is simpler and faster, and it was the first instinct. But
+  a redirect never runs any JavaScript, so Vercel Web Analytics would never
+  see it — no page view, and more importantly no REFERRER. Knowing that 40
+  people hit /get is mildly interesting; knowing 31 of them came from
+  Facebook and 9 from Instagram is the thing that tells you which post to
+  make again. That data only exists if a real page loads and the insights
+  script runs. The ~0.8s this costs an Android visitor buys the only
+  campaign measurement the site has.
+
+  ANDROID GOES STRAIGHT THROUGH, EVERYONE ELSE GETS A CHOICE
+  Auto-forwarding an iPhone to the Google Play listing is a dead end — the
+  page loads and the install button does nothing. Same for desktop. Those
+  visitors are shown both doors instead, with the browser version first,
+  because that is the one that actually works for them. index.html already
+  does Android detection for the same reason; this is the same test.
+
+  NO-JAVASCRIPT FALLBACK
+  The buttons are real links and are visible before any script runs, so the
+  page works with JS disabled, blocked, or still loading. The script only
+  ever changes wording and auto-forwards — it is never load-bearing.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Get ImbizoHub</title>
+<meta name="description" content="Download ImbizoHub free on Google Play, or open it straight in your browser.">
+<meta name="theme-color" content="#111111">
+<link rel="icon" href="/favicon.png">
+
+<!-- Not a page anyone should land on from a search result - it exists to be
+     typed or tapped. Keeping it out of the index also stops it competing
+     with the real homepage for the brand name. -->
+<meta name="robots" content="noindex">
+
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="ImbizoHub">
+<meta property="og:url" content="https://imbizohub.com/get">
+<meta property="og:title" content="Get ImbizoHub">
+<meta property="og:description" content="Download free on Google Play, or open it straight in your browser.">
+<meta property="og:image" content="https://imbizohub.com/og-image.png">
+
+<style>
+  :root {
+    --gold: #B8860B;
+    --bg: #111111;
+    --card: #1A1A18;
+    --text: #FFFFFF;
+    --muted: #9A9A95;
+    --line: #2E2E2B;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0;
+    padding: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+                 "Helvetica Neue", Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  body {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+  }
+  .card {
+    width: 100%;
+    max-width: 380px;
+    text-align: center;
+  }
+  .logo {
+    font-size: 34px;
+    font-weight: 700;
+    letter-spacing: -0.5px;
+    margin: 0 0 6px;
+  }
+  .logo span { color: var(--gold); }
+  .tagline {
+    color: var(--muted);
+    font-size: 13px;
+    margin: 0 0 32px;
+  }
+  h1 {
+    font-size: 20px;
+    font-weight: 600;
+    margin: 0 0 8px;
+    line-height: 1.35;
+  }
+  .sub {
+    color: var(--muted);
+    font-size: 14px;
+    line-height: 1.5;
+    margin: 0 0 28px;
+  }
+  .btn {
+    display: block;
+    width: 100%;
+    padding: 15px 18px;
+    border-radius: 10px;
+    font-size: 15px;
+    font-weight: 700;
+    text-decoration: none;
+    margin-bottom: 12px;
+    transition: opacity 0.15s ease;
+  }
+  .btn:active { opacity: 0.75; }
+  .btn-primary {
+    background: var(--gold);
+    color: #1A1A18;
+  }
+  .btn-secondary {
+    background: transparent;
+    color: var(--text);
+    border: 1px solid var(--line);
+    font-weight: 600;
+  }
+  .note {
+    color: var(--muted);
+    font-size: 12px;
+    line-height: 1.6;
+    margin: 22px 0 0;
+  }
+  /* Hidden until the script decides this visitor is on Android. Starting
+     hidden rather than shown means a non-Android visitor never sees a
+     "redirecting" message flash before it is removed. */
+  .redirecting { display: none; }
+  .redirecting.on { display: block; }
+</style>
+</head>
+<body>
+
+<div class="card">
+  <p class="logo">Imbizo<span>Hub</span></p>
+  <p class="tagline">Gather. Trade. Trust.</p>
+
+  <h1 id="heading">Get ImbizoHub</h1>
+  <p class="sub" id="sub">Free to join. Free to post. Free to do a deal.</p>
+
+  <p class="sub redirecting" id="redirecting">Opening Google Play&hellip;</p>
+
+  <a class="btn btn-primary" id="play"
+     href="https://play.google.com/store/apps/details?id=com.imbizohub.app">
+    Get it on Google Play
+  </a>
+
+  <!-- Relative, matching index.html's own "Open ImbizoHub" button, so this
+       page works unchanged on Vercel preview deployments instead of
+       bouncing the tester back to production. -->
+  <a class="btn btn-secondary" id="web" href="/app">
+    Or use it in your browser
+  </a>
+
+  <p class="note">
+    No fees to list. Post what you need and sellers come to you.
+  </p>
+</div>
+
+<script>
+(function () {
+  var PLAY = 'https://play.google.com/store/apps/details?id=com.imbizohub.app';
+  var isAndroid = /Android/i.test(navigator.userAgent);
+
+  // Vercel's insights script ignores anything reporting navigator.webdriver
+  // or "Headless" in the user agent, so automated checks never register as
+  // visits. Redirecting them would be harmless but pointless - and it makes
+  // the page easier to inspect with a scraper.
+  var isBot = !!(navigator.webdriver || /Headless|bot|crawl|spider/i.test(navigator.userAgent));
+
+  if (!isAndroid) {
+    // iPhone and desktop can't install from Google Play, so lead with the
+    // thing that works for them and demote the store to a secondary link.
+    var play = document.getElementById('play');
+    var web = document.getElementById('web');
+    play.className = 'btn btn-secondary';
+    web.className = 'btn btn-primary';
+    web.parentNode.insertBefore(web, play);
+    // "Or use it in your browser" only reads correctly as the SECOND
+    // option. Promoted to the top it needs to stand on its own.
+    web.textContent = 'Open ImbizoHub in your browser';
+    document.getElementById('sub').textContent =
+      'The app is Android-only for now - open it in your browser instead.';
+    return;
+  }
+
+  if (isBot) return;
+
+  document.getElementById('redirecting').className = 'redirecting on';
+
+  // Short pause, not zero. The analytics beacon uses fetch with
+  // keepalive so it should survive a navigation on its own, but a
+  // redirect that fires before the script has even parsed would not be
+  // counted at all - and the measurement is the entire reason this is a
+  // page rather than a 308. 800ms is below the point where it reads as
+  // broken and above the point where it is a race.
+  setTimeout(function () {
+    window.location.replace(PLAY);
+  }, 800);
+})();
+</script>
+
+<!-- Vercel Web Analytics - see the note in index.html. This is the one page
+     where the tag is the whole point: it is what records that someone
+     followed the link, and which post they came from. -->
+<script defer src="/_vercel/insights/script.js"></script>
+
+</body>
+</html>
