@@ -79,6 +79,32 @@ export default function Root({ children }: PropsWithChildren) {
         <meta name="twitter:image" content={OG_IMAGE} />
 
         {/*
+          Vercel Web Analytics. Added 15 Oct 2026, alongside the tag in
+          web/index.html.
+
+          It has to be in BOTH places. web/index.html is the static
+          marketing page; this file is the shell for every /app route the
+          web build exports. The 14 Oct traffic from the influencer reel
+          was browsers deep inside the app - feed fetches, listing photos,
+          seller pages - served by this shell, not by index.html. Tagging
+          only the marketing page would have measured the one page we
+          already had a rough idea about and missed all of that.
+
+          Same Vercel project and domain, so /_vercel/insights/script.js
+          resolves here too.
+
+          Deliberately a plain <script> rather than @vercel/analytics: the
+          npm package wants to mount an effect inside a React web app, and
+          this is a React Native Web export whose only dependable
+          web-specific seam is this file. The tag does the same job with
+          nothing to keep in step.
+
+          Reports nothing at all until Web Analytics is switched on for the
+          project in the Vercel dashboard - the tag is half of it.
+        */}
+        <script defer src="/_vercel/insights/script.js" />
+
+        {/*
           Disables body scrolling on web so ScrollView components work
           as they do on native. Remove this if you ever want the whole
           page to scroll natively instead. Expo ships this helper for

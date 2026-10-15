@@ -704,5 +704,17 @@
   play.parentNode.insertBefore(play, web);
 })();
 </script>
+<!-- Vercel Web Analytics. Added 15 Oct 2026.
+     These marketing pages are plain static HTML - nothing on them talks to
+     Supabase, so a visit to the homepage left no trace in any log we can
+     read. The only evidence of the 14 Oct reel traffic was API calls from
+     the handful of people who had already got as far as the app itself;
+     everyone who landed here and bounced was invisible.
+     Vercel serves this script from our own domain (/_vercel/...), so it is
+     not a third-party request and ad blockers largely leave it alone. It
+     only reports once Web Analytics is enabled for the project in the
+     Vercel dashboard - the tag alone does nothing. -->
+<script defer src="/_vercel/insights/script.js"></script>
+
 </body>
 </html>
