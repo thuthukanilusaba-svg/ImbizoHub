@@ -232,7 +232,25 @@ ${headExtra}
           border:1px solid #2E2E2A; border-radius:10px; }
 </style>
 </head>
-<body><div class="card">${bodyInner}</div></body>
+<body><div class="card">${bodyInner}</div>
+<!-- Vercel Web Analytics. Added 16 Oct 2026.
+     This page is the one being advertised - the shop link a seller hands
+     out - and it was the only page on the site reporting nothing at all.
+     It never appeared in the Pages breakdown, because the marketing site
+     and the Expo web app each carry their own tag and this HTML is
+     generated here instead, then proxied through api/seller.js. Shop-link
+     traffic was invisible while shop links were the whole campaign.
+
+     Relative on purpose: served through imbizohub.com it resolves, and
+     the one thing that must not happen is this page pulling a script off
+     a third-party origin in front of someone's customers. Hit directly on
+     *.supabase.co it 404s and the page is unaffected.
+
+     Deliberately on the 404 shells too. "Seller not found" is a real
+     outcome worth counting - imbizohub.com/s/yourname was printed in
+     marketing copy and six people typed it literally. -->
+<script defer src="/_vercel/insights/script.js"></script>
+</body>
 </html>`;
 }
 
