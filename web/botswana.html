@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<!--
+  web/botswana.html  ->  imbizohub.com/botswana
+
+  WHO THIS IS FOR
+  Members of the "Zimbabweans in Botswana" Facebook group. Built as a
+  landing page rather than another /get redirect because this audience
+  needs the idea explained before the download makes sense. Someone in
+  Gaborone does not want "a marketplace app"; they want the thing they
+  cannot do from Gaborone - get something bought, built or done in
+  Zimbabwe without flying home or trusting a stranger's phone number.
+
+  WHY THE PITCH IS DEMAND-SIDE, NOT SUPPLY-SIDE
+  Every other page on the site sells "post your items". That is the wrong
+  half for this group: they are not sellers in Zimbabwe, they are buyers
+  of Zimbabwean goods and labour from outside it. So the hero is the
+  WANTED flow - post what you need, sellers come to you - which is also
+  the flow that works best on an app with four listings. A thin catalogue
+  is invisible to someone posting a request; it is the first thing a
+  browser notices.
+
+  WHAT THIS PAGE DELIBERATELY DOES NOT PROMISE
+  - No cross-border delivery from Botswana. No operator on the platform
+    runs that route, and a promise nobody can fulfil costs more than the
+    signup is worth.
+  - No payment handling or escrow. The transactions table is empty and
+    Paynow has never taken a real payment. The page says "agree it
+    between you", which is what actually happens today.
+  Keep both of these true. If either changes, this copy changes with it.
+
+  HOW IT GETS SERVED
+  scripts/assemble-web.js copies the whole web/ folder to the deploy
+  root, and vercel.json sets cleanUrls:true, so this lands at
+  /botswana.html and is served at /botswana. Nothing to configure.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ImbizoHub — for Zimbabweans in Botswana</title>
+<meta name="description" content="In Botswana, with family and projects back in Zimbabwe? Post what you need done there and people in Zimbabwe come to you with their price. Free to ask, free to chat.">
+<meta name="theme-color" content="#111111">
+<link rel="icon" href="/favicon.png">
+
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="ImbizoHub">
+<meta property="og:url" content="https://imbizohub.com/botswana">
+<meta property="og:title" content="In Botswana. Family in Zimbabwe.">
+<meta property="og:description" content="Post what you need done back home and people in Zimbabwe come to you with their price. Free to ask, free to chat.">
+<meta property="og:image" content="https://imbizohub.com/og-image.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+
+<style>
+  :root {
+    --gold: #B8860B;
+    --gold-light: #E8B44A;
+    --bg: #111111;
+    --card: #1A1A18;
+    --text: #FFFFFF;
+    --muted: #9A9A95;
+    --line: #2E2E2B;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0;
+    background: var(--bg); color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+                 "Helvetica Neue", Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    line-height: 1.6;
+  }
+  .wrap { max-width: 440px; margin: 0 auto; padding: 40px 20px 56px; }
+
+  .logo { font-size: 26px; font-weight: 700; letter-spacing: -0.4px; margin: 0; text-align: center; }
+  .logo span { color: var(--gold); }
+  .tagline { color: var(--muted); font-size: 12.5px; margin: 4px 0 36px; text-align: center; }
+
+  h1 { font-size: 27px; line-height: 1.25; font-weight: 700; margin: 0 0 14px; letter-spacing: -0.5px; }
+  .lead { color: #D6D6D2; font-size: 16px; margin: 0 0 30px; }
+
+  .uses { list-style: none; padding: 0; margin: 0 0 32px; }
+  .uses li {
+    padding: 13px 0 13px 28px;
+    border-top: 1px solid var(--line);
+    font-size: 15px; position: relative;
+  }
+  .uses li:last-child { border-bottom: 1px solid var(--line); }
+  .uses li::before {
+    content: "—"; position: absolute; left: 0; top: 13px;
+    color: var(--gold-light); font-weight: 700;
+  }
+
+  h2 { font-size: 13px; font-weight: 800; letter-spacing: .07em;
+       text-transform: uppercase; color: var(--muted); margin: 0 0 14px; }
+
+  .steps { counter-reset: s; list-style: none; padding: 0; margin: 0 0 34px; }
+  .steps li {
+    counter-increment: s; position: relative;
+    padding: 0 0 18px 42px; font-size: 15px;
+  }
+  .steps li::before {
+    content: counter(s);
+    position: absolute; left: 0; top: 0;
+    width: 28px; height: 28px; border-radius: 14px;
+    background: var(--gold); color: #1A1A18;
+    font-weight: 800; font-size: 14px;
+    text-align: center; line-height: 28px;
+  }
+  .steps strong { font-weight: 700; }
+  .steps .note { display: block; color: var(--muted); font-size: 13.5px; }
+
+  .btn {
+    display: block; width: 100%;
+    padding: 15px 18px; border-radius: 10px;
+    font-size: 15px; font-weight: 700;
+    text-decoration: none; text-align: center;
+    margin-bottom: 11px;
+  }
+  .btn:active { opacity: .75; }
+  .btn-primary { background: var(--gold); color: #1A1A18; }
+  .btn-secondary { background: transparent; color: var(--text); border: 1px solid var(--line); font-weight: 600; }
+
+  .free { text-align: center; color: var(--muted); font-size: 13px; margin: 22px 0 0; }
+  .foot { color: #6F6F6A; font-size: 11.5px; line-height: 1.6; margin: 30px 0 0; text-align: center; }
+  .foot a { color: var(--muted); }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <p class="logo">Imbizo<span>Hub</span></p>
+  <p class="tagline">Gather. Trade. Trust.</p>
+
+  <h1>You're in Botswana.<br>Home is in Zimbabwe.</h1>
+
+  <p class="lead">
+    You can't walk into a shop in Bulawayo or stand over a builder in Harare.
+    So ask from here — post what you need done back home, and people in
+    Zimbabwe come to you with their price.
+  </p>
+
+  <h2>What people ask for</h2>
+  <ul class="uses">
+    <li>Groceries and supplies delivered to family back home</li>
+    <li>A builder, plumber or electrician for the stand</li>
+    <li>Building materials — cement, bricks, roofing sheets</li>
+    <li>A domestic worker or carer for your parents</li>
+    <li>A van or truck to move something between towns</li>
+    <li>Anything you'd normally ask a cousin to sort out for you</li>
+  </ul>
+
+  <h2>How it works</h2>
+  <ol class="steps">
+    <li><strong>Post what you need</strong>
+      <span class="note">Say what it is and which town in Zimbabwe. Takes a minute.</span></li>
+    <li><strong>They come to you</strong>
+      <span class="note">Sellers and service providers reply with their price. You don't chase anyone.</span></li>
+    <li><strong>Pick one and talk</strong>
+      <span class="note">Chat in the app, see their profile and rating, agree the details between you.</span></li>
+  </ol>
+
+  <a class="btn btn-primary" id="play"
+     href="https://play.google.com/store/apps/details?id=com.imbizohub.app">
+    Get it on Google Play
+  </a>
+  <a class="btn btn-secondary" href="/app">Or use it in your browser</a>
+
+  <p class="free">Free to ask. Free to chat. Free to do a deal.</p>
+
+  <p class="foot">
+    ImbizoHub is a Zimbabwean marketplace. Payment and delivery are arranged
+    directly between you and the person you choose.
+    <a href="https://imbizohub.com">imbizohub.com</a>
+  </p>
+</div>
+
+<!-- Vercel Web Analytics - see the note in index.html. This page exists to
+     answer one question: did that Facebook group bring anybody? Without the
+     tag the page could not answer it. -->
+<script defer src="/_vercel/insights/script.js"></script>
+
+</body>
+</html>
