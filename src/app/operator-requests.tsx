@@ -51,9 +51,22 @@ function canServe(
   r: Pick<Request, 'load_type' | 'load_size'>,
   carries: 'people' | 'goods' | 'both' | null,
   maxLoadSize: 'boot' | 'van' | 'truck' | null,
+  hasTrailer: boolean | null,
 ): boolean {
   // A trip posted before goods support says nothing about itself; show it.
   if (!r.load_type) return true;
+
+  // TRAILER HIRE (21 Oct 2026). Answered first and separately, because it
+  // is not a size of load and must never touch SIZE_RANK below. Owning a
+  // trailer is a hard requirement - unlike load size, where a bigger
+  // vehicle can always take a smaller job.
+  //
+  // `!== false` and not `=== true`, following the same rule as the two
+  // columns below: NULL is "never asked", and the operators who registered
+  // before this question existed still see the work.
+  if (r.load_type === 'trailer_hire') return hasTrailer !== false;
+  // Conversely, saying you have a trailer does not stop you being shown
+  // ordinary trips, so there is nothing to exclude in the other direction.
 
   if (carries === 'people' && r.load_type !== 'people') return false;
   if (carries === 'goods' && r.load_type === 'people') return false;
@@ -78,9 +91,13 @@ function canServe(
  * old passenger chip rather than being relabelled as something nobody
  * actually chose.
  */
-function loadLabel(r: Pick<Request, 'load_type' | 'load_size' | 'passengers'>): string {
+function loadLabel(r: Pick<Request, 'load_type' | 'load_size' | 'passengers' | 'hire_days'>): string {
   if (!r.load_type || r.load_type === 'people') {
     return `👥 ${r.passengers} pax`;
+  }
+  if (r.load_type === 'trailer_hire') {
+    const d = (r as any).hire_days as number | null;
+    return d ? `🚚 Trailer only · ${d} day${d === 1 ? '' : 's'}` : '🚚 Trailer only';
   }
   const what = r.load_type === 'large_item' ? 'One big item' : 'Boxes / goods';
   const size =
@@ -107,6 +124,7 @@ type Request = {
   // what decides whether an operator sees a load or a passenger count.
   load_type?: 'people' | 'goods' | 'large_item' | null;
   load_size?: 'boot' | 'van' | 'truck' | null;
+  hire_days?: number | null;
 };
 
 // A trip this operator has WON — their quote was accepted.
@@ -200,6 +218,9 @@ export default function OperatorRequestsScreen() {
   // canServe() treats null as unrestricted so none of them loses work.
   const [carries, setCarries] = useState<'people' | 'goods' | 'both' | null>(null);
   const [maxLoadSize, setMaxLoadSize] = useState<'boot' | 'van' | 'truck' | null>(null);
+  // NULL here means "registered before we asked", not "no trailer" - see
+  // canServe(). Only a false actually hides trailer work.
+  const [hasTrailer, setHasTrailer] = useState<boolean | null>(null);
   // NEW (1 Sep 2026, reported: "people registered in Bulawayo can see
   // Harare trips"). `null` alone could not tell "this operator has no base
   // city" apart from "we have not looked yet", and operatorCanSeeTrip()
@@ -241,13 +262,14 @@ export default function OperatorRequestsScreen() {
 
     const { data: profile } = await supabase
       .from('profiles')
-      .select('operator_status, account_type, registration_expires_at, vehicle_type, base_city, carries, max_load_size')
+      .select('operator_status, account_type, registration_expires_at, vehicle_type, base_city, carries, max_load_size, has_trailer')
       .eq('id', user.id)
       .single();
 
     setBaseCity(profile?.base_city ?? null);
     setCarries((profile as any)?.carries ?? null);
     setMaxLoadSize((profile as any)?.max_load_size ?? null);
+    setHasTrailer((profile as any)?.has_trailer ?? null);
     setCityChecked(true);
 
     if (profile?.account_type !== 'transport_operator') {
@@ -307,7 +329,7 @@ export default function OperatorRequestsScreen() {
     // ORDERING plus a null-means-unrestricted fallback, which is clear in
     // canServe() and would be three chained .or() clauses here. At this
     // volume the difference is unmeasurable; the readability is not.
-    setRequests((data ?? []).filter((r: any) => canServe(r, carries, maxLoadSize)));
+    setRequests((data ?? []).filter((r: any) => canServe(r, carries, maxLoadSize, hasTrailer)));
 
     // FIX: see myQuoteRequestIds' declaration above — without this,
     // the list had no idea which of these open requests the current

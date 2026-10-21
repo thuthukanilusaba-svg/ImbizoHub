@@ -97,6 +97,18 @@ export default function BecomeOperatorScreen() {
   // that will take either.
   const [carries, setCarries] = useState<'people' | 'goods' | 'both'>('both');
   const [maxLoadSize, setMaxLoadSize] = useState<'boot' | 'van' | 'truck'>('van');
+  // TRAILER HIRE (21 Oct 2026). Deliberately NOT a fourth option in
+  // maxLoadSize. In Zimbabwe a trailer is usually hired on its own - the
+  // customer tows it themselves and pays by the day - so it is a separate
+  // thing to offer, not a bigger load. Keeping it out of maxLoadSize also
+  // keeps operator-requests.tsx's SIZE_RANK honest: that scale answers
+  // "how much can this vehicle carry", and a trailer is not an answer to
+  // that question.
+  //
+  // This flag is what puts "Trailer only" in front of customers in
+  // hirevan.tsx, exactly as max_load_size='truck' is what puts "A truck
+  // load" there. Until one operator ticks it, customers never see it.
+  const [hasTrailer, setHasTrailer] = useState(false);
   // Picked from a fixed list, not typed. It does two jobs: it decides
   // which trips this operator is shown (see lib/cities.ts) and it is
   // what customers see on the quote card.
@@ -248,6 +260,7 @@ export default function BecomeOperatorScreen() {
         vehicle_capacity: isDelivery ? null : (parseInt(vehicleCapacity) || null),
         carries: isDelivery ? null : carries,
         max_load_size: isDelivery ? null : maxLoadSize,
+        has_trailer: isDelivery ? false : hasTrailer,
         // Informational only — shown on the quote card so buyers can see
         // roughly where an operator is based before accepting. Not used
         // as a filter anywhere; trip requests stay nationwide by design.
@@ -412,6 +425,27 @@ export default function BecomeOperatorScreen() {
             <Text style={styles.hint}>
               You&apos;ll only be shown trips you can actually take — and picking
               &quot;a truck load&quot; is what lets customers post one.
+            </Text>
+
+            <Text style={styles.label}>Do you have a trailer to hire out? *</Text>
+            <View style={styles.capRow}>
+              {([
+                [true, 'Yes'],
+                [false, 'No'],
+              ] as const).map(([value, label]) => (
+                <TouchableOpacity
+                  key={String(value)}
+                  style={[styles.capChip, hasTrailer === value && styles.capChipOn]}
+                  onPress={() => setHasTrailer(value)}
+                  activeOpacity={0.85}
+                >
+                  <Text style={[styles.capChipText, hasTrailer === value && styles.capChipTextOn]}>{label}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+            <Text style={styles.hint}>
+              This is for someone who wants the trailer on its own and will
+              tow it themselves. Saying yes is what lets customers ask.
             </Text>
 
             {carries !== 'goods' ? (

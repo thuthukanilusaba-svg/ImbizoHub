@@ -162,6 +162,33 @@ export default function HireVanScreen() {
     })();
     return () => { cancelled = true; };
   }, []);
+  // TRAILER HIRE (21 Oct 2026). In Zimbabwe a trailer is commonly hired on
+  // its OWN: you collect it, tow it yourself, pay by the day, no driver.
+  // That is a different thing to hire, not a bigger load, so it is a
+  // separate choice at the top of this form rather than a fourth loadSize
+  // chip. See the migration hire_a_trailer_on_its_own for why it is kept
+  // out of SIZE_RANK.
+  const [hireType, setHireType] = useState<'van' | 'trailer'>('van');
+  const [hireDays, setHireDays] = useState('');
+
+  // Same self-switching rule as truckAvailable above: the option appears
+  // the day an operator ticks "I have a trailer" and disappears again if
+  // every trailer operator lapses. Nobody has to remember to edit this file.
+  const [trailerAvailable, setTrailerAvailable] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const { data, error: trErr } = await supabase
+        .from('profiles')
+        .select('id')
+        .eq('has_trailer', true)
+        .eq('operator_status', 'active')
+        .limit(1);
+      if (!cancelled && !trErr) setTrailerAvailable((data ?? []).length > 0);
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
   const [passengers, setPassengers] = useState('');
   const [description, setDescription] = useState('');
   const [loading, setLoading] = useState(false);
@@ -187,11 +214,22 @@ export default function HireVanScreen() {
       setError('Please fill in all required fields.');
       return;
     }
-    if (loadType === 'people' && !passengers) {
+    if (hireType === 'trailer') {
+      const d = parseInt(hireDays, 10);
+      if (isNaN(d) || d < 1) {
+        setError('Enter how many days you need the trailer.');
+        return;
+      }
+      if (d > 60) {
+        setError('Please enter 60 days or fewer.');
+        return;
+      }
+    }
+    if (hireType === 'van' && loadType === 'people' && !passengers) {
       setError('Enter how many passengers are travelling.');
       return;
     }
-    if (loadType !== 'people' && !loadSize) {
+    if (hireType === 'van' && loadType !== 'people' && !loadSize) {
       setError('Choose roughly how much you\'re moving.');
       return;
     }
@@ -220,7 +258,7 @@ export default function HireVanScreen() {
     // honest value — the person accompanying their own load — and it keeps
     // every existing query working without a migration on those screens.
     let passengerCount = 1;
-    if (loadType === 'people') {
+    if (hireType === 'van' && loadType === 'people') {
       passengerCount = parseInt(passengers, 10);
       if (isNaN(passengerCount) || passengerCount < 1) {
         setError('Enter a valid number of passengers.');
@@ -263,8 +301,12 @@ export default function HireVanScreen() {
       destination_city: destinationCity || null,
       date: date.trim(),
       passengers: passengerCount,
-      load_type: loadType,
-      load_size: loadType === 'people' ? null : loadSize,
+      // A trailer hire still writes passengers=1, for the same reason a
+      // goods trip does: requests.passengers is NOT NULL and older screens
+      // read it directly. One person collects the trailer.
+      load_type: hireType === 'trailer' ? 'trailer_hire' : loadType,
+      load_size: hireType === 'trailer' || loadType === 'people' ? null : loadSize,
+      hire_days: hireType === 'trailer' ? parseInt(hireDays, 10) : null,
       description: description.trim(),
       status: 'open',
     });
@@ -368,6 +410,38 @@ export default function HireVanScreen() {
       ) : null}
 
       <View style={styles.card}>
+        {/* Shown only once some operator actually has a trailer. With no
+            trailer supply this whole block is absent and the form is
+            byte-for-byte the one that existed before. */}
+        {trailerAvailable ? (
+          <>
+            <Text style={styles.label}>What do you need? *</Text>
+            <View style={styles.chipRow}>
+              {([
+                ['van', 'A van with a driver'],
+                ['trailer', 'A trailer only'],
+              ] as const).map(([value, label]) => (
+                <TouchableOpacity
+                  key={value}
+                  style={[styles.chip, hireType === value && styles.chipOn]}
+                  onPress={() => setHireType(value)}
+                  activeOpacity={0.85}
+                >
+                  <Text style={[styles.chipText, hireType === value && styles.chipTextOn]}>
+                    {label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+            {hireType === 'trailer' ? (
+              <Text style={styles.cityHint}>
+                You collect the trailer and tow it yourself. Operators quote a
+                price for the days you need it.
+              </Text>
+            ) : null}
+          </>
+        ) : null}
+
         {/* CHANGED (1 Sep 2026, direct product decision): grouped by LEG
             of the journey — pickup address then pickup city, destination
             address then destination city.
@@ -387,7 +461,7 @@ export default function HireVanScreen() {
 
             The hint below still ties the pickup city to who sees the
             trip, which is the part the old order existed to communicate. */}
-        <Text style={styles.label}>Pickup location *</Text>
+        <Text style={styles.label}>{hireType === 'trailer' ? 'Where will you collect it? *' : 'Pickup location *'}</Text>
         <TextInput
           style={styles.input}
           placeholder="e.g. Mbare Musika, Harare"
@@ -399,7 +473,7 @@ export default function HireVanScreen() {
         <Text style={styles.label}>Pickup city *</Text>
         <CityPicker value={pickupCity} onChange={setPickupCity} placeholder="Select pickup city" />
 
-        <Text style={styles.label}>Destination *</Text>
+        <Text style={styles.label}>{hireType === 'trailer' ? 'Where are you taking it? *' : 'Destination *'}</Text>
         <TextInput
           style={styles.input}
           placeholder="e.g. Chinhoyi Bus Terminus"
@@ -414,7 +488,7 @@ export default function HireVanScreen() {
           Operators based in the pickup city will see your trip.
         </Text>
 
-        <Text style={styles.label}>Travel date *</Text>
+        <Text style={styles.label}>{hireType === 'trailer' ? 'Collection date *' : 'Travel date *'}</Text>
         {Platform.OS === 'web' ? (
           // FIX: @react-native-community/datetimepicker has no web
           // implementation at all — the two branches below (Android's
@@ -481,66 +555,82 @@ export default function HireVanScreen() {
           </Modal>
         )}
 
-        <Text style={styles.label}>What are you moving? *</Text>
-        <View style={styles.chipRow}>
-          {([
-            ['people', 'People'],
-            ['goods', 'Boxes or goods'],
-            ['large_item', 'One big item'],
-          ] as const).map(([value, label]) => (
-            <TouchableOpacity
-              key={value}
-              style={[styles.chip, loadType === value && styles.chipOn]}
-              onPress={() => setLoadType(value)}
-              activeOpacity={0.85}
-            >
-              <Text style={[styles.chipText, loadType === value && styles.chipTextOn]}>
-                {label}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-
-        {loadType === 'people' ? (
+        {hireType === 'trailer' ? (
           <>
-            <Text style={styles.label}>Number of passengers *</Text>
+            <Text style={styles.label}>How many days do you need it? *</Text>
             <TextInput
               style={styles.input}
-              placeholder="e.g. 4"
+              placeholder="e.g. 2"
               placeholderTextColor="#666"
-              value={passengers}
-              onChangeText={setPassengers}
+              value={hireDays}
+              onChangeText={setHireDays}
               keyboardType="number-pad"
             />
           </>
         ) : (
           <>
-            <Text style={styles.label}>Roughly how much? *</Text>
+            <Text style={styles.label}>What are you moving? *</Text>
             <View style={styles.chipRow}>
               {([
-                ['boot', 'Fits in a car boot'],
-                ['van', 'A van load'],
-                ...(truckAvailable ? [['truck', 'A truck load'] as const] : []),
+                ['people', 'People'],
+                ['goods', 'Boxes or goods'],
+                ['large_item', 'One big item'],
               ] as const).map(([value, label]) => (
                 <TouchableOpacity
                   key={value}
-                  style={[styles.chip, loadSize === value && styles.chipOn]}
-                  onPress={() => setLoadSize(value)}
+                  style={[styles.chip, loadType === value && styles.chipOn]}
+                  onPress={() => setLoadType(value)}
                   activeOpacity={0.85}
                 >
-                  <Text style={[styles.chipText, loadSize === value && styles.chipTextOn]}>
+                  <Text style={[styles.chipText, loadType === value && styles.chipTextOn]}>
                     {label}
                   </Text>
                 </TouchableOpacity>
               ))}
             </View>
-            {/* Says plainly what the vans on this app can take, so nobody
-                posts a house move that will never be quoted. */}
-            <Text style={styles.cityHint}>
-              {truckAvailable
-                ? 'Pick the closest size — operators quote against what you choose.'
-                : 'Operators here drive vans, not trucks — anything up to a van load.'}
-            </Text>
+
+            {loadType === 'people' ? (
+              <>
+                <Text style={styles.label}>Number of passengers *</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder="e.g. 4"
+                  placeholderTextColor="#666"
+                  value={passengers}
+                  onChangeText={setPassengers}
+                  keyboardType="number-pad"
+                />
+              </>
+            ) : (
+              <>
+                <Text style={styles.label}>Roughly how much? *</Text>
+                <View style={styles.chipRow}>
+                  {([
+                    ['boot', 'Fits in a car boot'],
+                    ['van', 'A van load'],
+                    ...(truckAvailable ? [['truck', 'A truck load'] as const] : []),
+                  ] as const).map(([value, label]) => (
+                    <TouchableOpacity
+                      key={value}
+                      style={[styles.chip, loadSize === value && styles.chipOn]}
+                      onPress={() => setLoadSize(value)}
+                      activeOpacity={0.85}
+                    >
+                      <Text style={[styles.chipText, loadSize === value && styles.chipTextOn]}>
+                        {label}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+                {/* Says plainly what the vans on this app can take, so nobody
+                    posts a house move that will never be quoted. */}
+                <Text style={styles.cityHint}>
+                  {truckAvailable
+                    ? 'Pick the closest size — operators quote against what you choose.'
+                    : 'Operators here drive vans, not trucks — anything up to a van load.'}
+                </Text>
+              </>
+            )}
           </>
         )}
 
