@@ -1,5 +1,5 @@
 import { Image } from 'expo-image';
-import { useRouter } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, FlatList, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
@@ -140,12 +140,80 @@ export default function HomeScreen() {
   const [showDashboardTab, setShowDashboardTab] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
   const [featuredListing, setFeaturedListing] = useState<any>(null);
+  // What this person is still looking for, and how many sellers have
+  // priced it. null until known, so the strip below renders nothing at
+  // all rather than flashing "0 offers" on every cold start.
+  const [myWants, setMyWants] = useState<{ count: number; offers: number } | null>(null);
 
   useEffect(() => {
     loadUser();
     fetchListings(0, false);
     fetchFeaturedListing();
   }, []);
+
+  // THE DOOR TO my-wanted-posts.tsx. Added 22 Oct 2026, because until
+  // tonight there wasn't one that an anonymous asker could use.
+  //
+  // The only link to "What I'm looking for" in the entire app was on
+  // profile.tsx — and profile.tsx turns anonymous sessions away to
+  // /register before it renders anything. So someone who posted a want
+  // without signing up had exactly one route to the prices sellers sent
+  // back: the push notification, once. Swipe it away and the offer was
+  // unreachable from inside the app, while sitting in the database with
+  // their name on it.
+  //
+  // It was no better for the 29 real accounts, just less fatal: their
+  // own wants were two taps deep behind an avatar, on a screen about
+  // editing your phone number. A person who asks for something and
+  // comes back the next day to see who answered should not have to
+  // reason about where that lives.
+  //
+  // Reading the counts rather than just linking is the point. "What I'm
+  // looking for ›" is a filing cabinet. "Garment steamer — 2 sellers
+  // have replied" is the app doing the thing it promised, on the first
+  // screen, and it is the only line on this page that is about THEM.
+  //
+  // Deliberately NOT inside loadUser(): that returns early on !user and
+  // then reads my_profile(), neither of which an anonymous session gets
+  // past usefully. This asks the one question that is actually valid for
+  // them — what have I asked for, and did anyone answer.
+  const fetchMyWants = useCallback(async () => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) { setMyWants(null); return; }
+
+    // 'open' and 'matched' only. A closed, expired or fulfilled want is
+    // history, and history belongs on the list screen, not on a strip
+    // that is meant to say "this is live, go and look".
+    const { data: requests, error } = await supabase
+      .from('item_requests')
+      .select('id')
+      .eq('user_id', user.id)
+      .in('status', ['open', 'matched']);
+
+    if (error) {
+      // Quiet. A missing strip is a smaller problem than an error
+      // banner over a feed that loaded perfectly well — same judgement
+      // loadUser() makes about my_profile() above.
+      reportHandledError('home-my-wants', error);
+      setMyWants(null);
+      return;
+    }
+
+    if (!requests || requests.length === 0) { setMyWants(null); return; }
+
+    const { count } = await supabase
+      .from('item_responses')
+      .select('id', { count: 'exact', head: true })
+      .in('item_request_id', requests.map((r: any) => r.id));
+
+    setMyWants({ count: requests.length, offers: count ?? 0 });
+  }, []);
+
+  // On focus, not just on mount: the count has to be right when someone
+  // comes back from reading their offers, and this screen does not
+  // remount on the way back. Same pattern as profile.tsx and
+  // operator-requests.tsx.
+  useFocusEffect(useCallback(() => { fetchMyWants(); }, [fetchMyWants]));
 
   async function cancelDeletion() {
     setCancellingDeletion(true);
@@ -409,6 +477,38 @@ export default function HomeScreen() {
             screen with the exact same real search box already on it.
             Removing it is cosmetic only; no search functionality was
             attached to this element. */}
+
+        {/* Placed ABOVE "Ask for it. Sellers come to you." on purpose.
+            That banner invites you to ask; this one is the answer to an
+            ask you already made. Telling someone to post a want while
+            an unread price sits one screen away is the app talking over
+            itself. */}
+        {myWants ? (
+          <TouchableOpacity
+            style={[styles.myWantsStrip, myWants.offers > 0 && styles.myWantsStripLive]}
+            onPress={() => router.push('/my-wanted-posts')}
+            activeOpacity={0.85}
+          >
+            <View style={styles.vanBannerLeft}>
+              <Text style={styles.vanBannerEmoji}>{myWants.offers > 0 ? '💬' : '🔎'}</Text>
+              <View style={styles.vanBannerTextCol}>
+                <Text style={styles.vanBannerTitle}>
+                  {myWants.offers > 0
+                    ? myWants.offers === 1
+                      ? 'A seller has sent you a price'
+                      : `${myWants.offers} sellers have sent you a price`
+                    : `You're looking for ${myWants.count} thing${myWants.count !== 1 ? 's' : ''}`}
+                </Text>
+                <Text style={styles.vanBannerSub}>
+                  {myWants.offers > 0
+                    ? 'Tap to see what they offered'
+                    : 'No replies yet — we\'ll let you know the moment one comes in'}
+                </Text>
+              </View>
+            </View>
+            <Text style={styles.vanBannerArrow}>›</Text>
+          </TouchableOpacity>
+        ) : null}
 
         <TouchableOpacity
           style={styles.wantedBanner}
@@ -773,6 +873,15 @@ const styles = StyleSheet.create({
   deletionNote: { color: '#b89a9a', fontSize: 11.5, lineHeight: 16, marginTop: 10 },
   vanBanner: { backgroundColor: '#1a1a2e', borderRadius: 14, marginHorizontal: 16, marginTop: 4, marginBottom: 4, paddingHorizontal: 18, paddingVertical: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderWidth: 0.5, borderColor: '#3a3a5e' },
   wantedBanner: { backgroundColor: '#1a2e1a', borderRadius: 14, marginHorizontal: 16, marginTop: 12, marginBottom: 4, paddingHorizontal: 18, paddingVertical: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderWidth: 0.5, borderColor: '#3a5e3a' },
+
+  // Same shape as the three banners around it so it sits in the set
+  // rather than looking bolted on, but neutral while nothing has
+  // happened — this is a status line, not another thing to tap.
+  myWantsStrip: { backgroundColor: '#1c1c1c', borderRadius: 14, marginHorizontal: 16, marginTop: 12, marginBottom: 4, paddingHorizontal: 18, paddingVertical: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderWidth: 0.5, borderColor: '#333' },
+  // Gold the moment a real price is waiting, and only then. If every
+  // strip on this screen shouts, none of them do — the gold has to mean
+  // one specific thing: someone answered you.
+  myWantsStripLive: { backgroundColor: '#201a08', borderColor: GOLD, borderWidth: 1 },
   browseWantedBanner: { backgroundColor: '#2e2a1a', borderRadius: 14, marginHorizontal: 16, marginTop: 4, marginBottom: 4, paddingHorizontal: 18, paddingVertical: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderWidth: 0.5, borderColor: '#5e5a3a' },
   whatsappBanner: { backgroundColor: '#1a2e22', borderRadius: 14, marginHorizontal: 16, marginTop: 4, marginBottom: 4, paddingHorizontal: 18, paddingVertical: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderWidth: 0.5, borderColor: '#25D366' },
   trustSection: { backgroundColor: '#161616', borderRadius: 14, marginHorizontal: 16, marginTop: 12, marginBottom: 4, padding: 18, borderWidth: 0.5, borderColor: '#2a2a2a' },

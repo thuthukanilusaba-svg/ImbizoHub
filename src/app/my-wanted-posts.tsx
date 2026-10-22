@@ -312,8 +312,8 @@ export default function MyWantedPostsScreen() {
           </Text>
           <Text style={styles.anonPromptBody}>
             You posted without an account, so {totalOffers === 1 ? 'this offer lives' : 'these offers live'} only
-            on this phone. Create a free account and {totalOffers === 1 ? 'it comes' : 'they come'} with you —
-            you'll also need one to reply to the seller.
+            on this phone — a new phone, or a cleared app, and {totalOffers === 1 ? "it's" : "they're"} gone.
+            A free account keeps {totalOffers === 1 ? 'it' : 'them'}, and you'll need one to accept.
           </Text>
           <TouchableOpacity style={styles.anonPromptBtn} onPress={() => router.push('/register')}>
             <Text style={styles.anonPromptBtnText}>Create free account — keep my offers</Text>

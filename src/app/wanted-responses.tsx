@@ -191,17 +191,24 @@ export default function WantedResponsesScreen() {
   }
 
   function handleChat(response: any) {
-    // FIX (22 Oct 2026): this was the one action on the screen with no
-    // anonymous guard. handleAcceptFree and handleAccept below both got
-    // one; Chat did not, so an anonymous asker tapping "Chat with
-    // Millie" was handed to chat.tsx, which draws the same line itself
-    // and turns them away there instead — a dead end two screens deep
-    // rather than a clear answer here. Routed to /register directly,
-    // matching the other two.
-    if (isAnonymous) {
-      router.push('/register');
-      return;
-    }
+    // DELIBERATELY NOT GUARDED ON is_anonymous, unlike the two accept
+    // paths below.
+    //
+    // I added a guard here earlier today on the assumption that
+    // chat.tsx turns anonymous users away anyway and this would just
+    // say so sooner. That was wrong — I asserted it in a comment
+    // without checking. chat.tsx contains no is_anonymous check at
+    // all, and the messages table's RLS (messages_insert_own,
+    // sender_id = auth.uid()) permits an anonymous sender, because an
+    // anonymous session holds the `authenticated` role like any other.
+    // Anonymous chat works today and has all along.
+    //
+    // So the guard would have been a new restriction dressed up as a
+    // fix, and it would have blocked the only thing on this screen
+    // that can turn an offer into a deal. Accepting is gated because
+    // it commits someone to money and a counterparty who can't be
+    // rated or traced. Talking is not. The prompt above does the
+    // asking; it is not this function's job to enforce it.
     router.push(`/chat?item_request_id=${request_id}&receiver_id=${response.responder_id}`);
   }
 
@@ -374,9 +381,9 @@ export default function WantedResponsesScreen() {
             {responses.length === 1 ? 'You have an offer 🎉' : `You have ${responses.length} offers 🎉`}
           </Text>
           <Text style={styles.anonPromptBody}>
-            You posted this without an account. Create a free one to reply to the seller and
-            keep {responses.length === 1 ? 'this offer' : 'these offers'} — right now
-            {responses.length === 1 ? ' it lives' : ' they live'} only on this phone.
+            Go ahead and chat — you don't need an account for that. But you posted this
+            without one, so {responses.length === 1 ? 'this offer lives' : 'these offers live'} only on this
+            phone. A free account keeps {responses.length === 1 ? 'it' : 'them'}, and you'll need one to accept.
           </Text>
           <TouchableOpacity style={styles.anonPromptBtn} onPress={() => router.push('/register')}>
             <Text style={styles.anonPromptBtnText}>Create free account</Text>
