@@ -36,31 +36,50 @@ export type Category = {
   icon: string;
 };
 
+// REORDERED AND EXTENDED 22 Oct 2026, from usage rather than guesswork.
+// The original order was "roughly by how often people ask for them",
+// which at the time was a guess because nobody had asked for anything.
+// Thirteen listings later the real shape is visible:
+//
+//   Services        5   plumbing, domestic work, two locticians, produce
+//   Other           4   two cosmetics, fabrics, maize seed
+//   Furniture /
+//   Electronics /
+//   Appliances      1 each
+//   Phones, Vehicles, Clothing, Building, Baby   0
+//
+// Two of those tell us a category is missing rather than unpopular:
+//
+//   BEAUTY. Five of thirteen listings are hair or cosmetics - three
+//   sisterlocs listings from two different Bulawayo stylists, and two
+//   skincare products. One stylist joined and a second appeared the next
+//   evening at a competing price, which is word of mouth inside a trade,
+//   not advertising. They were scattered across Services and Other.
+//
+//   FARM & FOOD. Sweet potato filed under Services, maize seed under
+//   Other, and an open Wanted post for cabbages. Produce has no home.
+//
+// The first seven non-'Other' entries are the home grid (see
+// HOME_CATEGORY_COUNT in index.tsx); the rest hide behind More. So this
+// order is a decision about what the app LOOKS like it is for. Leading
+// with Services and Beauty is leading with what it actually is today.
+// Phones and Electronics stay visible because they are what people
+// search for in Zimbabwe even when nobody has listed one yet.
+//
+// Labels are kept to 11 characters or fewer: catLabel renders at font
+// size 10 inside a width:'22%' tile with numberOfLines={1}, and
+// 'Electronics' is the longest string proven to fit without an ellipsis.
+// 'Hair & Beauty' would not; hence 'Beauty', whose icon carries the hair.
 export const CATEGORIES: readonly Category[] = [
+  { icon: '🔧', label: 'Services' },
+  { icon: '💇', label: 'Beauty' },
   { icon: '📱', label: 'Phones' },
   { icon: '💻', label: 'Electronics' },
-  { icon: '🚗', label: 'Vehicles' },
+  { icon: '🌾', label: 'Farm & Food' },
   { icon: '🛋️', label: 'Furniture' },
+  { icon: '🚗', label: 'Vehicles' },
   { icon: '👕', label: 'Clothing' },
   { icon: '🏠', label: 'Appliances' },
-  // ADDED 5 Oct 2026. Every one of the nine categories before this was a
-  // thing you can put in a van. A photographer, a plumber, a tutor or a
-  // welder had nowhere to file themselves except 'Other', which is where
-  // the only Wanted post of 4 Oct — "Wedding Camera man" — ended up.
-  // That is a real person asking for a service and the list having no
-  // word for it.
-  //
-  // POSITION IS LOAD-BEARING, not alphabetical. index.tsx shows the
-  // first seven non-'Other' entries on the home grid and hides the rest
-  // behind More, so seventh is the last visible slot. Put at the end
-  // instead, Services would exist in the posting form and in /explore
-  // and be invisible on the screen everybody opens — which is most of
-  // the way back to having no Services category at all.
-  //
-  // This pushes Building to eighth, behind More. Deliberate: Building
-  // has nothing to find yet either, and a category nobody can see is a
-  // category nobody posts in. Move this line down one to undo it.
-  { icon: '🔧', label: 'Services' },
   { icon: '🧱', label: 'Building' },
   { icon: '👶', label: 'Baby' },
   // Existing rows filed under 'Other' are NOT migrated. The column is
