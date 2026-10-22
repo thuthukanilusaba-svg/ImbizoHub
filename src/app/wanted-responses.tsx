@@ -44,6 +44,36 @@
 // still trigger a real payment/accept on someone else's want, since
 // handleAccept() also never checked ownership. Now redirects home with
 // no data shown if request.user_id doesn't match the logged-in user.
+//
+// NEW 22 Oct 2026 — the account prompt for anonymous askers.
+//
+// This screen was already the one place in the Wanted flow that let an
+// anonymous owner in, and that was right: the whole pitch of the app is
+// "ask for it and sellers come to you", and making someone sign up
+// before they can see whether anyone came is asking them to pay for a
+// promise. What was missing was the other half — once a seller HAS
+// named a price, nothing asked them to keep it.
+//
+// So the prompt is triggered by responses.length > 0, not by being
+// anonymous. No offers, no ask. It sits above the list and never
+// covers it: the prices stay readable without an account, because
+// seeing that it worked is the only argument for signing up that is
+// actually true.
+//
+// Two things had to be verified before promising "you won't lose
+// this", since a promise the app can't keep costs more than the
+// signup is worth. Every route out of an anonymous session does carry
+// the data: register.tsx's email path calls auth.updateUser(), which
+// upgrades the same uid in place so item_requests.user_id never moves;
+// login.tsx and lib/oauth.ts (both the native and the web return trip)
+// capture the anonymous id first and call merge_anonymous_session(),
+// which re-points item_requests, item_responses and messages. Checked
+// in the deployed function, not assumed.
+//
+// Reaching this screen at all also depended on two fixes made the same
+// day: _layout.tsx had no tap route for the 'new_wanted_response' push,
+// and my-wanted-posts.tsx — the only link to here — turned anonymous
+// sessions away before it fetched anything.
 
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import * as WebBrowser from 'expo-web-browser';
@@ -100,6 +130,12 @@ export default function WantedResponsesScreen() {
   const [myId, setMyId] = useState('');
   const [myEmail, setMyEmail] = useState('');
   const [notYours, setNotYours] = useState(false);
+  // An anonymous owner is allowed to READ this screen and always has
+  // been (that is deliberate — see handleAcceptFree's comment). What
+  // they cannot do is act: chat, or accept. Tracked here so the prompt
+  // below can say so once, up front, instead of letting them discover
+  // it by tapping a button that bounces them to /register.
+  const [isAnonymous, setIsAnonymous] = useState(false);
 
   // Which attached photo is open full-screen, or null. See the card below.
   const [zoomPhoto, setZoomPhoto] = useState<string | null>(null);
@@ -115,6 +151,7 @@ export default function WantedResponsesScreen() {
     if (!user) { router.replace('/login'); return; }
     setMyId(user.id);
     setMyEmail(user.email ?? '');
+    setIsAnonymous(!!user.is_anonymous);
 
     const { data: req } = await supabase
       .from('item_requests')
@@ -154,6 +191,17 @@ export default function WantedResponsesScreen() {
   }
 
   function handleChat(response: any) {
+    // FIX (22 Oct 2026): this was the one action on the screen with no
+    // anonymous guard. handleAcceptFree and handleAccept below both got
+    // one; Chat did not, so an anonymous asker tapping "Chat with
+    // Millie" was handed to chat.tsx, which draws the same line itself
+    // and turns them away there instead — a dead end two screens deep
+    // rather than a clear answer here. Routed to /register directly,
+    // matching the other two.
+    if (isAnonymous) {
+      router.push('/register');
+      return;
+    }
     router.push(`/chat?item_request_id=${request_id}&receiver_id=${response.responder_id}`);
   }
 
@@ -314,6 +362,31 @@ export default function WantedResponsesScreen() {
         <View style={styles.errorBox}><Text style={styles.errorText}>⚠️ {error}</Text></View>
       ) : null}
 
+      {/* The ask, placed where the value is. Shown only once a seller
+          has actually named a price — an anonymous asker with no
+          responses yet gets the plain empty state and is left alone.
+          Deliberately above the list and not over it: the prices stay
+          readable without an account, because being able to see that
+          the app worked is the entire argument for signing up. */}
+      {isAnonymous && responses.length > 0 ? (
+        <View style={styles.anonPrompt}>
+          <Text style={styles.anonPromptTitle}>
+            {responses.length === 1 ? 'You have an offer 🎉' : `You have ${responses.length} offers 🎉`}
+          </Text>
+          <Text style={styles.anonPromptBody}>
+            You posted this without an account. Create a free one to reply to the seller and
+            keep {responses.length === 1 ? 'this offer' : 'these offers'} — right now
+            {responses.length === 1 ? ' it lives' : ' they live'} only on this phone.
+          </Text>
+          <TouchableOpacity style={styles.anonPromptBtn} onPress={() => router.push('/register')}>
+            <Text style={styles.anonPromptBtnText}>Create free account</Text>
+          </TouchableOpacity>
+          <TouchableOpacity onPress={() => router.push('/login')}>
+            <Text style={styles.anonPromptLink}>Already have an account? Sign in</Text>
+          </TouchableOpacity>
+        </View>
+      ) : null}
+
       <FlatList
         data={responses}
         keyExtractor={(item) => item.id}
@@ -414,6 +487,21 @@ const styles = StyleSheet.create({
 
   errorBox: { backgroundColor: '#3a1a1a', borderRadius: 10, padding: 12, marginBottom: 16 },
   errorText: { color: '#ff8a8a', fontSize: 13 },
+
+  // Matches my-wanted-posts.tsx's prompt deliberately — the same person
+  // may see both on the way here from a notification, and two different
+  // treatments of the same message reads as two different messages.
+  // Rounded here rather than full-bleed because this screen has its own
+  // horizontal padding on the container.
+  anonPrompt: {
+    backgroundColor: '#201a08', borderRadius: 14, borderWidth: 0.5, borderColor: '#3d3214',
+    padding: 16, marginBottom: 16,
+  },
+  anonPromptTitle: { color: '#fff', fontSize: 15, fontWeight: '800', marginBottom: 6 },
+  anonPromptBody: { color: '#ddd', fontSize: 12.5, lineHeight: 18, marginBottom: 14 },
+  anonPromptBtn: { backgroundColor: GOLD, borderRadius: 12, paddingVertical: 13, alignItems: 'center', marginBottom: 10 },
+  anonPromptBtnText: { color: BLACK, fontSize: 13.5, fontWeight: '800' },
+  anonPromptLink: { color: GREY, fontSize: 12, textAlign: 'center' },
 
   // FIX (reported 1 Sep 2026: "a person should scroll up and down for
   // message in both instances"). The FlatList had no `style`, only

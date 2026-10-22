@@ -255,6 +255,36 @@ export default function RootLayout() {
           router.push(`/chat?listing_id=${data.listing_id}`);
         } else if (data?.type === 'wanted_match' && data?.item_request_id) {
           router.push(`/chat?item_request_id=${data.item_request_id}`);
+        } else if (data?.type === 'new_wanted_response' && data?.item_request_id) {
+          // FIX (22 Oct 2026). THE SINGLE MOST IMPORTANT NOTIFICATION IN
+          // THE APP WENT NOWHERE WHEN TAPPED, and had done since it was
+          // written.
+          //
+          // notify-new-wanted-response sends type 'new_wanted_response'
+          // — that string, confirmed in the deployed function's own
+          // payload. The case directly above handles 'wanted_match',
+          // which is a DIFFERENT type sent by a DIFFERENT function
+          // (the match-alert that tells a seller about a new want).
+          // Nothing here matched 'new_wanted_response', so it fell all
+          // the way through this chain and did nothing: a buyer who
+          // posted "I need a garment steamer", got a real price back,
+          // and tapped the notification saying so, landed wherever the
+          // app already was.
+          //
+          // That is the whole reverse-marketplace promise — ask, and
+          // sellers come to you — failing at the last inch, after the
+          // push had already been built, deployed, authorised and
+          // delivered. The same class as savePushToken's silent grant
+          // failure in lib/notifications.ts: every part reported
+          // success and the person got nothing.
+          //
+          // Routed to wanted-responses.tsx rather than chat: the push
+          // says a price arrived, and the price lives on that screen.
+          // It deliberately does NOT require a real account to view
+          // (see its own loadData — anonymous owners pass), which is
+          // what makes this reachable for someone who posted a want
+          // without signing up.
+          router.push(`/wanted-responses?request_id=${data.item_request_id}`);
         } else if (data?.type === 'trip_deposit' && data?.request_id) {
           router.push(`/chat?request_id=${data.request_id}`);
         } else if (data?.type === 'quote_declined') {

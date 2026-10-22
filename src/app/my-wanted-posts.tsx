@@ -14,22 +14,43 @@
 // pattern buyer-deliveries.tsx used to close an equivalent gap on the
 // delivery side.
 //
-// Deliberately requires a real account — posting itself stays
-// anonymous-friendly per post-wanted.tsx, but tracking "my posts over
-// time" is the same "come back and find my history" case messages.tsx
-// already draws this line on, and an anonymous session can't durably
-// back that up.
+// REVERSED 22 Oct 2026 — THIS SCREEN LOCKED THE ONLY PERSON IT WAS
+// FOR OUT OF THE ONLY THING IT DOES.
 //
-// FIX (real inconsistency, found during a thorough review): this
-// file's own comment claimed to follow "the same case messages.tsx
-// already draws this line on" — but the actual check (`!user`, missing
-// is_anonymous) didn't match what messages.tsx correctly does, and
-// used a bare router.replace('/login') instead of messages.tsx's
-// friendlier inline prompt (and the wrong destination besides —
-// someone who's only ever posted anonymously has no existing account
-// to log into). Now genuinely matches messages.tsx's own pattern:
-// correct anonymous check, inline explanation instead of a jarring
-// redirect, and pointed at /register.
+// It used to refuse anonymous sessions outright: the is_anonymous
+// check fired BEFORE any fetch, so an anonymous asker saw a generic
+// "create an account to keep track" pitch and nothing else, ever. Two
+// problems with that, and the second is the expensive one.
+//
+// First, it was never a real restriction. RLS already lets an
+// anonymous owner read exactly this data — item_requests is
+// select-all, and item_responses_select_owner_or_responder matches on
+// ir.user_id = auth.uid() regardless of whether that uid is anonymous.
+// The data was reachable the whole time; only this screen said no.
+//
+// Second, and this is why it mattered: wanted-responses.tsx — the
+// screen that shows the actual prices sellers sent back — correctly
+// allows anonymous owners and always has. But this list is the only
+// thing in the app that links to it. So an anonymous asker could be
+// sent a real offer, and had no route to it from anywhere. On 22 Oct
+// someone posted "Garment steamer" anonymously. If a seller had
+// replied that evening, the reply would have been sitting in the
+// database, visible to nobody.
+//
+// The old justification was that "come back and find my history"
+// needs a durable account. That is true of a NEW phone and false of
+// THIS one — the anonymous session persists in local storage, and
+// every sign-up path merges its data into the real account (register
+// upgrades the same uid in place; login.tsx and lib/oauth.ts both
+// call merge_anonymous_session). So the honest version is not a wall
+// before the value, it is a prompt beside it, which is what this
+// screen now does.
+//
+// The prompt is deliberately triggered by an OFFER EXISTING, not by
+// being anonymous. Asking someone to sign up before anything has
+// happened is asking them to pay for a promise. Asking once a real
+// seller has named a real price is asking them to keep something they
+// can see.
 //
 // FIX (same bug class already caught in browse-wanted.tsx today): the
 // FlatList's contentContainerStyle used `gap: 14` — a documented
@@ -82,8 +103,12 @@ export default function MyWantedPostsScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [posts, setPosts] = useState<WantedPost[]>([]);
-  // NEW: matches messages.tsx's own pattern — see top-of-file comment.
+  // Only for a genuinely absent session now — see top-of-file comment.
+  // An anonymous session is no longer turned away here.
   const [needsAccount, setNeedsAccount] = useState(false);
+  // Anonymous owner: everything below still renders, with a prompt on
+  // top once there is something worth keeping.
+  const [isAnonymous, setIsAnonymous] = useState(false);
   // Which card is mid-request, and which card is asking "are you sure".
   // Both keyed by post id so two cards can never be in the same state at
   // once, and so a slow network cannot leave the wrong card spinning.
@@ -95,13 +120,16 @@ export default function MyWantedPostsScreen() {
 
   async function fetchMyPosts() {
     const { data: { user } } = await supabase.auth.getUser();
-    // FIX: was `if (!user)`, missing user.is_anonymous — see
-    // top-of-file comment.
-    if (!user || user.is_anonymous) {
+    // No session at all — nothing to look up, and no uid to look it up
+    // by. This is the only case that still stops here. An anonymous
+    // session has a real uid and real rows under it, so it carries on
+    // past this point like any other owner. See top-of-file comment.
+    if (!user) {
       setNeedsAccount(true);
       setLoading(false);
       return;
     }
+    setIsAnonymous(!!user.is_anonymous);
 
     const { data: requests } = await supabase
       .from('item_requests')
@@ -253,6 +281,10 @@ export default function MyWantedPostsScreen() {
     );
   }
 
+  // Offers across every post this person has open. The prompt below
+  // keys off this rather than off being anonymous: see top-of-file.
+  const totalOffers = posts.reduce((sum, p) => sum + p.responseCount, 0);
+
   return (
     <View style={styles.container}>
       <View style={styles.header}>
@@ -264,6 +296,33 @@ export default function MyWantedPostsScreen() {
           {posts.length} thing{posts.length !== 1 ? 's' : ''} — tap one to see who replied
         </Text>
       </View>
+
+      {/* THE ASK, AT THE ONLY MOMENT IT IS EARNED.
+          Anonymous AND at least one seller has replied with a price.
+          Before an offer exists this says nothing at all — an empty
+          list has no claim on anybody's email address. What it must
+          never become is a wall: everything below stays tappable, and
+          the offers themselves are readable without signing up. */}
+      {isAnonymous && totalOffers > 0 ? (
+        <View style={styles.anonPrompt}>
+          <Text style={styles.anonPromptTitle}>
+            {totalOffers === 1
+              ? 'Someone has sent you a price 🎉'
+              : `${totalOffers} sellers have sent you a price 🎉`}
+          </Text>
+          <Text style={styles.anonPromptBody}>
+            You posted without an account, so {totalOffers === 1 ? 'this offer lives' : 'these offers live'} only
+            on this phone. Create a free account and {totalOffers === 1 ? 'it comes' : 'they come'} with you —
+            you'll also need one to reply to the seller.
+          </Text>
+          <TouchableOpacity style={styles.anonPromptBtn} onPress={() => router.push('/register')}>
+            <Text style={styles.anonPromptBtnText}>Create free account — keep my offers</Text>
+          </TouchableOpacity>
+          <TouchableOpacity onPress={() => router.push('/login')}>
+            <Text style={styles.anonPromptLink}>Already have an account? Sign in</Text>
+          </TouchableOpacity>
+        </View>
+      ) : null}
 
       {actionError ? (
         <View style={styles.errorBanner}>
@@ -430,6 +489,19 @@ const styles = StyleSheet.create({
   needsAccountBtn: { backgroundColor: GOLD, borderRadius: 14, paddingVertical: 16, paddingHorizontal: 40, marginBottom: 16 },
   needsAccountBtnText: { color: BLACK, fontSize: 15, fontWeight: '800' },
   needsAccountLoginLink: { color: GREY, fontSize: 13 },
+
+  // Gold-edged rather than the usual grey card: this is the one thing
+  // on the screen that is good news, and it has to read as good news
+  // and not as a permission error. Sits above the list, never over it.
+  anonPrompt: {
+    backgroundColor: '#201a08', borderBottomWidth: 0.5, borderBottomColor: '#3d3214',
+    paddingHorizontal: 18, paddingTop: 16, paddingBottom: 14,
+  },
+  anonPromptTitle: { color: '#fff', fontSize: 15, fontWeight: '800', marginBottom: 6 },
+  anonPromptBody: { color: '#ddd', fontSize: 12.5, lineHeight: 18, marginBottom: 14 },
+  anonPromptBtn: { backgroundColor: GOLD, borderRadius: 12, paddingVertical: 13, alignItems: 'center', marginBottom: 10 },
+  anonPromptBtnText: { color: BLACK, fontSize: 13.5, fontWeight: '800' },
+  anonPromptLink: { color: GREY, fontSize: 12, textAlign: 'center' },
 
   // FIX: was `gap: 14` here — see top-of-file comment. marginBottom
   // moved onto the card style itself instead.
