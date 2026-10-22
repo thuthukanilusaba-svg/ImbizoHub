@@ -230,6 +230,11 @@ ${headExtra}
   .more { display:block; margin-top:12px; text-align:center; color:#A9A9A4;
           font-size:12.5px; text-decoration:none; padding:11px;
           border:1px solid #2E2E2A; border-radius:10px; }
+  /* The seller's OWN catalogue. WhatsApp green on purpose: it is their
+     link, not ours, and it should look like where it goes. */
+  .wa { display:block; margin-top:16px; background:#25D366; color:#0B2E18;
+        font-weight:800; text-decoration:none; padding:14px 20px;
+        border-radius:12px; text-align:center; font-size:15px; }
 </style>
 </head>
 <body><div class="card">${bodyInner}</div>
@@ -273,7 +278,7 @@ Deno.serve(async (req) => {
 
   const { data: profile } = await supabase
     .from('profiles')
-    .select('id, slug, full_name, business_name, avatar_url, rating, rating_count, dealer_pro_active, dealer_pro_expires_at, is_verified, verified_expires_at, operator_status, vehicle_type, carries, registration_expires_at')
+    .select('id, slug, full_name, business_name, avatar_url, rating, rating_count, dealer_pro_active, dealer_pro_expires_at, is_verified, verified_expires_at, operator_status, vehicle_type, carries, registration_expires_at, whatsapp_catalogue_url')
     .eq(lookup.by, lookup.value)
     .maybeSingle();
 
@@ -484,6 +489,15 @@ Deno.serve(async (req) => {
     ? `<a class="more" href="${webUrl}">See all ${totalItems} ${unit(totalItems)} \u2192</a>`
     : ''}`;
 
+  // Shown for any seller who has added one. The column's CHECK constraint
+  // allows only https://wa.me/... - this page carries ImbizoHub's name in
+  // front of someone else's customers, and an open URL field here would be
+  // a phishing surface. escapeHtml as well, belt and braces.
+  const waUrl = (profile as any).whatsapp_catalogue_url as string | null;
+  const waCatalogue = waUrl
+    ? `<a class="wa" href="${escapeHtml(waUrl)}" rel="noopener nofollow">\u{1F4F1} See the full catalogue on WhatsApp</a>`
+    : '';
+
   const head = `
 <link rel="canonical" href="${canonical}">
 <meta name="description" content="${escapeHtml(shareText)}">
@@ -508,6 +522,8 @@ Deno.serve(async (req) => {
   ${badges ? `<div class="badges">${badges}</div>` : ''}
 
   ${catalogue}
+
+  ${waCatalogue}
 
   <!-- ABOVE the app prompt deliberately. That prompt hides itself for
        1.5s while it tries to deep-link, and someone arriving from a

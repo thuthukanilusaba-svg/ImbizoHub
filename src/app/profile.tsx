@@ -170,6 +170,12 @@ export default function ProfileScreen() {
   const [draftName, setDraftName] = useState('');
   const [draftPhone, setDraftPhone] = useState('');
   const [draftLocation, setDraftLocation] = useState('');
+  // WHATSAPP CATALOGUE (22 Oct 2026). Free for every seller, not Dealer
+  // Pro - the storefront page is free, only the short address is paid.
+  // Added because Milli fabrics tried to put her wa.me catalogue link in
+  // a LISTING TITLE and the 60-character cap cut it in half.
+  const [whatsappCatalogue, setWhatsappCatalogue] = useState('');
+  const [draftWhatsappCatalogue, setDraftWhatsappCatalogue] = useState('');
   // Transport operators only. base_city decides which trips they are
   // shown (see lib/cities.ts), and until now it could only be set once,
   // during registration — an operator who moved city, or simply tapped
@@ -212,6 +218,7 @@ export default function ProfileScreen() {
       setFullName(profile.full_name ?? '');
       setPhone(profile.phone ?? '');
       setLocation(profile.location ?? '');
+      setWhatsappCatalogue(profile.whatsapp_catalogue_url ?? '');
       setBaseCity(profile.base_city ?? '');
       setAccountType(profile.account_type ?? 'buyer');
       setAvatarUrl(profile.avatar_url ?? null);
@@ -417,6 +424,7 @@ export default function ProfileScreen() {
 
   function startEditing() {
     setDraftName(fullName); setDraftPhone(phone); setDraftLocation(location);
+    setDraftWhatsappCatalogue(whatsappCatalogue);
     setDraftBaseCity(baseCity);
     setEditing(true); setError('');
   }
@@ -444,12 +452,24 @@ export default function ProfileScreen() {
     // while reads carry on working, because profiles are publicly
     // readable. The result is a profile screen that shows the right data
     // and silently discards every edit.
+    // Checked here so the person gets a sentence they can act on. The
+    // column has a CHECK constraint doing the same job server-side, but
+    // its message is Postgres's, not one a seller should ever read.
+    const catalogue = draftWhatsappCatalogue.trim();
+    if (catalogue && !/^https:\/\/wa\.me\/[A-Za-z0-9/_.?=&%+-]{1,120}$/.test(catalogue)) {
+      setError('Your catalogue link should start with https://wa.me/ — copy it from WhatsApp Business.');
+      setSaving(false);
+      return;
+    }
+
     const { data: updatedRows, error: updateError } = await supabase
       .from('profiles')
       .update({
         full_name: nameCheck.value,
         phone: draftPhone.trim(),
         location: draftLocation.trim(),
+        // null, not '', so the CHECK treats "cleared" as absent.
+        whatsapp_catalogue_url: catalogue || null,
         // Only written for transport operators. Sending base_city for
         // everyone else would put a value on accounts the filter never
         // consults, which is harmless today but misleading to anyone
@@ -465,6 +485,7 @@ export default function ProfileScreen() {
       return;
     }
     setFullName(draftName.trim()); setPhone(draftPhone.trim()); setLocation(draftLocation.trim());
+    setWhatsappCatalogue(catalogue);
     if (accountType === 'transport_operator') setBaseCity(draftBaseCity);
     setEditing(false);
   }
@@ -823,6 +844,17 @@ export default function ProfileScreen() {
                 <Text style={styles.label}>Location</Text>
                 <TextInput style={styles.input} value={draftLocation} onChangeText={setDraftLocation}
                   placeholder="e.g. Harare" placeholderTextColor="#666" />
+
+                <Text style={styles.label}>WhatsApp catalogue link</Text>
+                <TextInput style={styles.input} value={draftWhatsappCatalogue}
+                  onChangeText={setDraftWhatsappCatalogue}
+                  placeholder="https://wa.me/c/263..." placeholderTextColor="#666"
+                  autoCapitalize="none" autoCorrect={false} keyboardType="url" />
+                <Text style={styles.baseCityHint}>
+                  Optional. In WhatsApp Business: Catalogue &rarr; Share &rarr; Copy link.
+                  It becomes a button on your shop page, so you keep your catalogue
+                  in one place.
+                </Text>
 
                 {/* Operators only. This is the field that decides which
                     trips they are shown, so it is worth naming that
