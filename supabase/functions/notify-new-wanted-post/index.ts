@@ -31,6 +31,14 @@ const EXPO_PUSH_URL = 'https://exp.host/--/api/v2/push/send';
 // at once.
 const MAX_RECIPIENTS = 50;
 
+// Below this many candidates, the category scoping is doing more harm
+// than good and the recipient list is widened — see the comment at the
+// widening itself for the measurements behind it. Set at 10 because
+// that is comfortably above what any single category can currently
+// supply (the best is 4 sellers, in Beauty) and comfortably below what
+// would constitute spam at this size.
+const MIN_USEFUL_POOL = 10;
+
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
 async function sendExpoPushNotification(
@@ -94,21 +102,100 @@ Deno.serve(async (req) => {
       .limit(MAX_RECIPIENTS * 3); // over-fetch before de-duping, since
       // multiple listings can share the same seller — de-duped below.
 
-    if (sellersError || !sellers || sellers.length === 0) {
-      return new Response('No matching sellers', { status: 200 });
+    if (sellersError) {
+      console.error('notify-new-wanted-post: category seller lookup failed:', sellersError.message);
     }
 
-    const uniqueSellerIds = [...new Set(sellers.map((s) => s.user_id))].slice(0, MAX_RECIPIENTS);
+    let recipientIds = [...new Set((sellers ?? []).map((s) => s.user_id))];
+    let tier = 'category';
+
+    // WIDEN WHEN THE CATEGORY POOL IS TOO SMALL TO BE WORTH ANYTHING.
+    // Added 23 Oct 2026, after measuring what this function had actually
+    // been delivering.
+    //
+    // Across the six open wants on that date, category scoping matched
+    // ONE seller for five of them and two for the sixth — and because
+    // some of those sellers have no push token, the real delivery was
+    // four notifications in total. Two wants reached nobody at all: a
+    // request for wholesale cabbages matched exactly one seller, who
+    // sells wedding fabric, and who has no token anyway.
+    //
+    // The scoping and MAX_RECIPIENTS were written for a busy
+    // marketplace, where a want could otherwise spam hundreds of people
+    // who do not stock it. That is a real problem — just not this
+    // marketplace's problem yet. With 21 active listings spread over 9
+    // categories, filtering by category takes a pool of 8 reachable
+    // sellers and cuts it to 1. The filter is not protecting anyone
+    // from noise; it is the reason nobody hears about anything.
+    //
+    // So: prefer the category, but if that yields fewer than
+    // MIN_USEFUL_POOL people, widen — first to everyone with an active
+    // listing in any category, then to every real account we can reach.
+    // At today's size the widest tier is about a dozen people and about
+    // one notification a day, which is not spam, it is the product
+    // working. As the marketplace fills, the category tier will clear
+    // the threshold on its own and this never fires again. No constant
+    // needs changing for that to happen.
+    //
+    // The second widening deliberately includes people with no listing.
+    // The only seller who has ever answered a want signed up and
+    // responded within ten minutes, having listed nothing at all —
+    // "has an active listing" would have excluded exactly the person
+    // this function exists to reach.
+    if (recipientIds.length < MIN_USEFUL_POOL) {
+      const { data: anySellers } = await supabase
+        .from('listings')
+        .select('user_id')
+        .eq('status', 'active')
+        .neq('user_id', want.user_id)
+        .order('created_at', { ascending: false })
+        .limit(MAX_RECIPIENTS * 3);
+
+      const widened = new Set([...recipientIds, ...(anySellers ?? []).map((s) => s.user_id)]);
+      recipientIds = [...widened];
+      tier = 'any-seller';
+    }
+
+    if (recipientIds.length < MIN_USEFUL_POOL) {
+      // Every real account holding a push token. Anonymous sessions are
+      // excluded by having no profile worth notifying for this purpose —
+      // they are device-bound askers, not suppliers.
+      const { data: anyone } = await supabase
+        .from('profiles')
+        .select('id')
+        .not('push_token', 'is', null)
+        .neq('id', want.user_id)
+        .limit(MAX_RECIPIENTS);
+
+      const widened = new Set([...recipientIds, ...(anyone ?? []).map((p) => p.id)]);
+      recipientIds = [...widened];
+      tier = 'everyone';
+    }
+
+    recipientIds = recipientIds.slice(0, MAX_RECIPIENTS);
+
+    if (recipientIds.length === 0) {
+      console.log('notify-new-wanted-post: nobody to notify for', want.id);
+      return new Response('No recipients', { status: 200 });
+    }
 
     const { data: profiles } = await supabase
       .from('profiles')
       .select('id, push_token')
-      .in('id', uniqueSellerIds);
+      .in('id', recipientIds);
 
     const locationSuffix = want.location ? ` in ${want.location}` : '';
 
+    // Counted, not assumed. This function used to report 200 whether it
+    // had reached fifty people or none — sendExpoPushNotification
+    // returns silently when a profile has no token, which is how two
+    // wants came to reach nobody with nothing anywhere saying so.
+    const withTokens = (profiles ?? []).filter(
+      (p) => p.push_token && String(p.push_token).startsWith('ExponentPushToken')
+    );
+
     await Promise.all(
-      (profiles ?? []).map((p) =>
+      withTokens.map((p) =>
         sendExpoPushNotification(
           p.push_token,
           'New want posted 🔍',
@@ -118,7 +205,15 @@ Deno.serve(async (req) => {
       )
     );
 
-    return new Response('OK', { status: 200 });
+    console.log(
+      `notify-new-wanted-post: want=${want.id} category="${want.category}" tier=${tier} ` +
+      `candidates=${recipientIds.length} pushed=${withTokens.length}`
+    );
+
+    return new Response(
+      JSON.stringify({ tier, candidates: recipientIds.length, pushed: withTokens.length }),
+      { status: 200, headers: { 'Content-Type': 'application/json' } }
+    );
   } catch (err) {
     console.error('notify-new-wanted-post error:', err);
     return new Response('Server error', { status: 500 });
