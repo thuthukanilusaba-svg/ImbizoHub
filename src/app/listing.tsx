@@ -79,6 +79,7 @@ import { Directions, Gesture, GestureDetector, GestureHandlerRootView } from 're
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import PhotoZoomViewer from '../../components/PhotoZoomViewer';
 import { buildListingHref, parseListingContext } from '../../lib/listingNav';
+import { LinkedText } from '../../lib/richText';
 import { formatPrice } from '../../lib/money';
 import { BADGE_PROFILE_COLUMNS, BadgeSeller, isVerifiedNow, listingBadge } from '../../lib/badges';
 import { supabase } from '../../lib/supabase';
@@ -551,7 +552,16 @@ export default function ListingScreen() {
           {listing.description ? (
             <>
               <Text style={styles.sectionTitle}>Description</Text>
-              <Text style={styles.description}>{listing.description}</Text>
+              {/* WAS a plain <Text>. Milli fabrics put her full WhatsApp
+                  catalogue URL in here — stored correctly, displayed
+                  correctly, and completely inert, because a <Text> in
+                  React Native is not a browser. Same for every seller
+                  who writes their phone number in the description,
+                  which on a marketplace that grew out of WhatsApp is
+                  most of them. See lib/richText.tsx. */}
+              <LinkedText style={styles.description} linkStyle={styles.descriptionLink}>
+                {listing.description}
+              </LinkedText>
             </>
           ) : null}
 
@@ -779,6 +789,10 @@ const styles = StyleSheet.create({
 
   sectionTitle: { fontSize: 13, fontWeight: '700', color: '#fff', marginTop: 24, marginBottom: 8 },
   description: { fontSize: 14, color: '#ccc', lineHeight: 22 },
+  // Gold and underlined, so a tappable link is visibly different from
+  // the sentence around it. Colour alone is not enough — it has to
+  // survive being read on a cheap screen in daylight.
+  descriptionLink: { color: GOLD, textDecorationLine: 'underline' },
 
   categoryChip: { alignSelf: 'flex-start', backgroundColor: DARK, borderRadius: 20, paddingHorizontal: 14, paddingVertical: 8, borderWidth: 0.5, borderColor: '#333' },
   categoryChipText: { color: GREY, fontSize: 12 },
