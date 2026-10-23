@@ -306,6 +306,31 @@ export default function BrowseWantedScreen() {
       return;
     }
 
+    // A MESSAGE IS NOW REQUIRED. Added 23 Oct 2026, from watching the
+    // second offer this app has ever received.
+    //
+    // This function validated the price and nothing else, and the field
+    // above was labelled "Message (optional)" — so the app told sellers
+    // the message did not matter, and a seller believed it. The result
+    // sat in the database that evening: a real offer on a real want for
+    // cabbages, price 1, message ''. The buyer opens his first ever
+    // offer and sees a name and a number. How many? At what grade?
+    // Delivered or collected? When? None of it.
+    //
+    // On a wanted marketplace the message IS the quote. A price with no
+    // terms is not something anyone can accept, so an offer sent that
+    // way wastes both sides: the seller thinks they have quoted, the
+    // buyer has nothing to act on, and the request goes quiet for a
+    // reason neither of them can see.
+    //
+    // Ten characters, deliberately low. This is a floor against an
+    // empty box and 'ok', not an essay requirement — "50 bags, Friday"
+    // passes and says everything it needs to.
+    if (message.trim().length < 10) {
+      setSubmitError('Add a short message — how many you have, and when you can deliver. A price on its own is hard to accept.');
+      return;
+    }
+
     if (!selected) {
       setSubmitError('Something went wrong. Please try again.');
       return;
@@ -603,16 +628,26 @@ export default function BrowseWantedScreen() {
                   keyboardType="decimal-pad"
                 />
 
-                <Text style={styles.modalLabel}>Message (optional)</Text>
+                {/* WAS "Message (optional)" — see submitResponse() above
+                    for what that cost. The placeholder now asks the
+                    questions a buyer actually needs answered, rather
+                    than inviting a vague "condition, extras": people
+                    fill in the blanks you give them, and "anything the
+                    buyer should know" is not a blank, it is a shrug. */}
+                <Text style={styles.modalLabel}>Your message *</Text>
                 <TextInput
                   style={[styles.modalInput, styles.modalTextArea]}
-                  placeholder="Condition, extras, anything the buyer should know..."
+                  placeholder="How many do you have? When can you deliver? What condition?"
                   placeholderTextColor="#666"
                   value={message}
-                  onChangeText={setMessage}
+                  onChangeText={(t) => { setMessage(t); setSubmitError(''); }}
                   multiline
                   numberOfLines={3}
                 />
+                <Text style={styles.modalHint}>
+                  The buyer sees your price and this message, nothing else. A price on its own
+                  is hard to say yes to.
+                </Text>
 
                 <Text style={styles.modalLabel}>What are you offering?</Text>
                 <View style={styles.itemTypeRow}>
@@ -821,6 +856,10 @@ const styles = StyleSheet.create({
     fontSize: 14, color: '#fff', borderWidth: 0.5, borderColor: '#333',
   },
   modalTextArea: { height: 80, textAlignVertical: 'top', paddingTop: 10 },
+  // Sits directly under the message box. Says what the buyer will
+  // actually see, because a seller who knows the message is the whole
+  // quote writes a different message.
+  modalHint: { fontSize: 11.5, color: GREY, lineHeight: 16, marginTop: 6 },
   itemTypeRow: { flexDirection: 'row', gap: 8 },
   itemTypeChip: { flex: 1, backgroundColor: DARK, borderRadius: 10, paddingVertical: 12, alignItems: 'center', borderWidth: 1, borderColor: '#333' },
   itemTypeChipActive: { borderColor: GOLD, backgroundColor: '#2a2200' },
