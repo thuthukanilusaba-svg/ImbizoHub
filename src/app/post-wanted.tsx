@@ -86,6 +86,14 @@ export default function PostWantedScreen() {
   const [success, setSuccess] = useState(false);
   const [newRequestId, setNewRequestId] = useState<string | null>(null);
 
+  // WhatsApp number for the success screen — see the block that renders
+  // it below for why this is asked on web only, and asked after the post
+  // rather than during it.
+  const [contactPhone, setContactPhone] = useState('');
+  const [savingPhone, setSavingPhone] = useState(false);
+  const [phoneSaved, setPhoneSaved] = useState(false);
+  const [phoneError, setPhoneError] = useState('');
+
   // ---- EDIT MODE -------------------------------------------------------
   //
   // Same screen, same form, reached as /post-wanted?edit=<id> from
@@ -226,6 +234,49 @@ export default function PostWantedScreen() {
     setSuccess(true);
   }
 
+  // Saves the asker's WhatsApp number against their own want, into
+  // item_request_contacts — a separate table, not a column on
+  // item_requests, because item_requests is readable by the entire
+  // internet (its policy is `using (true)` for anon and authenticated
+  // alike). See the wanted_post_private_contact migration.
+  //
+  // Only the person who posted the want and an admin can read it back.
+  // No seller ever sees it.
+  async function saveContactPhone() {
+    const raw = contactPhone.replace(/[\s()-]/g, '');
+
+    // Mirrors item_request_contacts_phone_format exactly. Checked here
+    // too so a typo comes back as a sentence rather than as a Postgres
+    // constraint-violation string.
+    if (!/^\+?[0-9]{9,15}$/.test(raw)) {
+      setPhoneError('That doesn\'t look like a phone number. Try 0771234567 or +263771234567.');
+      return;
+    }
+    if (!newRequestId) {
+      setPhoneError('Something went wrong saving your number. Your post is still live.');
+      return;
+    }
+
+    setPhoneError('');
+    setSavingPhone(true);
+
+    const { error: contactError } = await supabase
+      .from('item_request_contacts')
+      .insert({ item_request_id: newRequestId, phone: raw });
+
+    setSavingPhone(false);
+
+    if (contactError) {
+      // Checked, not discarded. A write that matters and reports
+      // nothing is how savePushToken hid a total failure for months.
+      reportHandledError('post-wanted.contact', contactError, { id: newRequestId });
+      setPhoneError('Could not save your number: ' + contactError.message);
+      return;
+    }
+
+    setPhoneSaved(true);
+  }
+
   // Editing opens on an empty form for as long as the fetch takes, and
   // an empty form is indistinguishable from "this post had no title".
   // Show a spinner instead of letting someone start typing over values
@@ -246,6 +297,69 @@ export default function PostWantedScreen() {
         <Text style={styles.successSub}>
           Sellers can now see what you're looking for and respond with a price.
         </Text>
+
+        {/* WEB ONLY, AND AFTER THE POST — both deliberate.
+
+            Web only, because a browser cannot receive a push from this
+            app at all: lib/notifications.ts returns null on web before
+            it even asks for permission, so no token is ever generated.
+            Someone who posts a want from the website has no email, no
+            phone and no push — if a seller replies, there is literally
+            no way to tell them. That is not theoretical: a real request
+            for a Samsung S21 Ultra came in from the web at 22:42 on
+            22 Oct 2026 with no token on the account. On a phone the
+            push already works and this would be friction asking for
+            something we do not need.
+
+            After the post, because asking for a number before it would
+            cost posts. The want is already saved and live by the time
+            this appears — skipping costs them nothing, and the field is
+            attached to something real rather than guarding the door.
+
+            The number is NEVER shown to sellers. If a responding seller
+            could see it the deal would move to WhatsApp on first
+            contact and never come back — no chat, no accept, no
+            transaction, and no way to know the app did anything. */}
+        {Platform.OS === 'web' && newRequestId ? (
+          phoneSaved ? (
+            <View style={styles.contactBox}>
+              <Text style={styles.contactDone}>
+                ✓ Saved. We'll message you on WhatsApp as soon as a seller sends a price.
+              </Text>
+            </View>
+          ) : (
+            <View style={styles.contactBox}>
+              <Text style={styles.contactTitle}>Where should we send the prices?</Text>
+              <Text style={styles.contactBody}>
+                You're on the website, so we can't buzz your phone. Leave your WhatsApp number
+                and we'll message you the moment a seller replies. Sellers never see it.
+              </Text>
+              <TextInput
+                style={styles.contactInput}
+                value={contactPhone}
+                onChangeText={(t) => { setContactPhone(t); setPhoneError(''); }}
+                placeholder="0771234567"
+                placeholderTextColor="#666"
+                keyboardType="phone-pad"
+                autoComplete="tel"
+              />
+              {phoneError ? <Text style={styles.contactError}>{phoneError}</Text> : null}
+              <TouchableOpacity
+                style={[styles.contactBtn, savingPhone && { opacity: 0.6 }]}
+                onPress={saveContactPhone}
+                disabled={savingPhone}
+              >
+                {savingPhone
+                  ? <ActivityIndicator color={BLACK} />
+                  : <Text style={styles.contactBtnText}>Tell me when a price arrives</Text>}
+              </TouchableOpacity>
+              <Text style={styles.contactSkip}>
+                Or skip — your post is already live either way.
+              </Text>
+            </View>
+          )
+        ) : null}
+
         <TouchableOpacity
           style={styles.successBtn}
           onPress={() => {
@@ -501,4 +615,24 @@ const styles = StyleSheet.create({
     borderColor: GOLD,
   },
   successBtnOutlineText: { color: GOLD, fontSize: 16, fontWeight: '700' },
+
+  // Sits between the congratulations and the two buttons. Boxed and
+  // slightly set back so it reads as an offer rather than as another
+  // required step in a form they have already finished.
+  contactBox: {
+    backgroundColor: '#1c1c1c', borderRadius: 14, borderWidth: 0.5, borderColor: '#333',
+    padding: 18, marginBottom: 24, width: '100%', maxWidth: 420, alignSelf: 'center',
+  },
+  contactTitle: { color: '#fff', fontSize: 15, fontWeight: '800', marginBottom: 6, textAlign: 'center' },
+  contactBody: { color: GREY, fontSize: 12.5, lineHeight: 18, marginBottom: 14, textAlign: 'center' },
+  contactInput: {
+    backgroundColor: '#111', borderRadius: 10, borderWidth: 0.5, borderColor: '#3a3a3a',
+    color: '#fff', fontSize: 15, paddingHorizontal: 14,
+    paddingVertical: Platform.OS === 'ios' ? 13 : 10, marginBottom: 12,
+  },
+  contactError: { color: '#ff8a8a', fontSize: 12, marginBottom: 10, lineHeight: 17 },
+  contactBtn: { backgroundColor: GOLD, borderRadius: 12, paddingVertical: 13, alignItems: 'center' },
+  contactBtnText: { color: BLACK, fontSize: 14, fontWeight: '800' },
+  contactSkip: { color: '#777', fontSize: 11.5, textAlign: 'center', marginTop: 10 },
+  contactDone: { color: '#4fc96e', fontSize: 13, lineHeight: 19, textAlign: 'center' },
 });
