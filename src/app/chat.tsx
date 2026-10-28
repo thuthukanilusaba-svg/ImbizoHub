@@ -2077,13 +2077,48 @@ export default function ChatScreen() {
             ? <ActivityIndicator color={GOLD} style={{ width: 20 }} />
             : <Text style={styles.attachIcon}>📎</Text>}
         </TouchableOpacity>
+        {/* GROWS INSTEAD OF SCROLLING SIDEWAYS. Fixed 28 Oct 2026,
+            reported from the web chat: "the text inside the web
+            messages types continuous in one line".
+
+            This had no `multiline` prop at all, so it was a one-line
+            field — past about forty characters the beginning of your
+            own sentence scrolled off to the left and you could not see
+            what you had written. The first real conversation in this
+            app was typed into it, and the person typing it was
+            comparing it with WhatsApp while they did.
+
+            Now it grows with the text up to maxHeight and scrolls
+            vertically after that, which is what every messaging app
+            does. 120px is about five lines at fontSize 13 — enough for
+            a real paragraph without the composer eating the
+            conversation above it.
+
+            ENTER BEHAVIOUR. onSubmitEditing does not fire on a
+            multiline input, so send-on-Enter is handled explicitly
+            below, and only on web: Enter sends, Shift+Enter makes a
+            new line. On a phone there is no Shift key, so Enter must
+            stay as a newline and the send button does the sending —
+            exactly how WhatsApp behaves on each platform. */}
         <TextInput
           style={styles.inputBar}
           placeholder="Type a message..."
           placeholderTextColor="#555"
           value={text}
           onChangeText={setText}
-          onSubmitEditing={sendMessage}
+          multiline
+          // Without this, Android centres a growing input's text
+          // vertically and the first line sits oddly low.
+          textAlignVertical="top"
+          // Keeps the keyboard up when Enter is pressed on native.
+          blurOnSubmit={false}
+          onKeyPress={(e: any) => {
+            if (Platform.OS !== 'web') return;
+            if (e?.nativeEvent?.key === 'Enter' && !e?.nativeEvent?.shiftKey) {
+              e.preventDefault?.();
+              sendMessage();
+            }
+          }}
         />
         <TouchableOpacity style={styles.sendBtn} onPress={sendMessage}>
           <Text style={styles.sendIcon}>➤</Text>
@@ -2672,7 +2707,12 @@ const styles = StyleSheet.create({
   bubbleTextBuyer: { color: BLACK, fontSize: 13, lineHeight: 20 },
   msgTime: { color: '#444', fontSize: 10, marginTop: 3 },
   msgTimeMine: { textAlign: 'right' },
-  inputRow: { backgroundColor: BLACK, padding: 10, paddingHorizontal: 16, flexDirection: 'row', alignItems: 'center', gap: 10, borderTopWidth: 0.5, borderTopColor: DARK },
+  // WAS alignItems: 'center'. Fine for a one-line input; wrong the
+  // moment it grows, because the paperclip and the send button drift
+  // to the vertical middle of a tall box and sit beside the middle of
+  // your paragraph. 'flex-end' keeps them next to the last line, where
+  // every messaging app puts them.
+  inputRow: { backgroundColor: BLACK, padding: 10, paddingHorizontal: 16, flexDirection: 'row', alignItems: 'flex-end', gap: 10, borderTopWidth: 0.5, borderTopColor: DARK },
   attachIcon: { fontSize: 20, color: GREY },
 
   pendingRow: {
@@ -2687,7 +2727,10 @@ const styles = StyleSheet.create({
   pendingRemove: { color: GREY, fontSize: 24, lineHeight: 26, paddingHorizontal: 4 },
   msgImage: { width: 200, height: 200, borderRadius: 10, backgroundColor: '#222' },
   msgImageLoading: { alignItems: 'center', justifyContent: 'center' },
-  inputBar: { flex: 1, backgroundColor: DARK, borderRadius: 24, padding: 10, paddingHorizontal: 16, borderWidth: 0.5, borderColor: '#333', color: '#fff', fontSize: 13 },
+  // maxHeight is what turns "grows forever" into "grows, then
+  // scrolls" — without it a long message pushes the conversation off
+  // the screen. ~5 lines at fontSize 13.
+  inputBar: { flex: 1, backgroundColor: DARK, borderRadius: 24, padding: 10, paddingHorizontal: 16, borderWidth: 0.5, borderColor: '#333', color: '#fff', fontSize: 13, maxHeight: 120 },
   sendBtn: { width: 40, height: 40, backgroundColor: GOLD, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
   sendIcon: { color: BLACK, fontSize: 18 },
   lockedInputRow: { backgroundColor: BLACK, padding: 16, paddingBottom: 30, flexDirection: 'row', alignItems: 'center', gap: 12, borderTopWidth: 0.5, borderTopColor: DARK },
