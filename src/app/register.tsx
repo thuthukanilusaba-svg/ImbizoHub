@@ -1,8 +1,9 @@
 import { useRouter } from 'expo-router';
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, KeyboardAvoidingView, Linking, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { supabase } from '../../lib/supabase';
 import { OAuthProvider, signInWithProvider } from '../../lib/oauth';
+import { isAppleSignInAvailable, signInWithApple } from '../../lib/appleAuth';
 import { DELIVERY_BOOKING_ENABLED } from '../../lib/featureFlags';
 import { checkName } from '../../lib/nameValidation';
 import { reportHandledError } from '../../lib/crashReporter';
@@ -90,6 +91,28 @@ export default function RegisterScreen() {
   const [oauthLoading, setOauthLoading] = useState<OAuthProvider | null>(null);
 
   const isSubmittingRef = useRef(false);
+
+  // Sign in with Apple — see lib/appleAuth.ts. Availability is asked,
+  // not inferred from Platform.OS, so an older iOS binary without the
+  // native module simply does not draw the button.
+  const [appleAvailable, setAppleAvailable] = useState(false);
+  const [appleLoading, setAppleLoading] = useState(false);
+
+  useEffect(() => {
+    let alive = true;
+    isAppleSignInAvailable().then((ok) => { if (alive) setAppleAvailable(ok); });
+    return () => { alive = false; };
+  }, []);
+
+  async function handleAppleSignIn() {
+    setErrorMsg('');
+    setAppleLoading(true);
+    const result = await signInWithApple();
+    setAppleLoading(false);
+    if (result.status === 'cancelled') return;
+    if (result.status === 'error') { setErrorMsg(result.message); return; }
+    router.replace('/');
+  }
 
   async function handleOAuthSignIn(provider: OAuthProvider) {
     setErrorMsg('');
@@ -276,6 +299,26 @@ export default function RegisterScreen() {
           )}
         </TouchableOpacity>
 
+        {/* Offered, not promoted — below Google, which is the path most
+            of this app's sellers actually take. Drawn only on an iOS
+            build that has the native module. */}
+        {appleAvailable ? (
+          <TouchableOpacity
+            style={styles.appleButton}
+            onPress={handleAppleSignIn}
+            disabled={appleLoading || !!oauthLoading}
+          >
+            {appleLoading ? (
+              <ActivityIndicator color="#fff" />
+            ) : (
+              <>
+                <Text style={styles.appleIcon}></Text>
+                <Text style={styles.appleButtonText}>Continue with Apple</Text>
+              </>
+            )}
+          </TouchableOpacity>
+        ) : null}
+
         {/* ADDED 6 Oct 2026. handleOAuthSignIn never checked
             agreedToTerms, so every account created with Google — six of
             them — was created without the Terms ever being shown, let
@@ -292,7 +335,7 @@ export default function RegisterScreen() {
             The acceptance itself is recorded server-side on the way back
             in — see lib/terms.ts. */}
         <Text style={styles.oauthTerms}>
-          By continuing with Google you agree to the{' '}
+          By continuing with Google{appleAvailable ? ' or Apple' : ''} you agree to the{' '}
           <Text style={styles.termsLink} onPress={() => Linking.openURL(TERMS_URL)}>
             Terms of Service
           </Text>.
@@ -561,5 +604,16 @@ const styles = StyleSheet.create({
   },
   oauthIconGoogle: { fontSize: 16, fontWeight: '900', color: '#4285F4', width: 18, textAlign: 'center' },
   oauthButtonText: { color: '#1A1A1A', fontSize: 15, fontWeight: '600' },
+
+  // Matches login.tsx exactly — the two screens sit side by side in the
+  // same flow and a button that changes shape between them reads as a
+  // different button.
+  appleButton: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+    backgroundColor: '#000', borderRadius: 10, padding: 14, marginTop: 10,
+    borderWidth: 0.5, borderColor: '#555',
+  },
+  appleIcon: { fontSize: 17, color: '#fff', width: 18, textAlign: 'center', marginTop: -2 },
+  appleButtonText: { color: '#fff', fontSize: 15, fontWeight: '600' },
   oauthTerms: { color: '#9A9A95', fontSize: 11.5, textAlign: 'center', marginTop: 10, lineHeight: 16 },
 });

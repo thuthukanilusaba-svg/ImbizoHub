@@ -27,13 +27,14 @@
 // existed.
 
 import { useRouter } from 'expo-router';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   ActivityIndicator, KeyboardAvoidingView, Platform, ScrollView, StyleSheet,
   Text, TextInput, TouchableOpacity, View,
 } from 'react-native';
 import { supabase } from '../../lib/supabase';
 import { OAuthProvider, signInWithProvider } from '../../lib/oauth';
+import { isAppleSignInAvailable, signInWithApple } from '../../lib/appleAuth';
 
 const GOLD = '#B8860B';
 const BLACK = '#1A1A18';
@@ -57,6 +58,32 @@ export default function LoginScreen() {
   // kept as a union type since Facebook is meant to come back later
   // (see lib/oauth.ts's top-of-file comment).
   const [oauthLoading, setOauthLoading] = useState<OAuthProvider | null>(null);
+
+  // Sign in with Apple. Asked rather than assumed from Platform.OS: the
+  // check also covers an iOS build that predates the native module and
+  // an iOS version too old to support it. Starts false so the button is
+  // never drawn and then withdrawn. See lib/appleAuth.ts.
+  const [appleAvailable, setAppleAvailable] = useState(false);
+  const [appleLoading, setAppleLoading] = useState(false);
+
+  useEffect(() => {
+    let alive = true;
+    isAppleSignInAvailable().then((ok) => { if (alive) setAppleAvailable(ok); });
+    return () => { alive = false; };
+  }, []);
+
+  async function handleAppleSignIn() {
+    setError('');
+    setAppleLoading(true);
+    const result = await signInWithApple();
+    setAppleLoading(false);
+
+    // Cancelled is someone dismissing Apple's sheet. Saying nothing is
+    // the correct response — an error banner there reads as a fault.
+    if (result.status === 'cancelled') return;
+    if (result.status === 'error') { setError(result.message); return; }
+    router.replace('/');
+  }
 
   // NEW: shared with register.tsx via lib/oauth.ts, which itself
   // mirrors reset-password.tsx's PKCE exchange pattern. Anonymous-
@@ -230,6 +257,26 @@ export default function LoginScreen() {
           )}
         </TouchableOpacity>
 
+        {/* Below Google, not above it. Apple requires the option to be
+            offered, not promoted — and Google is the path 8 of this
+            app's sellers actually used. Drawn only where it works. */}
+        {appleAvailable ? (
+          <TouchableOpacity
+            style={styles.appleButton}
+            onPress={handleAppleSignIn}
+            disabled={appleLoading || !!oauthLoading}
+          >
+            {appleLoading ? (
+              <ActivityIndicator color="#fff" />
+            ) : (
+              <>
+                <Text style={styles.appleIcon}></Text>
+                <Text style={styles.appleButtonText}>Continue with Apple</Text>
+              </>
+            )}
+          </TouchableOpacity>
+        ) : null}
+
         <TouchableOpacity onPress={() => router.push('/register')}>
           <Text style={styles.link}>Don't have an account? <Text style={styles.gold}>Register</Text></Text>
         </TouchableOpacity>
@@ -280,4 +327,18 @@ const styles = StyleSheet.create({
   },
   oauthIconGoogle: { fontSize: 16, fontWeight: '900', color: '#4285F4', width: 18, textAlign: 'center' },
   oauthButtonText: { color: '#1A1A1A', fontSize: 15, fontWeight: '600' },
+
+  // Black on white is one of the styles Apple's Human Interface
+  // Guidelines permit, and it sits correctly against this screen's dark
+  // background while staying visually distinct from the white Google
+  // button above it. Same height and radius so the two read as a pair.
+  appleButton: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+    backgroundColor: '#000', borderRadius: 10, padding: 14, marginTop: 10,
+    borderWidth: 0.5, borderColor: '#555',
+  },
+  // The Apple logo glyph. Renders on iOS, which is the only place this
+  // button is ever drawn.
+  appleIcon: { fontSize: 17, color: '#fff', width: 18, textAlign: 'center', marginTop: -2 },
+  appleButtonText: { color: '#fff', fontSize: 15, fontWeight: '600' },
 });

@@ -19,7 +19,8 @@
       "associatedDomains": [
         "applinks:imbizohub.com",
         "applinks:imbizohub.app"
-      ]
+      ],
+      "usesAppleSignIn": true
     },
     "android": {
       "adaptiveIcon": {
@@ -81,6 +82,7 @@
           }
         }
       ],
+      "expo-apple-authentication",
       "expo-font",
       "expo-image",
       "@react-native-community/datetimepicker",
