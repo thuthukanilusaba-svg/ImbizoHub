@@ -71,7 +71,8 @@ from, where to, what you're moving — and van operators bid for the job.
 Compare their quotes, pick your driver, confirm when the trip is done.
 
 Boxes and stock, one big item, something fragile, or a group of people.
-Our operators drive vans rather than trucks, so anything up to a van load.
+Our operators drive vans and small trucks, so anything up to a three-tonne
+load.
 
 Bulawayo to Harare, or one suburb to the next.
 
@@ -160,9 +161,15 @@ Use the Google Play full description above unchanged.
 ### Keywords field — max 100 characters, comma separated, no spaces
 
 ```
-zimbabwe,marketplace,harare,bulawayo,buy,sell,classifieds,van,truck,transport,ecocash,secondhand
+zimbabwe,harare,bulawayo,buy,sell,classifieds,clothes,hair,beauty,bags,van,truck,transport,ecocash
 ```
-*(96 chars)*
+*(98 chars)*
+
+Updated 31 Oct 2026 against the live catalogue rather than guesswork:
+Clothing (10 active listings) and Beauty (7) are more than half of
+everything on the app, and neither word appeared in the old string.
+Dropped `marketplace` and `secondhand` to pay for them — `marketplace` is
+already carried by the Shopping category, which Apple indexes separately.
 
 Don't repeat words already in the app name, subtitle or category — Apple
 indexes those separately, so spending keyword characters on them is waste.
@@ -187,15 +194,26 @@ hire a van Zimbabwe · goods transport Zimbabwe · courier Zimbabwe
 airport transfer Harare · group transport Zimbabwe
 ```
 
-**Honesty constraint, and it matters more than the ranking.** Every operator
-registered today drives a van (`profiles.vehicle_capacity = 8` across the
-board). So "truck hire Zimbabwe" is worth including only for the searches it
-catches — the listing text itself must keep saying *vans, up to a van load*.
+**Honesty constraint, and it matters more than the ranking.** UPDATED
+31 Oct 2026: a 3-tonne truck operator has registered in Bulawayo
+(`vehicle_type = '3-tonne truck'`, `max_load_size = 'truck'`), alongside
+two vans. "truck hire Zimbabwe" is now honest, and the listing text has
+been changed to *vans and small trucks, up to a three-tonne load*. It must
+not claim more than three tonnes.
 If somebody arrives from a truck search and posts a house move, that request
 sits unquoted, which is exactly what happened to the Kwekwe → Plumtree job on
 1 September. An unanswered request costs more than a missed install.
 
-Revisit this whole section the day an operator with a truck registers.
+Revisit this whole section again the day the truck operator lapses, or the
+day one registers with more than three tonnes.
+
+**TRAILER HIRE IS DEPLOYED BUT INVISIBLE — keep it out of the listing.**
+hirevan.tsx only shows the trailer chip when at least one active operator
+has `has_trailer = true`. As of 31 Oct 2026 that count is zero (four active
+operators, all registered before the question was added, so the column is
+NULL for every one of them). Describing trailer hire in store copy that a
+reviewer cannot find in the app is an accurate-metadata rejection. Add it
+to the listing the day the first trailer operator ticks the box.
 
 ---
 
