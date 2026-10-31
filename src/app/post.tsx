@@ -37,6 +37,7 @@ import {
   View,
 } from 'react-native';
 import { normalizeImageOrientation } from '../../lib/imageOrientation';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { supabase } from '../../lib/supabase';
 import { prepareUpload } from '../../lib/uploadHelpers';
 import { reportHandledError } from '../../lib/crashReporter';
@@ -83,6 +84,11 @@ function getAspectRatio(uri: string): Promise<number> {
 const MAX_PRICE = 10000000;
 
 export default function PostScreen() {
+  // The device's real top inset, not a guess. styles.content used a
+  // flat padding that clears the status bar on Android and sits under
+  // it on a modern iPhone, so the Back control was drawn behind the
+  // system clock. See whatsapp-import.tsx, where this was first found.
+  const insets = useSafeAreaInsets();
   const router = useRouter();
 
   const [title, setTitle] = useState('');
@@ -464,7 +470,7 @@ export default function PostScreen() {
       style={styles.container}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
-      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+      <ScrollView contentContainerStyle={[styles.content, { paddingTop: insets.top + 16 }]} keyboardShouldPersistTaps="handled">
         <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
           <Text style={styles.backText}><Text style={styles.backArrow}>‹</Text> Back</Text>
         </TouchableOpacity>

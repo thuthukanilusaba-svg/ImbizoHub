@@ -47,6 +47,7 @@ import {
   ActivityIndicator, KeyboardAvoidingView, Platform, ScrollView,
   StyleSheet, Text, TextInput, TouchableOpacity, View,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { supabase } from '../../lib/supabase';
 import CityPicker from '../../components/CityPicker';
 import {
@@ -61,6 +62,11 @@ const DARK = '#2a2a2a';
 const GREY = '#AAAAAA';
 
 export default function BecomeOperatorScreen() {
+  // The device's real top inset, not a guess. styles.content used a
+  // flat padding that clears the status bar on Android and sits under
+  // it on a modern iPhone, so the Back control was drawn behind the
+  // system clock. See whatsapp-import.tsx, where this was first found.
+  const insets = useSafeAreaInsets();
   const router = useRouter();
   const { type } = useLocalSearchParams<{ type: 'delivery' | 'operator' }>();
   const isDelivery = type === 'delivery';
@@ -330,7 +336,7 @@ export default function BecomeOperatorScreen() {
 
   return (
     <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
-      <ScrollView contentContainerStyle={styles.content}>
+      <ScrollView contentContainerStyle={[styles.content, { paddingTop: insets.top + 16 }]}>
         <TouchableOpacity onPress={() => (router.canGoBack() ? router.back() : router.replace('/'))} style={styles.backBtn}>
           <Text style={styles.backText}><Text style={styles.backArrow}>‹</Text> Back</Text>
         </TouchableOpacity>

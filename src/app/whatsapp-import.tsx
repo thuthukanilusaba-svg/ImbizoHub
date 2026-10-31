@@ -67,6 +67,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { supabase } from '../../lib/supabase';
 import { checkListingContent } from '../../lib/contentSafety';
 import LocationPicker from '../../components/LocationPicker';
@@ -195,6 +196,21 @@ type ParsedItem = {
 };
 
 export default function WhatsAppImportScreen() {
+  // THE REAL INSET, NOT A GUESS. Added 31 Oct 2026, from an iPhone
+  // screenshot where the Back control sat underneath the system clock.
+  //
+  // styles.content had `padding: 20`, which on Android clears the
+  // status bar and on a modern iPhone does not come close — the bar is
+  // around 55pt tall once there is a Dynamic Island, so the first thing
+  // on the screen was drawn behind it.
+  //
+  // Other screens paper over this with `Platform.OS === 'ios' ? 56 : 40`.
+  // That is the same hardcoded guess listing.tsx already criticises at
+  // the bottom of the screen ("a fixed guess at safe-area clearance
+  // instead of reading the device's real inset"), and it is wrong by a
+  // different amount on every model. useSafeAreaInsets() asks the
+  // device.
+  const insets = useSafeAreaInsets();
   const router = useRouter();
 
   const [rawText, setRawText] = useState('');
@@ -424,7 +440,7 @@ export default function WhatsAppImportScreen() {
 
   if (success) {
     return (
-      <View style={styles.successScreen}>
+      <View style={[styles.successScreen, { paddingTop: insets.top + 16 }]}>
         <Text style={styles.successEmoji}>🎉</Text>
         <Text style={styles.successTitle}>
           {successCount === 1 ? 'Listing imported!' : `${successCount} listings imported!`}
@@ -446,7 +462,7 @@ export default function WhatsAppImportScreen() {
       style={styles.container}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
-      <ScrollView contentContainerStyle={styles.content}>
+      <ScrollView contentContainerStyle={[styles.content, { paddingTop: insets.top + 16 }]}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
           <Text style={styles.backText}><Text style={styles.backArrow}>‹</Text> Back</Text>
         </TouchableOpacity>
