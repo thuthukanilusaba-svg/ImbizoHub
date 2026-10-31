@@ -119,6 +119,8 @@ export default function ProfileScreen() {
   const insets = useSafeAreaInsets();
 
   const [loading, setLoading] = useState(true);
+  // Shown instead of navigating away — see loadProfile().
+  const [needsAccount, setNeedsAccount] = useState(false);
   const [saving, setSaving] = useState(false);
   const [editing, setEditing] = useState(false);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
@@ -200,10 +202,25 @@ export default function ProfileScreen() {
   async function loadProfile() {
     setLoading(true);
     const { data: { user } } = await supabase.auth.getUser();
-    // FIX: was `if (!user)`, missing user.is_anonymous — see top-of-file
-    // comment. Redirect to /register (not /login) to match the pattern
-    // used everywhere else in the app for account-gated screens.
-    if (!user || user.is_anonymous) { router.replace('/register'); return; }
+    // NO LONGER NAVIGATES AWAY. Changed 31 Oct 2026.
+    //
+    // This did router.replace('/register'), so an anonymous visitor who
+    // tapped Profile was thrown onto a signup screen with no
+    // explanation — and because `replace` leaves no back stack and the
+    // register screen carries no bottom nav, iOS had no way back at
+    // all. On Android the system back button hid the problem; on an
+    // iPhone the app was simply stuck, which is how it was found.
+    //
+    // messages.tsx and my-wanted-posts.tsx already handle exactly this
+    // case properly: they render a card in place of the content saying
+    // what an account would give you, and leave you where you are. This
+    // now matches them. Same decision, same words, one fewer dead end.
+    if (!user || user.is_anonymous) {
+      setNeedsAccount(true);
+      setLoading(false);
+      return;
+    }
+    setNeedsAccount(false);
 
     setUserId(user.id);
     setEmail(user.email ?? '');
@@ -621,6 +638,32 @@ export default function ProfileScreen() {
     );
   }
 
+  // Anonymous or signed out: explain, offer the two ways forward, and
+  // keep the bottom nav so the rest of the app is still reachable. The
+  // nav is the point — without it this screen becomes the dead end it
+  // used to redirect to.
+  if (needsAccount) {
+    return (
+      <View style={styles.screen}>
+        <View style={styles.needsAccountCard}>
+          <Text style={styles.needsAccountIcon}>👤</Text>
+          <Text style={styles.needsAccountTitle}>Create a free account</Text>
+          <Text style={styles.needsAccountBody}>
+            You can browse, ask for what you need and get prices back without one. An account
+            keeps your posts and offers when you change phone, and lets you reply to sellers.
+          </Text>
+          <TouchableOpacity style={styles.needsAccountBtn} onPress={() => router.push('/register')}>
+            <Text style={styles.needsAccountBtnText}>Create free account</Text>
+          </TouchableOpacity>
+          <TouchableOpacity onPress={() => router.push('/login')}>
+            <Text style={styles.needsAccountLoginLink}>Already have an account? Sign in</Text>
+          </TouchableOpacity>
+        </View>
+        <BottomNav />
+      </View>
+    );
+  }
+
   // CHANGED 6 Oct 2026 — see index.tsx's longer note. The Dashboard is
   // the only route to Dealer Pro, the shop link and analytics, so gating
   // it on having already posted hid every reason to start selling from
@@ -1021,6 +1064,17 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#111111' },
   content: { padding: 20, paddingTop: Platform.OS === 'ios' ? 56 : 40, paddingBottom: 60 },
   center: { flex: 1, backgroundColor: '#111', alignItems: 'center', justifyContent: 'center' },
+
+  // Lifted verbatim from messages.tsx and my-wanted-posts.tsx. Three
+  // screens tell an anonymous visitor the same thing; they should not
+  // each invent their own look while doing it.
+  needsAccountCard: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32 },
+  needsAccountIcon: { fontSize: 48, marginBottom: 20 },
+  needsAccountTitle: { color: '#fff', fontSize: 18, fontWeight: '800', textAlign: 'center', marginBottom: 12 },
+  needsAccountBody: { color: GREY, fontSize: 13, textAlign: 'center', lineHeight: 20, marginBottom: 28 },
+  needsAccountBtn: { backgroundColor: GOLD, borderRadius: 14, paddingVertical: 16, paddingHorizontal: 40, marginBottom: 16 },
+  needsAccountBtnText: { color: BLACK, fontSize: 15, fontWeight: '800' },
+  needsAccountLoginLink: { color: GREY, fontSize: 13 },
 
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 },
   headerTitle: { fontSize: 22, fontWeight: '800', color: '#fff' },
