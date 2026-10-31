@@ -58,9 +58,35 @@ export type OAuthResult =
 // this at all since openAuthSessionAsync() never leaves the app.
 const PENDING_ANON_MERGE_KEY = 'imbizohub_pending_anon_merge';
 
-async function captureAnonymousId(): Promise<string | null> {
-  const { data: { user } } = await supabase.auth.getUser();
-  return user?.is_anonymous ? user.id : null;
+/**
+ * The id of the anonymous session currently signed in, or null.
+ *
+ * READS THE LOCAL SESSION, NOT THE SERVER. This used to call
+ * supabase.auth.getUser(), which makes a network round trip to
+ * /auth/v1/user. When that call is slow, offline, or errors, it returns
+ * user: null — and the caller then has nothing to merge, skips silently,
+ * and the person loses everything they posted anonymously with no error
+ * anywhere. Confirmed on a real device 31 Oct 2026: a wanted post made
+ * anonymously stayed on the anonymous id after an Apple sign-in, the
+ * merge RPC itself proved to work when called directly, and nothing was
+ * logged to say why.
+ *
+ * getSession() reads the persisted session from storage. is_anonymous is
+ * a claim inside the JWT that is already on the device, so there is no
+ * request to fail. The id is needed in the two seconds before the
+ * session is replaced; a network call in that window is the one thing
+ * that should not be there.
+ */
+export async function captureAnonymousId(): Promise<string | null> {
+  const { data: { session } } = await supabase.auth.getSession();
+  const user = session?.user;
+  if (!user) {
+    console.log('[anon-merge] no session to capture — nothing will be merged');
+    return null;
+  }
+  if (!user.is_anonymous) return null;
+  console.log('[anon-merge] captured anonymous id', user.id);
+  return user.id;
 }
 
 // Best-effort, same as login.tsx's existing email/password merge: if
@@ -68,13 +94,23 @@ async function captureAnonymousId(): Promise<string | null> {
 // stays orphaned under its old id, same as before this feature
 // existed, rather than blocking someone from signing in.
 export async function mergeAnonymousSession(previousAnonymousId: string | null) {
-  if (!previousAnonymousId) return;
+  // Logged rather than returned silently. A no-op here means somebody's
+  // wanted posts and messages stay stranded on an id nothing can reach
+  // again, and until 31 Oct 2026 this function could do exactly that
+  // without leaving a trace — which is how an Apple sign-in dropped a
+  // post on a real device and the only evidence was the missing row.
+  if (!previousAnonymousId) {
+    console.log('[anon-merge] skipped: no anonymous id was captured');
+    return;
+  }
   const { error } = await supabase.rpc('merge_anonymous_session', {
     p_anonymous_id: previousAnonymousId,
   });
   if (error) {
-    console.log('Anonymous session merge failed (non-fatal):', error.message);
+    console.log('[anon-merge] FAILED (non-fatal):', error.message);
+    return;
   }
+  console.log('[anon-merge] merged', previousAnonymousId);
 }
 
 export async function signInWithProvider(provider: OAuthProvider): Promise<OAuthResult> {

@@ -36,7 +36,7 @@
 
 import { Platform } from 'react-native';
 import { supabase } from './supabase';
-import { mergeAnonymousSession } from './oauth';
+import { captureAnonymousId, mergeAnonymousSession } from './oauth';
 import { recordTermsAcceptance } from './terms';
 
 type AppleModule = typeof import('expo-apple-authentication');
@@ -84,11 +84,16 @@ export async function signInWithApple(): Promise<AppleSignInResult> {
   const Apple = await getAppleModule();
   if (!Apple) return { status: 'error', message: 'Sign in with Apple is not available on this device.' };
 
-  // Captured BEFORE the sign-in, exactly as signInWithProvider does: the
-  // moment Supabase issues the new session the anonymous id is gone, and
-  // with it the link to anything that session posted.
-  const { data: { user: previousUser } } = await supabase.auth.getUser();
-  const previousAnonymousId = previousUser?.is_anonymous ? previousUser.id : null;
+  // Captured BEFORE the sign-in: the moment Supabase issues the new
+  // session the anonymous id is gone, and with it the link to anything
+  // that session posted.
+  //
+  // Shared with signInWithProvider rather than reimplemented. The first
+  // version of this file duplicated the two lines and inherited their
+  // bug — a getUser() network call whose failure silently produced null
+  // — which lost a wanted post on the first real device test. One
+  // implementation, in lib/oauth.ts, so a fix lands on both paths.
+  const previousAnonymousId = await captureAnonymousId();
 
   let credential: Awaited<ReturnType<AppleModule['signInAsync']>>;
   try {
