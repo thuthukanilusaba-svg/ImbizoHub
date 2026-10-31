@@ -55,6 +55,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { supabase } from '../../lib/supabase';
 import { reportHandledError } from '../../lib/crashReporter';
 import { checkListingContent } from '../../lib/contentSafety';
@@ -73,6 +74,14 @@ const categories = CATEGORY_LABELS;
 
 export default function PostWantedScreen() {
   const router = useRouter();
+
+  // FIX (real bug, seen in the App Store screenshots taken on an
+  // iPhone 16): styles.content hardcoded paddingTop to 56 on iOS. The
+  // top safe-area inset on a Dynamic Island iPhone is larger than that,
+  // so the "Back" control was drawn underneath the status bar clock.
+  // post.tsx had the same bug and the same fix; the hardcoded number
+  // can never be right across devices, so ask for the real inset.
+  const insets = useSafeAreaInsets();
 
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
@@ -387,7 +396,7 @@ export default function PostWantedScreen() {
       style={{ flex: 1 }}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
-      <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+      <ScrollView style={styles.container} contentContainerStyle={[styles.content, { paddingTop: insets.top + 16 }]}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
           <Text style={styles.backText}><Text style={styles.backArrow}>‹</Text> Back</Text>
         </TouchableOpacity>
@@ -532,7 +541,9 @@ export default function PostWantedScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#111111' },
   loadingScreen: { flex: 1, backgroundColor: '#111111', alignItems: 'center', justifyContent: 'center' },
-  content: { padding: 20, paddingTop: Platform.OS === 'ios' ? 56 : 40, paddingBottom: 48 },
+  // paddingTop is supplied at the call site from the real safe-area
+  // inset — see the comment on useSafeAreaInsets above.
+  content: { padding: 20, paddingBottom: 48 },
 
   backBtn: { marginBottom: 16 },
   backText: { color: GREY, fontSize: 14 },
