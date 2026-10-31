@@ -280,6 +280,30 @@ export default function LoginScreen() {
         <TouchableOpacity onPress={() => router.push('/register')}>
           <Text style={styles.link}>Don't have an account? <Text style={styles.gold}>Register</Text></Text>
         </TouchableOpacity>
+
+        {/* THE WAY OUT. Added 31 Oct 2026.
+
+            Signing out called router.replace('/login'), and this screen
+            had no bottom nav and no back stack - its only other link
+            went to /register. Tapping the Profile tab from there hit
+            loadProfile(), which replaces to /register for a missing
+            user. So once you signed out on a phone there was no route
+            back to browsing at all: the only ways forward were to sign
+            in or create an account.
+
+            That contradicts the whole design. A fresh install lands on
+            the home screen and can browse, ask for something and get
+            prices without an account - but one sign-out took that away
+            permanently. It went unnoticed because on the web you can
+            escape by editing the URL, which is exactly what happened
+            when this was found.
+
+            replace, not push: the person is leaving this screen, not
+            stacking the home screen on top of a login they might come
+            back to. */}
+        <TouchableOpacity onPress={() => router.replace('/')}>
+          <Text style={styles.browseLink}>Browse without an account</Text>
+        </TouchableOpacity>
       </View>
       </ScrollView>
     </KeyboardAvoidingView>
@@ -316,6 +340,9 @@ const styles = StyleSheet.create({
   forgotLinkText: { color: GOLD, fontSize: 12 },
   buttonText: { color: BLACK, fontSize: 16, fontWeight: '700' },
   link: { color: '#aaa', fontSize: 13, textAlign: 'center', marginTop: 20 },
+  // Quieter than the Register link above it. This is an escape hatch,
+  // not a competing call to action.
+  browseLink: { color: '#777', fontSize: 13, textAlign: 'center', marginTop: 16 },
 
   // NEW: Google sign-in
   dividerRow: { flexDirection: 'row', alignItems: 'center', marginTop: 24, gap: 10 },

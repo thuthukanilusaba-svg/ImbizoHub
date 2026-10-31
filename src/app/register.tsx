@@ -514,6 +514,30 @@ export default function RegisterScreen() {
             Already have an account? <Text style={styles.loginLinkBold}>Sign in</Text>
           </Text>
         </TouchableOpacity>
+
+        {/* THE WAY OUT. Added 31 Oct 2026.
+
+            Signing out called router.replace('/login'), and this screen
+            had no bottom nav and no back stack - its only other link
+            went to /register. Tapping the Profile tab from there hit
+            loadProfile(), which replaces to /register for a missing
+            user. So once you signed out on a phone there was no route
+            back to browsing at all: the only ways forward were to sign
+            in or create an account.
+
+            That contradicts the whole design. A fresh install lands on
+            the home screen and can browse, ask for something and get
+            prices without an account - but one sign-out took that away
+            permanently. It went unnoticed because on the web you can
+            escape by editing the URL, which is exactly what happened
+            when this was found.
+
+            replace, not push: the person is leaving this screen, not
+            stacking the home screen on top of a login they might come
+            back to. */}
+        <TouchableOpacity onPress={() => router.replace('/')} style={styles.browseLink}>
+          <Text style={styles.browseLinkText}>Browse without an account</Text>
+        </TouchableOpacity>
       </ScrollView>
     </KeyboardAvoidingView>
   );
@@ -591,6 +615,10 @@ const styles = StyleSheet.create({
   button: { backgroundColor: GOLD, borderRadius: 10, padding: 16, alignItems: 'center', marginTop: 24 },
   buttonText: { color: BLACK, fontWeight: 'bold', fontSize: 16 },
   loginLink: { marginTop: 20, alignItems: 'center' },
+  // Deliberately quieter than the Sign in link above - an escape hatch,
+  // not a third call to action competing with Create Account.
+  browseLink: { marginTop: 16, alignItems: 'center' },
+  browseLinkText: { color: '#777', fontSize: 13 },
   loginLinkText: { color: '#aaa', fontSize: 14 },
   loginLinkBold: { color: GOLD, fontWeight: 'bold' },
 
