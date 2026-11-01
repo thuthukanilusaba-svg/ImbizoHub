@@ -91,8 +91,8 @@ Pay gives each side a PIN to confirm the handover, both people confirm the
 deal is done, and only then is it complete. Rate the person afterwards —
 every rating counts once, so the stars mean something.
 
-You can report a user, and sellers can verify their identity with a
-national ID to earn a Verified badge.
+You can report a user, and every rating is attached to a deal that actually
+happened.
 
 
 WHAT IT COSTS
@@ -217,13 +217,32 @@ to the listing the day the first trailer operator ticks the box.
 
 ---
 
+## Features the copy must NOT claim
+
+Checked 31 Oct 2026. Three features exist in the codebase but are not
+reachable by a user today, and describing any of them in store copy is an
+accurate-metadata rejection waiting to happen:
+
+- **Verified Seller badge** and **Dealer Pro** — terms-of-service.html s.8
+  says both are unavailable until February 2027. The "verify their identity
+  with a national ID to earn a Verified badge" line was removed from the
+  MEETING SAFELY paragraph on 31 Oct 2026 for this reason.
+- **Trailer hire** — built, but hirevan.tsx hides it until an active
+  operator has `has_trailer = true`, and that count is zero.
+- **Book & Deliver** — paused in lib/featureFlags.ts
+  (`DELIVERY_BOOKING_ENABLED = false`). It has never been in the copy; keep
+  it that way.
+
+Add each back the day it is genuinely reachable, not the day it is merged.
+
 ## Before you can submit
 
 Both stores check these, and both will reject on them:
 
-- **Privacy policy URL must resolve and be complete.** Ours still contains
-  `[TO CONFIRM]` placeholders. This is the most likely cause of a rejection
-  and it is entirely within our control to fix today.
+- **Privacy policy URL must resolve and be complete.** RESOLVED 31 Oct 2026:
+  privacy-policy.html and terms-of-service.html were both scanned and
+  contain no `[TO CONFIRM]` placeholders. A support page now exists too, at
+  https://imbizohub.app/support.html.
 - **Account deletion** must be reachable — we have `account-delete.tsx`, so
   note its in-app path on the data-safety form.
 - **Data safety / privacy nutrition labels** must declare location, photos,
