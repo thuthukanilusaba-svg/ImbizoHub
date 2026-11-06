@@ -285,6 +285,71 @@ export default function RootLayout() {
           // what makes this reachable for someone who posted a want
           // without signing up.
           router.push(`/wanted-responses?request_id=${data.item_request_id}`);
+        } else if (data?.type === 'offers_waiting' && data?.item_request_id) {
+          // FIX (6 Nov 2026). THE SAME BUG AS new_wanted_response ABOVE,
+          // THREE MORE TIMES OVER.
+          //
+          // notify-stale-wants sends four types — offers_waiting (the
+          // 48-hour nudge), want_expiring (the 12-day warning),
+          // want_expired and want_expired_responder. Not one of them was
+          // in this chain. Every one fell through and did nothing.
+          //
+          // Found by tracing a real user. John Juwaki posted "Cabbages"
+          // on 22 Oct. Mthabisi answered on 23 Oct at 20:48 with a price.
+          // John was then pushed three times — the offer itself on the
+          // 23rd, "Sellers are waiting on you" on the 26th, "Your want
+          // closes soon" on 5 Nov — and every one of those taps opened
+          // the app to wherever it already was. The cron ran on schedule,
+          // the pushes were delivered, and the product still failed,
+          // because the last inch was missing. His was the only offer the
+          // platform had ever produced.
+          //
+          // Routed to wanted-responses: the push says sellers are
+          // waiting, and the prices live on that screen.
+          router.push(`/wanted-responses?request_id=${data.item_request_id}`);
+        } else if (data?.type === 'want_expiring' && data?.item_request_id) {
+          // Same destination as offers_waiting, and deliberately so: the
+          // warning exists to make the buyer go and PICK one, and the
+          // offers are what they pick from.
+          router.push(`/wanted-responses?request_id=${data.item_request_id}`);
+        } else if (data?.type === 'want_expired') {
+          // The post is closed, so wanted-responses would show a dead
+          // screen. my-wanted-posts is where they can see it closed and
+          // post it again — which the push text explicitly invites.
+          router.push('/my-wanted-posts');
+        } else if (data?.type === 'want_expired_responder') {
+          // The seller's side of the same event. Their offer is free
+          // again, so send them to look for other wants — the same
+          // treatment response_declined gets below, for the same reason:
+          // deep-linking to a request that just closed is a dead end.
+          router.push('/browse-wanted');
+        } else if (data?.type === 'new_wanted_post') {
+          // FIX (6 Nov 2026), and the most costly of this batch.
+          //
+          // This is the push that tells SELLERS a new want exists — the
+          // supply half of the whole reverse-marketplace idea. The live
+          // test of notify-new-wanted-post reported
+          // {"tier":"any-seller","candidates":12,"pushed":7}: seven real
+          // people were told somebody wanted something, tapped it, and
+          // landed nowhere. The broadcast was working perfectly into a
+          // dead end.
+          //
+          // Goes to browse-wanted, not to the single want: browse-wanted
+          // is where "I have this — respond" lives, and a seller who
+          // came for one want may answer three.
+          router.push('/browse-wanted');
+        } else if (data?.type === 'new_quote' && data?.request_id) {
+          // The customer's trip got a quote. quotes.tsx is where the
+          // quotes on a trip are compared and accepted.
+          router.push(`/quotes?request_id=${data.request_id}`);
+        } else if (data?.type === 'delivery_status' && data?.booking_id) {
+          router.push(`/delivery-track?booking_id=${data.booking_id}`);
+        } else if (data?.type === 'verification_reviewed') {
+          // Approved or rejected, the badge and the retry both live on
+          // the profile screen.
+          router.push('/profile');
+        } else if (data?.type === 'admin_verification_pending') {
+          router.push('/admin-verification-review');
         } else if (data?.type === 'trip_deposit' && data?.request_id) {
           router.push(`/chat?request_id=${data.request_id}`);
         } else if (data?.type === 'quote_declined') {
