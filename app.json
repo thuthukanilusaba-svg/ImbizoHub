@@ -2,7 +2,7 @@
   "expo": {
     "name": "ImbizoHub",
     "slug": "imbizohub",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "orientation": "default",
     "icon": "./assets/images/icon.png",
     "scheme": "imbizohub",
@@ -14,7 +14,6 @@
       "url": "https://u.expo.dev/08be3d09-3027-4c07-957e-dbe3088ad2ac"
     },
     "ios": {
-      "icon": "./assets/expo.icon",
       "bundleIdentifier": "com.imbizohub.app",
       "associatedDomains": [
         "applinks:imbizohub.com",
