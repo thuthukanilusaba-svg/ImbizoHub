@@ -4,41 +4,53 @@
 // full remote-config system — flip the constant here and ship an OTA
 // update to change behavior app-wide.
 //
-// PAUSED (product decision, 2026-08-18): Book & Deliver has no real
-// payment protection for the item price itself. delivery_bookings now
-// carries item_price/payment_status (see
-// delivery_item_price_and_payment_status migration and
-// delivery-booking.tsx/seller-deliveries.tsx/delivery-track.tsx), but
-// that's a lightweight, non-blocking acknowledgment step, not escrow —
-// no money for the item moves through the app. Buyers and sellers,
-// especially in different cities who never meet in person, currently
-// have no real recourse if either side doesn't hold up their end.
+// REOPENED (product decision, 6 Nov 2026). Book & Deliver and new
+// delivery-operator signups are both live again. One flag governs both,
+// and every call site reads it: register.tsx (the 'delivery' account
+// type), become-operator.tsx, profile.tsx's
+// handleBecomeDeliveryOperator(), chat.tsx's "Book delivery" option, and
+// delivery-booking.tsx's own checkAuth() as defence in depth.
 //
-// New bookings and new delivery-operator registrations are paused until
-// a real escrow flow is built (buyer pays the item price into Paynow at
-// booking time, funds held, released to the seller only once the buyer
-// confirms delivery). Existing in-flight bookings, already-registered
-// operators, and reassigning a driver on an already-booked delivery are
-// all UNAFFECTED — this only blocks the entry points for brand new
-// bookings and brand new operator signups. See the three call sites:
-// chat.tsx's "Book delivery" option, profile.tsx's
-// handleBecomeDeliveryOperator(), and delivery-booking.tsx's own
-// checkAuth() (defense-in-depth, in case this screen is ever reached
-// directly without going through chat.tsx).
-export const DELIVERY_BOOKING_ENABLED = false;
+// WHAT HAS NOT CHANGED, AND IS WRITTEN DOWN RATHER THAN FORGOTTEN:
+// the reason this was paused on 18 Aug 2026 still stands in full. There
+// is no escrow. delivery_bookings carries item_price and payment_status
+// (see the delivery_item_price_and_payment_status migration, and
+// delivery-booking.tsx / seller-deliveries.tsx / delivery-track.tsx),
+// but that is a lightweight, non-blocking acknowledgment — no money for
+// the item moves through the app and none is held.
+//
+// Book & Deliver is the one flow where the two people NEVER MEET. Meet &
+// Pay works because a buyer and a seller stand in front of each other
+// with a PIN; this has no equivalent. A buyer in Harare paying a seller
+// in Bulawayo for goods carried by a third party has no recourse inside
+// the app if they never arrive or arrive broken.
+//
+// That risk was accepted deliberately on reopening, not overlooked. It
+// was reopened from a standing start: zero rows in delivery_operators
+// and zero bookings ever recorded, so nobody was mid-flight.
+//
+// THE FIRST DISPUTE IS THE TEST. If one happens before escrow exists,
+// set this back to false and ship an OTA, rather than arguing it
+// through case by case. The escrow design that would let it stay open:
+// buyer pays the item price into Paynow at booking time, funds held,
+// released to the seller only once the buyer confirms delivery.
+//
+// Terms of Service section 7 was rewritten the same day. It previously
+// said Book & Deliver was "not currently offered", which stopped being
+// true the moment this line changed. If this ever goes back to false,
+// that section moves with it.
+export const DELIVERY_BOOKING_ENABLED = true;
 
-// CHANGED (product decision, 31 Aug 2026): the dialogs say "Coming soon"
-// and nothing else. The previous copy explained the reason — that there is
-// no payment protection yet and escrow is being built — which told every
-// person tapping the button about a gap in the product they had not asked
-// about. "Coming soon" is the whole message.
+// Kept, not deleted. These are what the gates show whenever the flag
+// above is false, and they are still imported by chat.tsx, profile.tsx
+// and become-operator.tsx. Removing them would turn "pause delivery in a
+// hurry" into a four-file change — which is exactly the moment you do
+// not want a four-file change.
 //
-// The reasoning is kept here in the comments, where it belongs: it is for
-// whoever maintains this, not for the customer.
+// The copy stays as "Coming soon" with no explanation. The reasoning
+// belongs here in the comments, for whoever maintains this, not in a
+// dialog telling a customer about a gap in the product they had not
+// asked about.
 export const DELIVERY_PAUSED_TITLE = 'Coming soon';
 export const DELIVERY_PAUSED_MESSAGE = '';
-
-// NOTE: existing delivery-operator accounts will be cleaned up before this
-// relaunches, so nothing here must promise already-registered accounts are
-// unaffected — that is no longer true.
 export const DELIVERY_OPERATOR_SIGNUP_PAUSED_MESSAGE = '';
