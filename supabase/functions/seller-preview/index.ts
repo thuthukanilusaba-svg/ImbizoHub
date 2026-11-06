@@ -41,10 +41,8 @@
 //    browser error. Now only attempted on mobile, and the page always
 //    renders a usable fallback.
 //
-// Remaining TODO, unavoidable until the app is actually published:
-// APP_STORE_URL still contains a placeholder id. The Play Store URL is
-// already correct because it is derived from the package name, which is
-// known. Search for REPLACE_ below.
+// RESOLVED 6 Nov 2026: the iOS app is published (id 6829077333) and the
+// placeholder is gone. Both store links are now real.
 // ─────────────────────────────────────────────────────────────────────
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
@@ -60,17 +58,12 @@ const appDeepLink = (id: string) => `imbizohub://seller?id=${encodeURIComponent(
 // Where someone without the app can still see the profile: the web build.
 const webProfileUrl = (id: string) => `${SITE}/app/seller?id=${encodeURIComponent(id)}`;
 
-// There is no Apple Developer account yet, so there is no iOS build and
-// no App Store listing. While that is true the "Download for iPhone"
-// button is hidden entirely — showing it would send iPhone users to a
-// 404 on Apple's site, which reads as a broken product rather than an
-// unreleased one. iPhone users still get the "view on the web" link,
-// which works fine.
-//
-// TO ENABLE iOS LATER: set IOS_APP_LIVE to true and replace the
-// placeholder id below with the real numeric App Store id.
-const IOS_APP_LIVE = false;
-const APP_STORE_URL = 'https://apps.apple.com/app/imbizohub/idREPLACE_APP_STORE_ID';
+// The iOS app went live on 6 Nov 2026. The flag is kept rather than
+// deleted: it is the switch to flip if the listing is ever pulled, and a
+// dead App Store link in front of a seller's own customers reads as a
+// broken product.
+const IOS_APP_LIVE = true;
+const APP_STORE_URL = 'https://apps.apple.com/app/imbizohub/id6829077333';
 const PLAY_STORE_URL = 'https://play.google.com/store/apps/details?id=com.imbizohub.app';
 // Google's official badge, served from the marketing site. The web badge
 // carries a white outline inside the artwork, which is why it still reads
@@ -78,6 +71,13 @@ const PLAY_STORE_URL = 'https://play.google.com/store/apps/details?id=com.imbizo
 // guidelines forbid recolouring, cropping or rebuilding it, and the
 // trademark line below is required wherever it appears.
 const PLAY_BADGE_URL = `${SITE}/GetItOnGooglePlay_Badge_Web_color_English.svg`;
+// Apple's official badge, on exactly the same terms: unmodified, never
+// recoloured or rebuilt, with the trademark line below. Width 156 is the
+// 52px badge height on the SVG's own 119.664 x 40 ratio — at that height
+// the two pills line up with each other, checked side by side. This file
+// is deployed to Supabase but the asset is served from imbizohub.com, so
+// DEPLOY THE WEB SITE FIRST or this renders a broken image.
+const APP_STORE_BADGE_URL = `${SITE}/download-on-the-app-store.svg`;
 
 // Falls back to the site-wide OG image, which genuinely exists at
 // web/og-image.png — the previous default-avatar.png never did, so
@@ -534,20 +534,37 @@ Deno.serve(async (req) => {
   <div id="fallback">
     <a class="btn" href="${webUrl}">View this profile on the web</a>
     <p class="muted">Or get the app:</p>
-    <a class="badge-link" href="${PLAY_STORE_URL}" aria-label="Get ImbizoHub on Google Play">
+    <a class="badge-link" id="badge-play" href="${PLAY_STORE_URL}" aria-label="Get ImbizoHub on Google Play">
       <img class="badge-img" src="${PLAY_BADGE_URL}" alt="Get it on Google Play">
     </a>
-    ${IOS_APP_LIVE ? `<a class="btn-outline" href="${APP_STORE_URL}">Download for iPhone</a>` : ''}
+    ${IOS_APP_LIVE ? `<a class="badge-link" id="badge-apple" href="${APP_STORE_URL}" aria-label="Download ImbizoHub on the App Store">
+      <img class="badge-img" src="${APP_STORE_BADGE_URL}" alt="Download on the App Store" width="156" height="52">
+    </a>` : ''}
   </div>
 
   <div class="brand">Powered by <a href="${SITE}">ImbizoHub</a></div>
-  <div class="trademark">Google Play and the Google Play logo are trademarks of Google LLC.</div>
+  <div class="trademark">Google Play and the Google Play logo are trademarks of Google LLC.${
+    IOS_APP_LIVE
+      ? ' Apple, the Apple logo and App Store are trademarks of Apple Inc., registered in the U.S. and other countries.'
+      : ''}</div>
 
   <script>
   (function () {
     var opening = document.getElementById('opening');
     var fallback = document.getElementById('fallback');
-    var isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+    var ua = navigator.userAgent;
+    var isIOS = /iPhone|iPad|iPod/.test(ua) ||
+                (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
+    var isAndroid = /Android/i.test(ua);
+    var isMobile = isIOS || isAndroid;
+
+    // A Play badge on an iPhone advertises a store that device cannot
+    // use, and vice versa. Desktop keeps both — that visitor may be
+    // sending the link on to either kind of phone.
+    var bPlay = document.getElementById('badge-play');
+    var bApple = document.getElementById('badge-apple');
+    if (isIOS && bPlay) bPlay.style.display = 'none';
+    if (isAndroid && bApple) bApple.style.display = 'none';
 
     // On desktop a custom-scheme navigation does nothing useful and can
     // raise a browser error dialog, so skip straight to the options.

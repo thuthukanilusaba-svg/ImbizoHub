@@ -27,12 +27,16 @@
   script runs. The ~0.8s this costs an Android visitor buys the only
   campaign measurement the site has.
 
-  ANDROID GOES STRAIGHT THROUGH, EVERYONE ELSE GETS A CHOICE
-  Auto-forwarding an iPhone to the Google Play listing is a dead end — the
-  page loads and the install button does nothing. Same for desktop. Those
-  visitors are shown both doors instead, with the browser version first,
-  because that is the one that actually works for them. index.html already
-  does Android detection for the same reason; this is the same test.
+  EACH PHONE GOES STRAIGHT TO ITS OWN STORE
+  UPDATED 6 Nov 2026: the iOS app is live (id6829077333), so an iPhone is
+  no longer a dead end. Android forwards to Google Play and iPhone forwards
+  to the App Store, each after the same short pause. Desktop cannot install
+  either, so it is shown the browser version first and both stores below.
+
+  Until this date an iPhone was told the app was "Android-only" and sent to
+  the browser. That sentence was still on the page for several hours after
+  the App Store release, which is the cost of wording a fact into a page
+  instead of deriving it.
 
   NO-JAVASCRIPT FALLBACK
   The buttons are real links and are visible before any script runs, so the
@@ -44,7 +48,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Get ImbizoHub</title>
-<meta name="description" content="Download ImbizoHub free on Google Play, or open it straight in your browser.">
+<meta name="description" content="Download ImbizoHub free on the App Store or Google Play, or open it straight in your browser.">
 <meta name="theme-color" content="#111111">
 <link rel="icon" href="/favicon.png">
 
@@ -57,7 +61,7 @@
 <meta property="og:site_name" content="ImbizoHub">
 <meta property="og:url" content="https://imbizohub.com/get">
 <meta property="og:title" content="Get ImbizoHub">
-<meta property="og:description" content="Download free on Google Play, or open it straight in your browser.">
+<meta property="og:description" content="Download free on the App Store or Google Play, or open it straight in your browser.">
 <meta property="og:image" content="https://imbizohub.com/og-image.png">
 
 <style>
@@ -159,11 +163,15 @@
   <h1 id="heading">Get ImbizoHub</h1>
   <p class="sub" id="sub">Free to join. Free to post. Free to do a deal.</p>
 
-  <p class="sub redirecting" id="redirecting">Opening Google Play&hellip;</p>
+  <p class="sub redirecting" id="redirecting">Opening the store&hellip;</p>
 
   <a class="btn btn-primary" id="play"
      href="https://play.google.com/store/apps/details?id=com.imbizohub.app">
     Get it on Google Play
+  </a>
+
+  <a class="btn btn-secondary" id="appstore" href="https://apps.apple.com/app/imbizohub/id6829077333">
+    Download on the App Store
   </a>
 
   <!-- Relative, matching index.html's own "Open ImbizoHub" button, so this
@@ -181,7 +189,12 @@
 <script>
 (function () {
   var PLAY = 'https://play.google.com/store/apps/details?id=com.imbizohub.app';
-  var isAndroid = /Android/i.test(navigator.userAgent);
+  var APPSTORE = 'https://apps.apple.com/app/imbizohub/id6829077333';
+  var ua = navigator.userAgent;
+  var isAndroid = /Android/i.test(ua);
+  // iPadOS 13+ reports itself as a Mac, so the touch count is the tell.
+  var isIOS = /iPad|iPhone|iPod/.test(ua) ||
+              (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
 
   // Vercel's insights script ignores anything reporting navigator.webdriver
   // or "Headless" in the user agent, so automated checks never register as
@@ -189,11 +202,13 @@
   // the page easier to inspect with a scraper.
   var isBot = !!(navigator.webdriver || /Headless|bot|crawl|spider/i.test(navigator.userAgent));
 
-  if (!isAndroid) {
-    // iPhone and desktop can't install from Google Play, so lead with the
-    // thing that works for them and demote the store to a secondary link.
-    var play = document.getElementById('play');
-    var web = document.getElementById('web');
+  var play = document.getElementById('play');
+  var appstore = document.getElementById('appstore');
+  var web = document.getElementById('web');
+
+  if (!isAndroid && !isIOS) {
+    // Desktop can install neither, so lead with the thing that works and
+    // keep both stores below for someone sending the link to their phone.
     play.className = 'btn btn-secondary';
     web.className = 'btn btn-primary';
     web.parentNode.insertBefore(web, play);
@@ -201,13 +216,29 @@
     // option. Promoted to the top it needs to stand on its own.
     web.textContent = 'Open ImbizoHub in your browser';
     document.getElementById('sub').textContent =
-      'The app is Android-only for now - open it in your browser instead.';
+      'Get it on your phone, or open it straight in your browser.';
     return;
+  }
+
+  // On a phone, hide the store that phone cannot use. Showing an Android
+  // user an App Store button is an advert for something they cannot install.
+  var target, label;
+  if (isIOS) {
+    play.style.display = 'none';
+    appstore.className = 'btn btn-primary';
+    target = APPSTORE;
+    label = 'Opening the App Store\u2026';
+  } else {
+    appstore.style.display = 'none';
+    target = PLAY;
+    label = 'Opening Google Play\u2026';
   }
 
   if (isBot) return;
 
-  document.getElementById('redirecting').className = 'redirecting on';
+  var r = document.getElementById('redirecting');
+  r.textContent = label;
+  r.className = 'redirecting on';
 
   // Short pause, not zero. The analytics beacon uses fetch with
   // keepalive so it should survive a navigation on its own, but a
@@ -216,7 +247,7 @@
   // page rather than a 308. 800ms is below the point where it reads as
   // broken and above the point where it is a race.
   setTimeout(function () {
-    window.location.replace(PLAY);
+    window.location.replace(target);
   }, 800);
 })();
 </script>
