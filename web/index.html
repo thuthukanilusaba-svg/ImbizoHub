@@ -367,6 +367,14 @@
         <img class="badge-img" src="/GetItOnGooglePlay_Badge_Web_color_English.svg"
              alt="Get it on Google Play" width="180" height="53">
       </a>
+      <!-- iPhone. A TEXT LINK, not badge artwork: Apple's official SVG
+           is not in this repo yet, and rebuilding their badge in CSS is
+           the same guideline breach that the gold Google pill was. Swap
+           this for the real badge the day the SVG lands, and add the
+           Apple trademark line in the footer alongside Google's. -->
+      <a class="btn btn-ghost" id="cta-appstore"
+         href="https://apps.apple.com/app/imbizohub/id6829077333"
+         aria-label="Download ImbizoHub on the App Store">Get it on iPhone</a>
     </div>
     <p class="note">App fees paid with EcoCash and more via Paynow</p>
     <!-- Demoted from a third button: three equal CTAs made the row a
@@ -685,23 +693,43 @@
 // this running at all — if it fails, the page is still correct, just
 // ordered for desktop.
 //
-// On an Android phone the native app is the better destination: it gets
-// push notifications, which the web build does not, and notifications
-// are most of what brings someone back to a marketplace. So there the
-// badge moves first and the web app steps back to a ghost button.
-// On iPhone nothing changes — there is no iOS build yet, so sending
-// them to Play would be sending them nowhere useful.
+// On a phone the native app is the better destination: it gets push
+// notifications, which the web build does not, and notifications are
+// most of what brings someone back to a marketplace. So the store link
+// for THAT phone moves first and the web app steps back to a ghost
+// button.
 //
-// The badge itself is never restyled, only reordered: Google's
+// UPDATED 6 Nov 2026: the iOS app went live on the App Store
+// (id6829077333), so the old "on iPhone nothing changes" rule is gone.
+// An iPhone visitor now gets the App Store promoted and the Play link
+// hidden outright — a Play badge on an iPhone is an advert for a store
+// that device cannot use.
+//
+// The Google badge itself is never restyled, only reordered: their
 // guidelines do not permit altering the artwork, and a class of ours on
 // it would be the start of doing exactly that.
 (function () {
-  if (!/Android/i.test(navigator.userAgent)) return;
-  var web = document.getElementById('cta-web');
-  var play = document.getElementById('cta-play');
-  if (!web || !play) return;
-  web.classList.add('btn-ghost');
-  play.parentNode.insertBefore(play, web);
+  var web   = document.getElementById('cta-web');
+  var play  = document.getElementById('cta-play');
+  var apple = document.getElementById('cta-appstore');
+  if (!web || !play || !apple) return;
+
+  var ua = navigator.userAgent;
+  // iPadOS 13+ reports itself as a Mac, so the touch check catches it.
+  var isIOS = /iPad|iPhone|iPod/.test(ua) ||
+              (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
+  var isAndroid = /Android/i.test(ua);
+
+  if (isIOS) {
+    play.style.display = 'none';
+    apple.classList.remove('btn-ghost');
+    web.classList.add('btn-ghost');
+    apple.parentNode.insertBefore(apple, web);
+  } else if (isAndroid) {
+    apple.style.display = 'none';
+    web.classList.add('btn-ghost');
+    play.parentNode.insertBefore(play, web);
+  }
 })();
 </script>
 <!-- Vercel Web Analytics. Added 15 Oct 2026.
