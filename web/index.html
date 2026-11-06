@@ -367,14 +367,18 @@
         <img class="badge-img" src="/GetItOnGooglePlay_Badge_Web_color_English.svg"
              alt="Get it on Google Play" width="180" height="53">
       </a>
-      <!-- iPhone. A TEXT LINK, not badge artwork: Apple's official SVG
-           is not in this repo yet, and rebuilding their badge in CSS is
-           the same guideline breach that the gold Google pill was. Swap
-           this for the real badge the day the SVG lands, and add the
-           Apple trademark line in the footer alongside Google's. -->
-      <a class="btn btn-ghost" id="cta-appstore"
+      <!-- Apple's own artwork, unmodified, on the same terms as Google's:
+           no recolouring, no cropping, no CSS rebuild. Rendered at the
+           SAME 53px height as the Play badge — checked side by side, the
+           two pills line up exactly at that height. Width 159 is 53 on
+           the SVG's own 119.664 x 40 ratio; do not round it to match
+           Google's 180, which would stretch the artwork. -->
+      <a class="badge-link" id="cta-appstore"
          href="https://apps.apple.com/app/imbizohub/id6829077333"
-         aria-label="Download ImbizoHub on the App Store">Get it on iPhone</a>
+         aria-label="Download ImbizoHub on the App Store">
+        <img class="badge-img" src="/download-on-the-app-store.svg"
+             alt="Download on the App Store" width="159" height="53">
+      </a>
     </div>
     <p class="note">App fees paid with EcoCash and more via Paynow</p>
     <!-- Demoted from a third button: three equal CTAs made the row a
@@ -684,6 +688,9 @@
     <!-- Required by Google's brand guidelines wherever the Play badge is
          used. Easy to skip, and skipping it is a guideline breach. -->
     <div class="trademark">Google Play and the Google Play logo are trademarks of Google LLC.</div>
+    <!-- Required by Apple's marketing guidelines wherever the App Store
+         badge is used, exactly as Google's line above is. -->
+    <div class="trademark">Apple, the Apple logo and App Store are trademarks of Apple Inc., registered in the U.S. and other countries.</div>
   </div>
 </footer>
 
@@ -722,7 +729,6 @@
 
   if (isIOS) {
     play.style.display = 'none';
-    apple.classList.remove('btn-ghost');
     web.classList.add('btn-ghost');
     apple.parentNode.insertBefore(apple, web);
   } else if (isAndroid) {
