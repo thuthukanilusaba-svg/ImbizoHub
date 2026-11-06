@@ -310,16 +310,26 @@
            22 Sep 2026 and taken out again: at 40px it sat as a second
            image-weight block right beside the "Open app" pill, and the
            header stopped reading as navigation. The hero carries the
-           real badge, at full size, where it has room.
+           real badges, at full size, where they have room.
 
-           Named as Google Play rather than "Get the app": it sits beside
-           "Open app" (the web build), and without naming the destination
-           a visitor cannot tell which is which.
+           UPDATED 6 Nov 2026. This used to read "Get it on Google Play"
+           and link straight to Play. The note here argued the
+           destination had to be named, because beside "Open app" (the
+           web build) a visitor could not otherwise tell which was
+           which. That held while there was one store. With the iOS app
+           live it named the WRONG store for every iPhone visitor, and
+           sent them to a listing their phone cannot install from.
 
-           The trademark line in the footer is still required — the hero
-           badge is still there. Do not remove it on account of this
-           link changing. -->
-      <a href="https://play.google.com/store/apps/details?id=com.imbizohub.app">Get it on Google Play</a>
+           Points at /get rather than either store, or an anchor,
+           because get.html already routes by device — iPhone to the
+           App Store, Android to Play, desktop to the browser build —
+           and it is the only page carrying Vercel analytics, so this
+           link's traffic is actually measurable.
+
+           Both trademark lines in the footer are still required: the
+           hero badges are still there. Do not remove them on account
+           of this link changing. -->
+      <a href="/get">Get the app</a>
       <a class="btn" href="/app">Open app</a>
     </nav>
   </div>
