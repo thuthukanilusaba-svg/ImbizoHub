@@ -44,7 +44,7 @@
     {
       q: 'What does ImbizoHub cost?',
       k: 'free fee fees price charge commission percent cheap',
-      a: 'Listing is free. Chatting is free. Doing a deal on a listing is free — permanently, not as a promotion.\n\nWe only earn when we find you what you asked for: 5% when you accept a seller\'s response to a Wanted post (at least $1.50, never more than $15), and 7% when you accept a transport quote (never more than $15).\n\nAnd during our launch promotion, even those are free for everyone until 31 January 2027.\n\nSellers can buy optional extras — featuring a listing, a Verified badge, Dealer Pro — but nothing is required to sell.'
+      a: 'Listing is free. Chatting is free. Doing a deal on a listing is free — permanently, not as a promotion.\n\nWe only earn when we find you what you asked for: 5% when you accept a seller\'s response to a Wanted post (at least $1.50, never more than $15), and 7% when you accept a transport quote (never more than $15).\n\nAnd during our launch promotion, even those are free for everyone until 31 January 2027.\n\nSellers can buy optional extras — featuring a listing, Dealer Pro — but nothing is required to sell.'
     },
     {
       q: 'What is a Wanted post?',
@@ -68,13 +68,32 @@
     },
     {
       q: 'Is it safe to meet someone from the app?',
-      k: 'safe safety scam fraud stranger meet careful police report',
-      a: 'Meet in a public place during the day, and take someone with you if the item is valuable. Inspect it properly before you hand over any money — that is exactly what Meet & Pay is built around.\n\nYou can report any user from their profile, and sellers can verify their identity with a national ID to earn a badge you can see before you agree to anything.'
+      k: 'safe safety scam fraud stranger meet careful police report rating reviews',
+      // CHANGED 6 Nov 2026. This used to tell a worried person that
+      // sellers "can verify their identity with a national ID to earn a
+      // badge you can see". Verified Seller is not open — is_verified is
+      // true for nobody — so it sent them looking for a badge that cannot
+      // exist, in the answer where being wrong costs most. Replaced with
+      // the trust signal that does work. Put the badge sentence back the
+      // day verification opens, and the same for the paid-extras list in
+      // the cost answer above.
+      a: 'Meet in a public place during the day, and take someone with you if the item is valuable. Inspect it properly before you hand over any money — that is exactly what Meet & Pay is built around.\n\nBefore you agree anything, look at the other person\'s profile: their rating, and how many deals they have actually completed. A rating on ImbizoHub can only come from a deal both sides confirmed, and it counts once — nobody can pad their own stars.\n\nYou can report any user from their profile, and we act on reports.'
     },
     {
       q: 'How does hiring transport work?',
-      k: 'transport van truck move moving delivery driver operator trip quote hire',
-      a: 'Post your trip — where from, where to, what you are moving and when. Registered operators bid for the job with their own price.\n\nCompare the quotes, chat to whoever you like, and pick your driver. Both of you confirm once the trip is finished.\n\nOur operators drive vans, so anything up to a van load, or a group of up to eight people.'
+      k: 'transport van truck move moving driver operator trip quote hire trailer load',
+      a: 'Post your trip — where from, where to, what you are moving and when. Registered operators bid for the job with their own price.\n\nCompare the quotes, chat to whoever you like, and pick your driver. Both of you confirm once the trip is finished.\n\nOur operators drive vans and small trucks, so anything up to a three-tonne load, or a group of up to eight people.'
+    },
+    {
+      // Added 6 Nov 2026, the day Book & Deliver reopened. The honest
+      // paragraph about money is not optional padding: this is the one
+      // flow where the buyer and seller never meet, so Meet & Pay's
+      // protection does not apply, and Terms section 7 now says so in
+      // the same words. If DELIVERY_BOOKING_ENABLED ever goes back to
+      // false, this answer comes out with it.
+      q: 'Can someone deliver instead of me collecting?',
+      k: 'deliver delivery book send courier drop off bring collect pickup another city',
+      a: 'Yes. When you are in a chat with a seller, choose Book & Deliver and a registered operator carries the goods to you. You pick the operator and agree the delivery price with them.\n\nIt is how you buy from someone in another city without either of you travelling.\n\nOne thing to understand before you use it: we do not hold your money. You pay the seller and you pay the operator directly, outside the app. Because the two of you never meet, there is no PIN handover and no Meet & Pay protection — so check the seller\'s ratings and completed deals first, and agree in the chat who pays for what before anything moves. That conversation stays on the platform and you can both point back to it.'
     },
     {
       q: 'Do I need an account to look around?',
