@@ -1715,7 +1715,6 @@ export default function ChatScreen() {
             <View style={styles.avatar}>
               <Text style={styles.avatarText}>{initialsFrom(otherPersonName)}</Text>
             </View>
-            <View style={styles.onlineDot} />
           </View>
           {/* NEW: flex:1 + minWidth:0 so this column actually shrinks
               instead of pushing the "Confirm sale" pill off-screen —
@@ -1726,7 +1725,6 @@ export default function ChatScreen() {
             <Text style={styles.sellerName} numberOfLines={1} ellipsizeMode="tail">
               {otherPersonName || 'ImbizoHub Chat'}
             </Text>
-            <Text style={styles.onlineStatus}>Online now</Text>
           </View>
         </View>
         <View style={styles.headerRight}>
@@ -2661,9 +2659,23 @@ const styles = StyleSheet.create({
   avatarWrap: { position: 'relative' },
   avatar: { width: 38, height: 38, backgroundColor: GOLD, borderRadius: 19, alignItems: 'center', justifyContent: 'center' },
   avatarText: { color: BLACK, fontSize: 14, fontWeight: '800' },
-  onlineDot: { position: 'absolute', bottom: 0, right: 0, width: 10, height: 10, backgroundColor: '#4A90D9', borderRadius: 5, borderWidth: 2, borderColor: BLACK },
+  // REMOVED 9 Nov 2026: onlineDot and onlineStatus. They rendered a blue
+  // dot and the words "Online now" under every chat partner's name,
+  // unconditionally. Nothing was ever checked — there is no presence
+  // tracking in this app and no last_seen column on profiles — so the
+  // app told every user, in every conversation, that the other person
+  // was there right now. Reported by a tester who assumed the lookup
+  // was broken; there was no lookup.
+  //
+  // Removed rather than fixed. A buyer who waits for a reply because
+  // the screen says the seller is present is worse off than one who is
+  // told nothing. If presence returns it should be a BAND — "Active
+  // today" / "Active this week" / "Active a while ago" — never a clock:
+  // an exact time tells a stranger who is about to meet this person
+  // when their house is empty. It would also need a privacy-policy
+  // paragraph and a change to the "Usage Data: No" declaration already
+  // published in the App Store privacy label.
   sellerName: { color: '#fff', fontSize: 14, fontWeight: '700' },
-  onlineStatus: { color: '#4A90D9', fontSize: 11 },
   meetPayHeaderBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: DARK, borderRadius: 20, paddingHorizontal: 12, paddingVertical: 7, borderWidth: 1, borderColor: GOLD },
   meetPayHeaderIcon: { fontSize: 13 },
   meetPayHeaderText: { color: GOLD, fontSize: 12, fontWeight: '700' },
