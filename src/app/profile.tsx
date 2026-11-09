@@ -77,12 +77,14 @@ import {
   ActivityIndicator, Alert, Image, KeyboardAvoidingView, Platform,
   ScrollView,
   StyleSheet,
+  Switch,
   Text, TextInput, TouchableOpacity,
   View
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import BottomNav from '../../components/BottomNav';
 import { DELIVERY_BOOKING_ENABLED, DELIVERY_OPERATOR_SIGNUP_PAUSED_MESSAGE, DELIVERY_PAUSED_TITLE } from '../../lib/featureFlags';
+import { getShowLastSeen, setShowLastSeen } from '../../lib/presence';
 import { normalizeImageOrientation } from '../../lib/imageOrientation';
 import { isProNow } from '../../lib/badges';
 import { supabase } from '../../lib/supabase';
@@ -134,6 +136,9 @@ export default function ProfileScreen() {
   const [accountType, setAccountType] = useState('');
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const [createdAt, setCreatedAt] = useState('');
+  // LAST SEEN (9 Nov 2026). Defaults true, which is what makes this the
+  // familiar reciprocal model. Loaded in loadProfile() below.
+  const [showLastSeenState, setShowLastSeenState] = useState(true);
   const [listingCount, setListingCount] = useState(0);
   const [activeListingCount, setActiveListingCount] = useState(0);
   const [serviceListingCount, setServiceListingCount] = useState(0);
@@ -201,6 +206,7 @@ export default function ProfileScreen() {
 
   async function loadProfile() {
     setLoading(true);
+    getShowLastSeen().then(setShowLastSeenState);
     const { data: { user } } = await supabase.auth.getUser();
     // NO LONGER NAVIGATES AWAY. Changed 31 Oct 2026.
     //
@@ -564,6 +570,20 @@ export default function ProfileScreen() {
     }
 
     router.push('/delivery-operator-register-pay');
+  }
+
+  // Reciprocal: turning this off hides yours AND stops you seeing
+  // anyone else's. The second half is enforced in Postgres by
+  // last_seen_for(), not here — this only writes the flag. The copy on
+  // the row says so, because a reciprocal setting that does not explain
+  // the trade reads as a bug when other people's times vanish too.
+  async function handleToggleLastSeen(next: boolean) {
+    setShowLastSeenState(next);            // optimistic; it is one bit
+    const saved = await setShowLastSeen(next);
+    if (!saved) {
+      setShowLastSeenState(!next);
+      Alert.alert('Could not save', 'Please try again.');
+    }
   }
 
   async function handleLogout() {
@@ -994,6 +1014,26 @@ export default function ProfileScreen() {
             </View>
           )}
 
+          {/* LAST SEEN. Placed with the account controls rather than
+              among the selling features: it is a privacy setting, and
+              somebody looking for it will look here. */}
+          <View style={styles.lastSeenRow}>
+            <View style={{ flex: 1, paddingRight: 16 }}>
+              <Text style={styles.lastSeenTitle}>Show when I was last seen</Text>
+              <Text style={styles.lastSeenBody}>
+                People you chat with can see when you last opened ImbizoHub.
+                Turn it off and they cannot — but you will not be able to see
+                theirs either.
+              </Text>
+            </View>
+            <Switch
+              value={showLastSeenState}
+              onValueChange={handleToggleLastSeen}
+              trackColor={{ false: '#3a3a3a', true: GOLD }}
+              thumbColor="#fff"
+            />
+          </View>
+
           {/* NEW: account deletion entry point — the real foundation
               the data retention policy depends on. Deliberately placed
               here, low-key, at the very bottom of the screen, rather
@@ -1082,6 +1122,9 @@ const styles = StyleSheet.create({
   // NEW: deliberately understated — a plain text link, no card, no
   // icon, no color beyond muted grey — this shouldn't visually compete
   // for attention the way every other action on this screen does.
+  lastSeenRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 16, marginTop: 8, borderTopWidth: 0.5, borderTopColor: '#2a2a2a' },
+  lastSeenTitle: { color: '#fff', fontSize: 14, fontWeight: '600', marginBottom: 4 },
+  lastSeenBody: { color: GREY, fontSize: 12, lineHeight: 17 },
   deleteAccountLink: { alignItems: 'center', paddingVertical: 16, marginTop: 8 },
   deleteAccountLinkText: { color: '#555', fontSize: 12 },
 

@@ -19,6 +19,7 @@ import { useEffect, useRef } from 'react';
 import { AppState, Platform, StyleSheet, Text, TouchableOpacity, useWindowDimensions, View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { useIsDesktopWeb } from '../../lib/responsive';
+import { touchLastSeen } from '../../lib/presence';
 import { supabase } from '../../lib/supabase';
 import { theme } from '../../lib/theme';
 import { installCrashReporter, reportHandledError, setCrashRoute } from '../../lib/crashReporter';
@@ -155,8 +156,22 @@ export default function RootLayout() {
     // messages screen. Once the app is open, the tray has done its job.
     clearNotificationBadge();
 
+    // LAST SEEN (9 Nov 2026). Rides the listener that was already here
+    // rather than adding a second one: foregrounding is exactly the
+    // right moment for both. touch_last_seen() throttles itself to one
+    // write every two minutes and ignores anonymous sessions, so this
+    // is cheap to call on every return to the app.
+    //
+    // Fire-and-forget on purpose. A missed heartbeat shows a slightly
+    // older time to one person; blocking or erroring on it would be
+    // worse than the thing it reports.
+    touchLastSeen();
+
     const appStateSub = AppState.addEventListener('change', (state) => {
-      if (state === 'active') clearNotificationBadge();
+      if (state === 'active') {
+        clearNotificationBadge();
+        touchLastSeen();
+      }
     });
 
     return () => appStateSub.remove();

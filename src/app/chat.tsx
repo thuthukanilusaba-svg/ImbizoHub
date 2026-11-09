@@ -69,6 +69,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { ActivityIndicator, Alert, AppState, Image, Keyboard, KeyboardAvoidingView, Modal, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { DELIVERY_BOOKING_ENABLED, DELIVERY_PAUSED_MESSAGE, DELIVERY_PAUSED_TITLE } from '../../lib/featureFlags';
+import { formatLastSeen, lastSeenFor } from '../../lib/presence';
 import {
   notifyAgreedToMeet,
   notifyMeetPayPinGenerated,
@@ -167,6 +168,12 @@ export default function ChatScreen() {
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [zoomPhoto, setZoomPhoto] = useState<string | null>(null);
   const [otherPersonName, setOtherPersonName] = useState('');
+  // LAST SEEN (9 Nov 2026), replacing the hardcoded "Online now" that
+  // used to sit here. null is the normal case and means render nothing:
+  // the other person hides theirs, this person hides theirs, either is
+  // anonymous, or they have genuinely never been seen. Reciprocity is
+  // decided by last_seen_for() in Postgres, not here.
+  const [lastSeenText, setLastSeenText] = useState<string | null>(null);
 
   const [depositChecked, setDepositChecked] = useState(false);
   const [depositPaid, setDepositPaid] = useState(false);
@@ -189,6 +196,19 @@ export default function ChatScreen() {
   // every downstream call — including ones that fire later, like the
   // AppState foreground refetch — has a real id to use.
   const [resolvedReceiverId, setResolvedReceiverId] = useState<string | undefined>(receiver_id as string | undefined);
+
+  // Read once per chat open rather than on a timer. A last-seen that
+  // ticks while you watch it is a presence indicator by another name,
+  // and re-reading on every render would hammer the RPC.
+  useEffect(() => {
+    const other = (receiver_id as string | undefined) || resolvedReceiverId;
+    if (!other) { setLastSeenText(null); return; }
+    let cancelled = false;
+    lastSeenFor(other).then((when) => {
+      if (!cancelled) setLastSeenText(formatLastSeen(when));
+    });
+    return () => { cancelled = true; };
+  }, [receiver_id, resolvedReceiverId]);
   const [dealModal, setDealModal] = useState(false);
   // Re-entry guard for sendMessage. Confirmed against real data rather
   // than theorised: messages 54 and 55 were an identical "hello" from
@@ -1725,6 +1745,9 @@ export default function ChatScreen() {
             <Text style={styles.sellerName} numberOfLines={1} ellipsizeMode="tail">
               {otherPersonName || 'ImbizoHub Chat'}
             </Text>
+            {lastSeenText ? (
+              <Text style={styles.lastSeen} numberOfLines={1}>{lastSeenText}</Text>
+            ) : null}
           </View>
         </View>
         <View style={styles.headerRight}>
@@ -2676,6 +2699,10 @@ const styles = StyleSheet.create({
   // paragraph and a change to the "Usage Data: No" declaration already
   // published in the App Store privacy label.
   sellerName: { color: '#fff', fontSize: 14, fontWeight: '700' },
+  // Grey on purpose. The old indicator was blue, which reads as a live
+  // status light; this is a past-tense fact, not a signal that someone
+  // is there now.
+  lastSeen: { color: '#8a8a85', fontSize: 11, marginTop: 1 },
   meetPayHeaderBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: DARK, borderRadius: 20, paddingHorizontal: 12, paddingVertical: 7, borderWidth: 1, borderColor: GOLD },
   meetPayHeaderIcon: { fontSize: 13 },
   meetPayHeaderText: { color: GOLD, fontSize: 12, fontWeight: '700' },
