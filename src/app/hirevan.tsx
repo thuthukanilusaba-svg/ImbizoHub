@@ -23,7 +23,7 @@
 const VAN_HIRE_PAUSED = false;
 
 import DateTimePicker from '@react-native-community/datetimepicker';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { createElement, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
@@ -134,7 +134,22 @@ export default function HireVanScreen() {
   // "truck load" — offering them would just produce more unquoted
   // requests, which is the exact problem this is fixing. Widen this list
   // when the operators exist, not before.
-  const [loadType, setLoadType] = useState<'people' | 'goods' | 'large_item'>('people');
+  // DELIVERY DOOR (6 Nov 2026). This screen is reached two ways now.
+  // /hirevan is "Post a trip" and still defaults to People, exactly as
+  // before. /hirevan?for=delivery is the "Send something" card on the
+  // home screen, for somebody who just wants a parcel taken across town
+  // and does not think of themselves as posting a trip.
+  //
+  // It is the SAME flow and the same operators — only the wording and
+  // the default answer to "What are you moving?" change. Nothing is
+  // duplicated, and with no parameter the behaviour is byte-identical
+  // to what it was.
+  const { for: entryPoint } = useLocalSearchParams<{ for?: string }>();
+  const isDeliveryEntry = entryPoint === 'delivery';
+
+  const [loadType, setLoadType] = useState<'people' | 'goods' | 'large_item'>(
+    isDeliveryEntry ? 'goods' : 'people'
+  );
   const [loadSize, setLoadSize] = useState<'boot' | 'van' | 'truck' | ''>('');
 
   // "A truck load" appears only when a truck operator actually exists.
@@ -398,9 +413,13 @@ export default function HireVanScreen() {
       {/* "Hire a Van" and "your fare" both said passengers-only. The
           screen now carries goods too, so the wording has to stop
           promising one of the two things it does. */}
-      <Text style={styles.heading}>Post a trip</Text>
+      <Text style={styles.heading}>
+        {isDeliveryEntry ? 'Send something' : 'Post a trip'}
+      </Text>
       <Text style={styles.subheading}>
-        Say what you're moving and where. Operators bid for the job.
+        {isDeliveryEntry
+          ? 'Say what you are sending and where it is going. Operators send you their price.'
+          : "Say what you're moving and where. Operators bid for the job."}
       </Text>
 
       {error ? (

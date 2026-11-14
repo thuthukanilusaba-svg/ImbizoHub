@@ -478,7 +478,7 @@ export default function HomeScreen() {
             Removing it is cosmetic only; no search functionality was
             attached to this element. */}
 
-        {/* Placed ABOVE "Ask for it. Sellers come to you." on purpose.
+        {/* Placed ABOVE "Post what you're looking for." on purpose.
             That banner invites you to ask; this one is the answer to an
             ask you already made. Telling someone to post a want while
             an unread price sits one screen away is the app talking over
@@ -518,12 +518,21 @@ export default function HomeScreen() {
           <View style={styles.vanBannerLeft}>
             <Text style={styles.vanBannerEmoji}>🔍</Text>
             <View style={styles.vanBannerTextCol}>
-              {/* The line (chosen 2 Sep 2026). This banner is the app's
-                  first statement of what ImbizoHub is for, so it carries
-                  the same words as the website h1 and the store listing —
-                  a person who installs from the store must meet the
-                  identical sentence here, not a paraphrase of it. */}
-              <Text style={styles.vanBannerTitle}>Ask for it. Sellers come to you.</Text>
+              {/* REWORDED 14 Nov 2026, from "Ask for it. Sellers come to
+                  you." The old line was a slogan: it told you the
+                  mechanism but never said what to DO. This one is an
+                  instruction, and it pairs with the card below it —
+                  "post what you're looking for" / "see what people want
+                  to buy" are the two halves of the same market.
+
+                  THIS NO LONGER MATCHES THE WEBSITE OR THE STORE. The
+                  previous line was deliberately identical to the
+                  website h1 and the store listing so that someone
+                  installing from the store met the same sentence twice.
+                  Changing it here broke that on purpose, not by
+                  accident — if the slogan stays anywhere else, it is
+                  because it was left, not because it was kept. */}
+              <Text style={styles.vanBannerTitle}>Post what you’re looking for.</Text>
               <Text style={styles.vanBannerSub}>Post what you need — get prices back</Text>
             </View>
           </View>
@@ -538,7 +547,7 @@ export default function HomeScreen() {
           <View style={styles.vanBannerLeft}>
             <Text style={styles.vanBannerEmoji}>🛍️</Text>
             <View style={styles.vanBannerTextCol}>
-              <Text style={styles.vanBannerTitle}>See what people want</Text>
+              <Text style={styles.vanBannerTitle}>See what people want to buy</Text>
               <Text style={styles.vanBannerSub}>Browse open wants — respond with your price, free</Text>
             </View>
           </View>
@@ -561,6 +570,33 @@ export default function HomeScreen() {
             <View style={styles.vanBannerTextCol}>
               <Text style={styles.vanBannerTitle}>Hire Transport</Text>
               <Text style={styles.vanBannerSub}>Post a trip — operators bid for your job</Text>
+            </View>
+          </View>
+          <Text style={styles.vanBannerArrow}>›</Text>
+        </TouchableOpacity>
+
+        {/* ADDED 6 Nov 2026. The same screen and the same operators as
+            "Hire Transport" above — only the door is different. Somebody
+            with a parcel to send does not think "I will post a trip", so
+            that card was invisible to them. ?for=delivery changes the
+            heading and makes "Boxes or goods" the default answer to
+            "What are you moving?"; nothing else differs, and /hirevan
+            with no parameter behaves exactly as it always did.
+
+            Deliberately NOT Book & Deliver, which is a different thing:
+            that one is attached to a purchase, needs a seller, a listing
+            and a price, and is reached from the chat where the deal was
+            agreed. This is for anything at all, bought here or not. */}
+        <TouchableOpacity
+          style={styles.vanBanner}
+          onPress={() => router.push('/hirevan?for=delivery')}
+          activeOpacity={0.85}
+        >
+          <View style={styles.vanBannerLeft}>
+            <Text style={styles.vanBannerEmoji}>📦</Text>
+            <View style={styles.vanBannerTextCol}>
+              <Text style={styles.vanBannerTitle}>Send something</Text>
+              <Text style={styles.vanBannerSub}>Get anything delivered — operators send you a price</Text>
             </View>
           </View>
           <Text style={styles.vanBannerArrow}>›</Text>
