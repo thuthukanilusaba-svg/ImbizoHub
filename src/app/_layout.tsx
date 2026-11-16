@@ -215,6 +215,26 @@ export default function RootLayout() {
     const { data: authListener } = supabase.auth.onAuthStateChange((_event, session) => {
       if (session) {
         registerPush();
+        // LAST SEEN, SECOND TRIGGER (16 Nov 2026). This is the SAME BUG
+        // as the push_token one documented above, found the same way:
+        // the heartbeat in the effect above fires on mount and on
+        // foreground, and on a cold launch the persisted session is
+        // restored asynchronously — so the mount call frequently runs
+        // before auth.uid() exists and touch_last_seen() returns early,
+        // server-side, having done nothing.
+        //
+        // It went unnoticed because foregrounding covers it for anyone
+        // who uses the app more than once. It does NOT cover the person
+        // who installs, registers and puts the phone down: they never
+        // background, so they never record anything on the only session
+        // they may ever have. Thabo Ngwenya, 15 Nov, is that person —
+        // registered with a working push token, last_seen_at still null.
+        //
+        // Riding the listener that already exists rather than adding a
+        // third one. It fires both on a fresh sign-in and once a stored
+        // session finishes restoring, which is exactly the two moments
+        // the mount call can miss.
+        touchLastSeen();
         if (session.user && !session.user.is_anonymous) startUnreadWatcher(session.user.id);
       } else {
         // Signed out: drop the channel and clear the badge, so the next
